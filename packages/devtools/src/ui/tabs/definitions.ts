@@ -20,6 +20,11 @@ export const MBDT_TAB_DEFINITIONS: ReadonlyArray<TabDefinition> = [
     getBadge: (snapshot) => snapshot.clients.length,
   },
   {
+    id: "bridges",
+    label: "Bridges",
+    getBadge: (snapshot) => snapshot.bridges.length,
+  },
+  {
     id: "replay-buffer",
     label: "Replay Buffer",
     getBadge: (snapshot) => snapshot.historyEntries.length,

@@ -7,6 +7,7 @@ import type {
 import type { DevToolsTabId } from "../shell/layout/panelTypes";
 import { MessagesLogTab } from "./messages/MessagesLogTab";
 import { ClientsLogTab } from "./clients/ClientsLogTab";
+import { BridgesTab } from "./bridges/BridgesTab";
 import { ReplayBufferTab } from "./replay-buffer/ReplayBufferTab";
 import { SystemEventsTab } from "./system-events/SystemEventsTab";
 
@@ -34,6 +35,8 @@ export function renderActiveTab(
       return <MessagesLogTab store={store} rollup={context.messagesRollup} />;
     case "clients":
       return <ClientsLogTab store={store} onNavigate={context.onNavigate} />;
+    case "bridges":
+      return <BridgesTab store={store} />;
     case "replay-buffer":
       return <ReplayBufferTab store={store} />;
     case "system-events":

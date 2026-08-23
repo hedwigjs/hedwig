@@ -23,13 +23,14 @@ export function attachInspector(
   // Initial snapshots before any hooks/events fire
   store.refreshClients(broker);
   store.refreshHistory(broker);
+  store.refreshBridges(broker);
 
   // Synthesize `bridge.added` for bridges that were registered BEFORE the
-  // inspector attached. Otherwise the log would miss any bridge whose
-  // registration is synchronous during app bootstrap — DevTools mounts
-  // via React useEffect, which is a tick later than sync `addBridge`
-  // calls in the shell. Also covers late-attach scenarios (DevTools
-  // toggled off then on).
+  // inspector attached. Otherwise the System Events log would miss any
+  // bridge whose registration is synchronous during app bootstrap —
+  // DevTools mounts via React useEffect, which is a tick later than sync
+  // `addBridge` calls in the shell. Also covers late-attach scenarios
+  // (DevTools toggled off then on).
   for (const bridge of broker.inspect.getBridges()) {
     store.pushSystemEvent("bridge.added", {
       bridgeId: bridge.id,
@@ -73,9 +74,11 @@ export function attachInspector(
   });
   const unsubBridgeAdded = broker.$systemEvents.on("bridge.added", (payload) => {
     store.pushSystemEvent("bridge.added", payload);
+    store.refreshBridges(broker);
   });
   const unsubBridgeRemoved = broker.$systemEvents.on("bridge.removed", (payload) => {
     store.pushSystemEvent("bridge.removed", payload);
+    store.refreshBridges(broker);
   });
 
   return () => {

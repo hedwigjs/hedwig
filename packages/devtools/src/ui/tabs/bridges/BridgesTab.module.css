@@ -1,0 +1,49 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #1f2937;
+  font-size: 11px;
+  color: #9ca3af;
+  flex-wrap: wrap;
+}
+
+.headerLabel {
+  font-weight: 600;
+  color: #d1d5db;
+}
+
+.headerHint {
+  color: #6b7280;
+  flex: 1;
+}
+
+.code {
+  background: #1f2937;
+  color: #e5e7eb;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+}
+
+.list {
+  flex: 1;
+  overflow: auto;
+}
+
+.empty {
+  padding: 24px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.5;
+}

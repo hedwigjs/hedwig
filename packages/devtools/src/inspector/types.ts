@@ -150,6 +150,26 @@ export interface ClientEntry {
   subscriptions: ClientSubscriptionEntry[];
 }
 
+// ─── Bridge snapshot ────────────────────────────────────────────────────────
+
+export interface BridgeEntry {
+  id: string;
+  forwardPatterns: ReadonlyArray<string>;
+  /**
+   * Approx. count of local emits whose topic matches this bridge's
+   * forward patterns — i.e. messages that WOULD have been sent out
+   * through this transport. Broker doesn't expose per-bridge attribution
+   * directly, so this is a heuristic over the message log.
+   */
+  sentThroughCount: number;
+  /**
+   * Approx. count of `fromExternal=true` messages matching this bridge's
+   * forward patterns — i.e. messages injected FROM this transport. Same
+   * heuristic caveat as above.
+   */
+  receivedFromCount: number;
+}
+
 // ─── Inspector snapshot ───────────────────────────────────────────────────────
 
 export interface InspectorSnapshot {
@@ -163,6 +183,8 @@ export interface InspectorSnapshot {
   historyEntries: ReadonlyArray<HistoryEntry>;
   /** Recent system events (oldest → newest). Ring-buffered by `maxEvents`. */
   systemEvents: ReadonlyArray<SystemEventLogEntry>;
+  /** Registered bridges with cached forward patterns and derived counters. */
+  bridges: ReadonlyArray<BridgeEntry>;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -185,6 +207,7 @@ function snapshotFrom(
   messagesFilter: MessagesFilter,
   historyEntries: ReadonlyArray<HistoryEntry>,
   systemEvents: ReadonlyArray<SystemEventLogEntry>,
+  bridges: ReadonlyArray<BridgeEntry>,
 ): InspectorSnapshot {
   return {
     entries: list,
@@ -194,6 +217,7 @@ function snapshotFrom(
     messagesFilter,
     historyEntries,
     systemEvents,
+    bridges,
   };
 }
 
