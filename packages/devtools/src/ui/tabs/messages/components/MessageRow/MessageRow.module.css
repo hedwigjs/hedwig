@@ -14,3 +14,8 @@
 .row[data-status="pending"] {
   border-left: 3px solid #f59e0b;
 }
+
+.row[data-status="trace"] {
+  border-left: 3px solid #38bdf8;
+  background: rgba(56, 189, 248, 0.03);
+}

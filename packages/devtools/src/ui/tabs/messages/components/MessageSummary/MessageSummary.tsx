@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { MessageLogEntry } from "../../../../../inspector/types";
 import { formatTimestamp } from "../../formatTimestamp";
+import { useTopicsRegistry } from "../../../../topicsRegistry";
 import styles from "./MessageSummary.module.css";
 
 interface MessageSummaryProps {
@@ -9,13 +10,34 @@ interface MessageSummaryProps {
   open: boolean;
 }
 
-function formatResultLine(entry: MessageLogEntry): ReactNode {
+/**
+ * A trace-only topic emitting NO_SUBSCRIBERS is expected, not an error.
+ * We want to render such rows neutrally so they don't scream "red = broken"
+ * every time a chat.message-sent.v1 fires without a listener.
+ */
+function isExpectedTraceNack(
+  entry: MessageLogEntry,
+  isObservabilityTopic: boolean,
+): boolean {
+  if (!isObservabilityTopic) return false;
+  if (entry.result?.status !== "NACK") return false;
+  return entry.result.reason === "NO_SUBSCRIBERS";
+}
+
+function formatResultLine(
+  entry: MessageLogEntry,
+  isExpectedNack: boolean,
+): ReactNode {
   if (!entry.result) {
     return entry.status === "pending" ? "…" : "—";
   }
 
   const { result } = entry;
-  const statusClass = result.status === "ACK" ? styles.statusAck : styles.statusNack;
+  const statusClass = isExpectedNack
+    ? styles.statusTrace
+    : result.status === "ACK"
+      ? styles.statusAck
+      : styles.statusNack;
 
   const suffix =
     entry.kind === "multicast"
@@ -37,6 +59,11 @@ function formatResultLine(entry: MessageLogEntry): ReactNode {
 }
 
 export function MessageSummary({ entry, open }: MessageSummaryProps): ReactNode {
+  const registry = useTopicsRegistry();
+  const contract = registry?.[entry.topic];
+  const isObservabilityTopic = contract?.observability === true;
+  const expectedNack = isExpectedTraceNack(entry, isObservabilityTopic);
+
   return (
     <>
       <div className={styles.main}>
@@ -45,6 +72,14 @@ export function MessageSummary({ entry, open }: MessageSummaryProps): ReactNode 
         <span className={entry.kind === "unicast" ? styles.kindUnicast : styles.kindMulticast}>
           {entry.kind}
         </span>
+        {isObservabilityTopic && (
+          <span
+            className={`${styles.pill} ${styles.pillTrace}`}
+            title="Observability-only topic: NACK NO_SUBSCRIBERS is expected"
+          >
+            trace
+          </span>
+        )}
         {entry.replayed && <span className={styles.pill}>replay</span>}
         {entry.fromExternal && <span className={styles.pill}>external</span>}
         {entry.synthetic && (
@@ -59,7 +94,7 @@ export function MessageSummary({ entry, open }: MessageSummaryProps): ReactNode 
         {" → "}
         {entry.target}
       </div>
-      <div className={styles.sub}>{formatResultLine(entry)}</div>
+      <div className={styles.sub}>{formatResultLine(entry, expectedNack)}</div>
     </>
   );
 }

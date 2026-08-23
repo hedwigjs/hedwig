@@ -104,3 +104,19 @@
   color: #ef4444;
   font-weight: 600;
 }
+
+/*
+ * Trace-only topics: NACK NO_SUBSCRIBERS is expected by design.
+ * Render neutrally so the row doesn't look like an error.
+ */
+.statusTrace {
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+.pillTrace {
+  background: #075985;
+  color: #7dd3fc;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}

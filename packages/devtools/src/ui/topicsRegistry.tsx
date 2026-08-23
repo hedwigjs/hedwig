@@ -17,6 +17,13 @@ export interface TopicContractInfo {
   examples?: Readonly<Record<string, unknown>>;
   /** Если событие deprecated — имя топика-наследника. */
   deprecatedBy?: string;
+  /**
+   * Топик — телеметрический (тrace/observability). У него по замыслу
+   * может не быть business-подписчиков, поэтому `NACK NO_SUBSCRIBERS`
+   * для него — ожидаемое состояние, не ошибка. DevTools использует
+   * этот флаг чтобы рендерить такие NACK'и нейтрально.
+   */
+  observability?: boolean;
 }
 
 /**
