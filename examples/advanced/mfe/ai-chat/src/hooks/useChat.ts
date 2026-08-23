@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 
-import { mockBus } from '@hedwig-demo/mock-bus';
-
+import { bus } from '../clients/bus';
 import { SseAiClient } from '../ai/SseAiClient';
 
 export type ChatRole = 'user' | 'assistant';
@@ -51,12 +50,12 @@ export function useChat() {
     };
 
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
-    mockBus.emit('chat.message-sent.v1', {
+    void bus.emit('chat.message-sent.v1', {
       id: userMsg.id,
       text: trimmed,
       at: Date.now(),
     });
-    mockBus.emit('chat.reply-started.v1', {
+    void bus.emit('chat.reply-started.v1', {
       replyId,
       inReplyTo: userMsg.id,
     });
@@ -69,18 +68,18 @@ export function useChat() {
     try {
       for await (const chunk of client.ask(trimmed, controller.signal)) {
         full += chunk;
-        mockBus.emit('chat.reply-chunk.v1', { replyId, chunk });
+        void bus.emit('chat.reply-chunk.v1', { replyId, chunk });
         setMessages((prev) =>
           prev.map((m) => (m.id === replyId ? { ...m, text: full } : m)),
         );
       }
-      mockBus.emit('chat.reply-completed.v1', { replyId, fullText: full });
+      void bus.emit('chat.reply-completed.v1', { replyId, fullText: full });
       setMessages((prev) =>
         prev.map((m) => (m.id === replyId ? { ...m, streaming: false } : m)),
       );
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') {
-        mockBus.emit('chat.reply-cancelled.v1', { replyId });
+        void bus.emit('chat.reply-cancelled.v1', { replyId });
         setMessages((prev) =>
           prev.map((m) =>
             m.id === replyId ? { ...m, streaming: false, text: full || '(отменено)' } : m,

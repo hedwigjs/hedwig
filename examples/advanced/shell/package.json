@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@hedwig-demo/contracts": "*",
-    "@hedwig-demo/mock-bus": "*",
+    "@hedwigjs/broker": "*",
     "react": "19.1.1",
     "react-dom": "19.1.1",
     "single-spa": "^6.0.3"

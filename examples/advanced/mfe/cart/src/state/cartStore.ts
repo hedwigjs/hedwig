@@ -1,5 +1,6 @@
 import type { CartItem } from '@hedwig-demo/contracts';
-import { mockBus } from '@hedwig-demo/mock-bus';
+
+import { runtimeBus } from '../clients/bus';
 
 type CartState = Record<number, CartItem>;
 
@@ -8,8 +9,9 @@ type CartState = Record<number, CartItem>;
  * so that multiple cart views (desktop panel + mobile header trigger) can be
  * mounted simultaneously without each holding its own copy.
  *
- * Parked on `window` so that Module Federation's per-remote module copies
- * still see the same runtime. Same shape as `mock-bus`'s cross-realm store.
+ * Parked on `window` because the runtime-started flag needs to be shared
+ * across Module Federation-loaded copies of this module. The broker itself
+ * is a distinct concern — shared via MF `singleton: true`.
  */
 const GLOBAL_KEY = '__HEDWIG_DEMO_CART_RUNTIME__' as const;
 
@@ -58,10 +60,17 @@ export function startCartRuntime(): void {
   const emitSnapshot = () => {
     const items = Object.values(state);
     const { totalItems, totalPrice } = computeTotals(items);
-    mockBus.emit('cart.snapshot.v1', { items, totalItems, totalPrice });
+    // `history: true` records this emit into the broker's replay buffer so
+    // late subscribers with `replay: { limit: 1 }` receive it on subscribe.
+    void runtimeBus.emit(
+      'cart.snapshot.v1',
+      { items, totalItems, totalPrice },
+      { history: true },
+    );
   };
 
-  mockBus.on('cart.item-added.v1', (payload) => {
+  runtimeBus.on('cart.item-added.v1', (msg) => {
+    const payload = msg.data;
     if (state[payload.itemId]) return;
     state = {
       ...state,
@@ -75,7 +84,8 @@ export function startCartRuntime(): void {
     emitSnapshot();
   });
 
-  mockBus.on('cart.item-incremented.v1', ({ itemId }) => {
+  runtimeBus.on('cart.item-incremented.v1', (msg) => {
+    const { itemId } = msg.data;
     const current = state[itemId];
     if (!current) return;
     state = {
@@ -85,7 +95,8 @@ export function startCartRuntime(): void {
     emitSnapshot();
   });
 
-  mockBus.on('cart.item-decremented.v1', ({ itemId }) => {
+  runtimeBus.on('cart.item-decremented.v1', (msg) => {
+    const { itemId } = msg.data;
     const current = state[itemId];
     if (!current) return;
     if (current.quantity <= 1) {
@@ -100,7 +111,8 @@ export function startCartRuntime(): void {
     emitSnapshot();
   });
 
-  mockBus.on('cart.item-removed.v1', ({ itemId }) => {
+  runtimeBus.on('cart.item-removed.v1', (msg) => {
+    const { itemId } = msg.data;
     if (!state[itemId]) return;
     const { [itemId]: _dropped, ...rest } = state;
     state = rest;

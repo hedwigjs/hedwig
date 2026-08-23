@@ -2,14 +2,14 @@
   "name": "@hedwig-demo/notifications",
   "version": "0.0.0",
   "private": true,
-  "description": "Notifications MFE — WS-driven toast panel bridged into the mock-bus.",
+  "description": "Notifications MFE — WS-driven toast panel bridged into the broker.",
   "scripts": {
     "dev": "webpack serve",
     "build": "webpack --mode production"
   },
   "dependencies": {
     "@hedwig-demo/contracts": "*",
-    "@hedwig-demo/mock-bus": "*",
+    "@hedwigjs/broker": "*",
     "react": "19.1.1",
     "react-dom": "19.1.1"
   },

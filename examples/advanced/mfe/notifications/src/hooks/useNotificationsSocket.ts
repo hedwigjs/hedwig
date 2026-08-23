@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 
-import { mockBus } from '@hedwig-demo/mock-bus';
 import type { TopicPayloads } from '@hedwig-demo/contracts';
+
+import { bus } from '../clients/bus';
 
 type Envelope = {
   topic: 'notification.show.v1';
@@ -22,7 +23,10 @@ function isEnvelope(value: unknown): value is Envelope {
 
 /**
  * Открывает WS-канал к backend'у и мостит все `notification.show.v1`
- * envelope'ы в mock-bus. Реконнект — экспоненциальный backoff до 15s.
+ * envelope'ы в broker. Реконнект — экспоненциальный backoff до 15s.
+ *
+ * Ad-hoc adapter. Позже — заменяется на `@hedwigjs/adapter-websocket`
+ * (см. RFC-0001), сейчас — inline.
  */
 export function useNotificationsSocket(url: string): void {
   useEffect(() => {
@@ -55,7 +59,7 @@ export function useNotificationsSocket(url: string): void {
           return;
         }
         if (!isEnvelope(parsed)) return;
-        mockBus.emit('notification.show.v1', parsed.payload);
+        void bus.emit('notification.show.v1', parsed.payload);
       });
 
       socket.addEventListener('close', () => {

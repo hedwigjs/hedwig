@@ -2,8 +2,8 @@ import type { FC } from 'react';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import type { CartItem, TopicPayloads } from '@hedwig-demo/contracts';
-import { mockBus } from '@hedwig-demo/mock-bus';
 
+import { bus } from './clients/bus';
 import { CheckoutModal } from './components/CheckoutModal';
 
 const IFRAME_ORIGIN =
@@ -43,14 +43,15 @@ export const App: FC = () => {
   const close = useCallback((reason?: 'user-closed') => {
     setPending((prev) => {
       if (prev && reason === 'user-closed') {
-        mockBus.emit('checkout.cancelled.v1', { reason: 'user-closed' });
+        void bus.emit('checkout.cancelled.v1', { reason: 'user-closed' });
       }
       return null;
     });
   }, []);
 
   useEffect(() => {
-    return mockBus.on('cart.checkout-requested.v1', ({ items, totalPrice }) => {
+    return bus.on('cart.checkout-requested.v1', (msg) => {
+      const { items, totalPrice } = msg.data;
       if (items.length === 0) return;
       setPending({ items, totalPrice });
     });
@@ -64,9 +65,9 @@ export const App: FC = () => {
       if (!isCompletedMessage(event.data)) return;
 
       const payload = event.data.payload;
-      mockBus.emit('checkout.completed.v1', payload);
+      void bus.emit('checkout.completed.v1', payload);
 
-      mockBus.emit('notification.show.v1', {
+      void bus.emit('notification.show.v1', {
         kind: 'success',
         title: `Заказ ${payload.orderId} принят`,
         body: 'Скоро появится статус в панели уведомлений.',
@@ -75,7 +76,7 @@ export const App: FC = () => {
       // Очищаем корзину — по одному `removed`, чтобы cart-runtime сам
       // прогнал стандартный путь и опубликовал пустой snapshot.
       for (const item of pending!.items) {
-        mockBus.emit('cart.item-removed.v1', { itemId: item.itemId });
+        void bus.emit('cart.item-removed.v1', { itemId: item.itemId });
       }
 
       setPending(null);

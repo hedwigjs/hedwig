@@ -56,6 +56,7 @@ module.exports = {
         react: { singleton: true, eager: true, requiredVersion: '19.1.1' },
         'react-dom': { singleton: true, eager: true, requiredVersion: '19.1.1' },
         'single-spa': { singleton: true, eager: true, requiredVersion: '^6.0.3' },
+        '@hedwigjs/broker': { singleton: true, eager: true, requiredVersion: '^0.1.0' },
       },
     }),
     new HtmlWebpackPlugin({

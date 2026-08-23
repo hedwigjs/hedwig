@@ -53,6 +53,7 @@ module.exports = {
       shared: {
         react: { singleton: true, requiredVersion: '19.1.1' },
         'react-dom': { singleton: true, requiredVersion: '19.1.1' },
+        '@hedwigjs/broker': { singleton: true, requiredVersion: '^0.1.0' },
       },
     }),
     new HtmlWebpackPlugin({

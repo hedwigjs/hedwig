@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import type { MenuItem } from '@hedwig-demo/contracts';
-import { mockBus } from '@hedwig-demo/mock-bus';
+
+import { bus } from '../clients/bus';
 
 /**
  * Storefront's read-only view of cart quantities.
@@ -11,31 +12,32 @@ import { mockBus } from '@hedwig-demo/mock-bus';
  * its own copy directly. Clicks only publish commands; the resulting
  * snapshot from cart is what updates the UI.
  *
- * `{ replay: true }` handles the late-joiner case: if cart already has
- * items when storefront mounts, mockBus fires the last cached snapshot
- * on subscribe.
+ * `replay: { limit: 1 }` handles the late-joiner case: if cart already has
+ * items when storefront mounts, the broker fires the handler once with the
+ * last snapshot recorded in history (cart runtime emits snapshots with
+ * `{ history: true }`).
  */
 export function useLocalCartQuantities() {
   const [qtyById, setQtyById] = useState<Record<number, number>>({});
 
   useEffect(() => {
-    return mockBus.on(
+    return bus.on(
       'cart.snapshot.v1',
-      (snapshot) => {
+      (msg) => {
         const next: Record<number, number> = {};
-        for (const item of snapshot.items) {
+        for (const item of msg.data.items) {
           next[item.itemId] = item.quantity;
         }
         setQtyById(next);
       },
-      { replay: true },
+      { replay: { limit: 1 } },
     );
   }, []);
 
   const getQty = useCallback((id: number) => qtyById[id] ?? 0, [qtyById]);
 
   const addFirst = useCallback((item: MenuItem) => {
-    mockBus.emit('cart.item-added.v1', {
+    void bus.emit('cart.item-added.v1', {
       itemId: item.id,
       name: item.name,
       price: item.price,
@@ -43,11 +45,11 @@ export function useLocalCartQuantities() {
   }, []);
 
   const increment = useCallback((id: number) => {
-    mockBus.emit('cart.item-incremented.v1', { itemId: id });
+    void bus.emit('cart.item-incremented.v1', { itemId: id });
   }, []);
 
   const decrement = useCallback((id: number) => {
-    mockBus.emit('cart.item-decremented.v1', { itemId: id });
+    void bus.emit('cart.item-decremented.v1', { itemId: id });
   }, []);
 
   return { getQty, addFirst, increment, decrement };
