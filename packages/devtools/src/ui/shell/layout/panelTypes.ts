@@ -12,7 +12,8 @@ export type DevToolsTabId =
   | "clients"
   | "bridges"
   | "replay-buffer"
-  | "system-events";
+  | "system-events"
+  | "debug";
 
 export interface DevToolsPreFullscreen {
   sizeMain: number;

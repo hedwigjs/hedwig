@@ -47,6 +47,9 @@ export function MessageSummary({ entry, open }: MessageSummaryProps): ReactNode 
         </span>
         {entry.replayed && <span className={styles.pill}>replay</span>}
         {entry.fromExternal && <span className={styles.pill}>external</span>}
+        {entry.synthetic && (
+          <span className={`${styles.pill} ${styles.pillSynthetic}`}>synthetic</span>
+        )}
         <span className={styles.meta}>
           <span className={styles.time}>{formatTimestamp(entry.createdAt)}</span>
         </span>

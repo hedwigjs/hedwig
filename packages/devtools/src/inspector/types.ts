@@ -24,6 +24,14 @@ export interface MessageBrokerForDevTools {
   useAfterSendHook(hook: (message: Readonly<Message>, result: RoutingResult) => void): () => void;
   $systemEvents: SystemEventsEmitter<string, Record<string, any>>;
   inspect: Inspector<string, Record<string, any>>;
+  $debug: {
+    send(
+      source: string,
+      topic: string,
+      target: string,
+      data: unknown,
+    ): Promise<RoutingResult>;
+  };
 }
 
 export type { HistoryEntry };
@@ -46,6 +54,8 @@ export interface MessageLogEntry {
   subscriberCount?: number;
   replayed?: boolean;
   fromExternal?: boolean;
+  /** Message was fired via `broker.$debug.send` (DevTools spoof / test). */
+  synthetic?: boolean;
   dataPreview?: string;
   latencyMs?: number;
   result?: {

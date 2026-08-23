@@ -108,6 +108,7 @@ export const MessageBrokerDevTools = ({
           store={store}
           layout={layout}
           messagesRollup={messagesRollup}
+          broker={broker}
           onClose={() => setOpen(false)}
           onPositionChange={setPosition}
           onTabChange={setActiveTab}

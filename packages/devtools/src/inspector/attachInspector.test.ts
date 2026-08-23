@@ -53,6 +53,13 @@ function createMockBroker() {
     },
     $systemEvents: createSystemEventsStub(),
     inspect: createInspectStub(),
+    $debug: {
+      send: jest.fn(async () => ({
+        status: "ACK",
+        reason: "DISPATCHED",
+        message: "",
+      })) as unknown as MessageBrokerForDevTools["$debug"]["send"],
+    },
   };
 
   return {

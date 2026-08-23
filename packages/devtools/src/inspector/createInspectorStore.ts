@@ -227,6 +227,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
       kind: message.target === "*" ? "multicast" : "unicast",
       replayed: message.replayed,
       fromExternal: message.fromExternal,
+      synthetic: message.synthetic,
       dataPreview: serializeDataPreview(message.data),
     };
     ring.push(entry);
@@ -259,6 +260,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
         ...prev,
         replayed: message.replayed ?? prev.replayed,
         fromExternal: message.fromExternal ?? prev.fromExternal,
+        synthetic: message.synthetic ?? prev.synthetic,
         dataPreview: prev.dataPreview ?? serializeDataPreview(message.data),
         latencyMs,
         subscriberCount,
@@ -277,6 +279,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
         subscriberCount,
         replayed: message.replayed,
         fromExternal: message.fromExternal,
+        synthetic: message.synthetic,
         dataPreview: serializeDataPreview(message.data),
         latencyMs,
         result: resultPayload,

@@ -1,0 +1,98 @@
+.panel {
+  border: 1px solid #374151;
+  border-radius: 4px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #0b1220;
+}
+
+.panel[data-ok="1"] {
+  border-color: #14532d;
+  background: rgba(20, 83, 45, 0.08);
+}
+
+.panel[data-ok="0"] {
+  border-color: #7f1d1d;
+  background: rgba(127, 29, 29, 0.08);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.statusAck {
+  color: #22c55e;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.statusNack {
+  color: #ef4444;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.reason {
+  color: #d1d5db;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.msg {
+  color: #9ca3af;
+  font-size: 11px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.label {
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.recipients {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chip {
+  background: #1f2937;
+  color: #e5e7eb;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.dim {
+  color: #6b7280;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.payload {
+  margin: 0;
+  padding: 8px 10px;
+  background: #030712;
+  color: #d1d5db;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  border-radius: 3px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  max-height: 240px;
+}

@@ -34,4 +34,8 @@ export const MBDT_TAB_DEFINITIONS: ReadonlyArray<TabDefinition> = [
     label: "System Events",
     getBadge: (snapshot) => snapshot.systemEvents.length,
   },
+  {
+    id: "debug",
+    label: "Debug",
+  },
 ] as const;
