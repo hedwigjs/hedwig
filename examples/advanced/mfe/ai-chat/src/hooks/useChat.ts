@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { getBroker, SSETransport } from '@hedwigjs/broker';
-import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
-
 import { bus } from '../clients/bus';
 
 export type ChatRole = 'user' | 'assistant';
@@ -14,44 +11,31 @@ export type ChatMessage = {
   streaming?: boolean;
 };
 
-const BACKEND_URL =
-  (typeof process !== 'undefined' && process.env?.AI_STREAM_URL) ||
-  'http://localhost:4000/ai/stream';
-
-const BRIDGE_ID = 'ai-backend-stream';
-
 const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
 /**
- * Chat state driven entirely by broker traffic.
+ * Chat state — pure UI logic driven by broker events.
  *
- * Wire:
- *  1. `send()` opens an EventSource against the backend and attaches an
- *     SSETransport bridge that injects `chat.reply-chunk.v1` and
- *     `chat.reply-completed.v1` into the local broker.
- *  2. Two `bus.on(...)` subscribers (filtered by replyId) update React
- *     state as chunks arrive and mark the message complete at the end.
- *  3. Cancel closes the EventSource (server sees `res.on('close')` and
- *     stops), then emits `chat.reply-cancelled.v1` locally.
+ * `send()` emits three events and returns; it knows nothing about HTTP.
+ * The `chat.ask.v1` emit is picked up by aiStreamAdapter (a separate
+ * subscriber) which opens the SSE stream and injects reply chunks back
+ * onto the bus. This hook just watches for those chunks, filtered by
+ * `replyId`, and drives React state.
  *
- * Every event is on the bus — DevTools sees the whole timeline
- * (message-sent, reply-started, N × reply-chunk, reply-completed) with
- * source labels showing which came from the local client vs. the backend
- * bridge ("external" badge in DevTools).
+ * Cancel emits `chat.reply-cancelled.v1`; the adapter tears down its
+ * bridge on the same event.
  */
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setStreaming] = useState(false);
 
-  // Per-request state — kept in refs because the bus subscribers are
-  // long-lived and need to know which replyId is currently active.
+  // Which replyId we're currently rendering to. Kept in a ref because the
+  // long-lived bus subscribers below need to filter by it without becoming
+  // reactive to identity changes on every render.
   const activeReplyIdRef = useRef<string | null>(null);
-  const activeRemoveBridgeRef = useRef<(() => void) | null>(null);
   const bufferRef = useRef<string>('');
 
-  const teardownActive = useCallback(() => {
-    activeRemoveBridgeRef.current?.();
-    activeRemoveBridgeRef.current = null;
+  const finish = useCallback(() => {
     activeReplyIdRef.current = null;
     bufferRef.current = '';
     setStreaming(false);
@@ -68,12 +52,9 @@ export function useChat() {
         m.id === replyId ? { ...m, streaming: false, text: partial || '(отменено)' } : m,
       ),
     );
-    teardownActive();
-  }, [teardownActive]);
+    finish();
+  }, [finish]);
 
-  // Global subscribers — receive every reply-chunk / reply-completed on
-  // the bus and gate by the active replyId. Attaching once at mount keeps
-  // the send() path simple (no per-request subscribe/unsubscribe churn).
   useEffect(() => {
     const offChunk = bus.on('chat.reply-chunk.v1', (msg) => {
       const { replyId, chunk } = msg.data;
@@ -93,19 +74,14 @@ export function useChat() {
           m.id === replyId ? { ...m, streaming: false, text: fullText } : m,
         ),
       );
-      teardownActive();
+      finish();
     });
 
     return () => {
       offChunk();
       offCompleted();
     };
-  }, [teardownActive]);
-
-  // Safety net: tear down the stream if the component unmounts mid-reply.
-  useEffect(() => {
-    return () => teardownActive();
-  }, [teardownActive]);
+  }, [finish]);
 
   const send = useCallback(
     async (text: string) => {
@@ -114,15 +90,17 @@ export function useChat() {
 
       const userId = uid();
       const replyId = uid();
-      const userMsg: ChatMessage = { id: userId, role: 'user', text: trimmed };
-      const assistantMsg: ChatMessage = {
-        id: replyId,
-        role: 'assistant',
-        text: '',
-        streaming: true,
-      };
 
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      setMessages((prev) => [
+        ...prev,
+        { id: userId, role: 'user', text: trimmed },
+        { id: replyId, role: 'assistant', text: '', streaming: true },
+      ]);
+
+      activeReplyIdRef.current = replyId;
+      bufferRef.current = '';
+      setStreaming(true);
+
       void bus.emit('chat.message-sent.v1', {
         id: userId,
         text: trimmed,
@@ -132,32 +110,9 @@ export function useChat() {
         replyId,
         inReplyTo: userId,
       });
-
-      activeReplyIdRef.current = replyId;
-      bufferRef.current = '';
-      setStreaming(true);
-
-      // SSETransport opens its own EventSource against the URL and owns
-      // the socket lifetime — teardownActive() calls transport.destroy()
-      // which closes it. Bridge is per-request because the endpoint is
-      // per-request (backend closes the stream after `chat.reply-completed`);
-      // otherwise the browser would auto-reconnect and re-run the reply.
-      const url = `${BACKEND_URL}?prompt=${encodeURIComponent(trimmed)}&replyId=${encodeURIComponent(replyId)}`;
-      const transport = new SSETransport({ url });
-
-      const broker = getBroker<Topic, TopicPayloads>();
-      const removeBridge = broker.addBridge(BRIDGE_ID, {
-        transport,
-        forward: ['chat.reply-chunk.v1', 'chat.reply-completed.v1'],
-      });
-
-      // Teardown closure captures the exact transport/bridge for this
-      // request. `broker.addBridge` returns a removal fn, and the
-      // transport we manage explicitly since the bridge doesn't own it.
-      activeRemoveBridgeRef.current = () => {
-        removeBridge();
-        transport.destroy();
-      };
+      // Fire the request onto the bus. The SSE bridge lives in
+      // aiStreamAdapter — this hook doesn't know or care about HTTP.
+      void bus.emit('chat.ask.v1', { prompt: trimmed, replyId });
     },
     [isStreaming],
   );

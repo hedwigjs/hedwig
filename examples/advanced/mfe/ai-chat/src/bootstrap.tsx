@@ -2,14 +2,20 @@ import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
 import { App } from './App';
+import { installAiStreamAdapter } from './aiStreamAdapter';
 
 type MountProps = {
   domElement?: HTMLElement;
 };
 
 let root: Root | null = null;
+let adapterUnsubscribe: (() => void) | null = null;
 
 export async function bootstrap(): Promise<void> {
+  // Wire the SSE-backed responder for `chat.ask.v1` once, when the MFE
+  // first boots. The subscription lives for the whole MFE lifetime;
+  // useChat merely emits ask events.
+  adapterUnsubscribe ??= installAiStreamAdapter();
   return Promise.resolve();
 }
 
@@ -23,6 +29,8 @@ export async function mount(props: MountProps): Promise<void> {
 export async function unmount(): Promise<void> {
   root?.unmount();
   root = null;
+  adapterUnsubscribe?.();
+  adapterUnsubscribe = null;
 }
 
 declare global {
