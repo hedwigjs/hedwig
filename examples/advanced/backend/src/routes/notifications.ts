@@ -10,10 +10,18 @@ type NotificationPayload = {
   body?: string;
 };
 
+/**
+ * Broker Message shape — the shell hosts a WebSocketTransport bridge that
+ * expects incoming frames to already be broker-Message-compatible so it
+ * can inject them as if they'd been emitted locally.
+ */
 type Envelope = {
+  id: string;
   topic: 'notification.show.v1';
-  payload: NotificationPayload;
-  ts: number;
+  source: string;
+  target: '*';
+  data: NotificationPayload;
+  timestamp: number;
 };
 
 const DEMO_NOTIFICATIONS: NotificationPayload[] = [
@@ -39,11 +47,16 @@ const DEMO_NOTIFICATIONS: NotificationPayload[] = [
   },
 ];
 
+let envelopeSeq = 0;
+
 function envelope(payload: NotificationPayload): Envelope {
   return {
+    id: `notif-backend-${++envelopeSeq}`,
     topic: 'notification.show.v1',
-    payload,
-    ts: Date.now(),
+    source: 'notifications-backend',
+    target: '*',
+    data: payload,
+    timestamp: Date.now(),
   };
 }
 
