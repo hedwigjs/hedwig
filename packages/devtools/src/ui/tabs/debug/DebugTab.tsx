@@ -7,6 +7,7 @@ import type { MessageBrokerForDevTools } from "../../../inspector/types";
 import { useTopicsRegistry } from "../../topicsRegistry";
 import type { TopicContractInfo } from "../../topicsRegistry";
 import { TopicPicker } from "./components/TopicPicker/TopicPicker";
+import { SourcePicker } from "./components/SourcePicker/SourcePicker";
 import { ResultPanel } from "./components/ResultPanel/ResultPanel";
 import styles from "./DebugTab.module.css";
 
@@ -191,23 +192,15 @@ export function DebugTab({ store, broker }: DebugTabProps): ReactNode {
               Source{" "}
               <span className={styles.subLabel}>(spoofed identity)</span>
             </label>
-            <div className={styles.inlineControls}>
-              <input
-                className={styles.input}
-                value={source}
-                onChange={(e) => setSource(e.target.value)}
-                list="mbdt-debug-source-options"
-                placeholder={DEFAULT_SOURCE}
-              />
-              <datalist id="mbdt-debug-source-options">
-                {sourceOptions.map((id) => (
-                  <option key={id} value={id} />
-                ))}
-              </datalist>
-            </div>
+            <SourcePicker
+              value={source}
+              suggestions={sourceOptions}
+              onChange={setSource}
+              placeholder={DEFAULT_SOURCE}
+            />
             <div className={styles.hint}>
-              Free string. Broker won't touch this client's real
-              subscriptions.
+              Pick from registered clients or type any label — free string,
+              broker won't touch that client's real subscriptions.
             </div>
           </div>
 
