@@ -1,0 +1,56 @@
+.trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--hdw-ink);
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: hover) {
+  .trigger:hover {
+    background: rgb(26 22 19 / 6%);
+    color: var(--hdw-accent);
+  }
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--hdw-ink);
+  outline-offset: 2px;
+}
+
+.icon {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+.badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--hdw-accent);
+  color: var(--hdw-surface);
+  font-family: var(--hdw-font-sans);
+  font-size: 0.66rem;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 6px rgb(122 31 31 / 30%);
+}

@@ -1,0 +1,93 @@
+.form {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 16px 20px 18px;
+  border-top: 1px solid var(--hdw-line);
+  background: var(--hdw-surface);
+  flex-shrink: 0;
+}
+
+.input {
+  flex: 1;
+  min-height: 44px;
+  max-height: 120px;
+  padding: 12px 16px;
+  border: 1px solid var(--hdw-line);
+  border-radius: var(--hdw-r-md);
+  font-family: var(--hdw-font-sans);
+  font-size: 0.94rem;
+  line-height: 1.4;
+  color: var(--hdw-ink);
+  resize: none;
+  outline: none;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+  background: var(--hdw-bg);
+}
+
+.input::placeholder {
+  color: var(--hdw-ink-subtle);
+}
+
+.input:focus {
+  border-color: var(--hdw-ink);
+  background: var(--hdw-surface);
+  box-shadow: 0 0 0 3px rgb(26 22 19 / 6%);
+}
+
+.button {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: var(--hdw-r-md);
+  background: var(--hdw-accent);
+  color: var(--hdw-accent-ink);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 0.18s ease,
+    transform 0.15s ease,
+    opacity 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  background: var(--hdw-ink-subtle);
+}
+
+@media (hover: hover) {
+  .button:not(:disabled):hover {
+    background: var(--hdw-accent-hover);
+    transform: translateY(-1px);
+  }
+}
+
+.buttonStop {
+  background: var(--hdw-ink);
+}
+
+@media (hover: hover) {
+  .buttonStop:not(:disabled):hover {
+    background: var(--hdw-ink-soft);
+  }
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--hdw-ink);
+  outline-offset: 2px;
+}

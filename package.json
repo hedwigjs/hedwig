@@ -1,0 +1,36 @@
+{
+  "name": "hedwig",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The messaging toolkit for the frontend — a contract-first broker with pluggable transports and first-class observability.",
+  "license": "MIT",
+  "author": "Hedwig contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hedwigjs/hedwig.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hedwigjs/hedwig/issues"
+  },
+  "homepage": "https://github.com/hedwigjs/hedwig#readme",
+  "workspaces": [
+    "packages/*",
+    "tooling/*",
+    "examples/advanced",
+    "examples/advanced/shell",
+    "examples/advanced/mfe/*",
+    "examples/advanced/shared/*",
+    "examples/advanced/backend"
+  ],
+  "scripts": {
+    "dev:demo": "npm run dev -w @hedwig-demo/advanced",
+    "stop:demo": "npm run stop -w @hedwig-demo/advanced",
+    "restart:demo": "npm run restart -w @hedwig-demo/advanced"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  }
+}

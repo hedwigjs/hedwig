@@ -1,0 +1,407 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  /* Mobile: fullscreen — sheet fills the whole viewport, no gaps. */
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+  background: rgb(26 22 19 / 48%);
+  backdrop-filter: blur(3px);
+}
+
+/* Tablet: back to a centered card, breathing room on all sides. */
+@media (min-width: 540px) {
+  .backdrop {
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+}
+
+.dialog {
+  position: relative;
+  /* Mobile: fullscreen sheet, flush to the viewport edges, no rounding. */
+  width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  border-radius: 0;
+  border: none;
+  background: var(--hdw-surface);
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Tablet: floating rounded card. */
+@media (min-width: 540px) {
+  .dialog {
+    width: 100%;
+    max-width: 480px;
+    height: auto;
+    max-height: min(92vh, 720px);
+    border-radius: var(--hdw-r-xl);
+    border: 1px solid var(--hdw-line);
+    box-shadow: var(--hdw-shadow-lift);
+  }
+}
+
+/* Desktop: side-by-side hero + copy. */
+@media (min-width: 900px) {
+  .dialog {
+    max-width: 960px;
+    max-height: min(88vh, 640px);
+    flex-direction: row;
+  }
+}
+
+.closeBtn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgb(251 247 240 / 92%);
+  color: var(--hdw-ink);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 10px rgb(26 22 19 / 12%);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+@media (hover: hover) {
+  .closeBtn:hover {
+    background: var(--hdw-surface);
+    transform: scale(1.04);
+  }
+}
+
+.closeBtn:focus-visible {
+  outline: 2px solid var(--hdw-ink);
+  outline-offset: 2px;
+}
+
+/* Media column. On mobile — top hero 4:3. On desktop — full-height square. */
+.media {
+  width: 100%;
+  background: var(--hdw-surface-alt);
+  flex-shrink: 0;
+}
+
+@media (min-width: 900px) {
+  .media {
+    width: 52%;
+    height: 100%;
+  }
+}
+
+.hero {
+  width: 100%;
+  /* Mobile fullscreen: ~40% of viewport height keeps the card comfortable. */
+  height: 40dvh;
+  object-fit: cover;
+  display: block;
+  background: var(--hdw-surface-alt);
+}
+
+@media (min-width: 540px) {
+  .hero {
+    height: auto;
+    aspect-ratio: 4 / 3;
+  }
+}
+
+@media (min-width: 900px) {
+  .hero {
+    height: 100%;
+    aspect-ratio: auto;
+  }
+}
+
+/* Copy column. */
+.content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px 24px 22px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+@media (min-width: 900px) {
+  .copy {
+    padding: 36px 36px 24px;
+    gap: 18px;
+  }
+}
+
+.title {
+  margin: 0;
+  padding-right: 48px;
+  font-family: var(--hdw-font-serif);
+  font-size: 1.55rem;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--hdw-ink);
+}
+
+@media (min-width: 900px) {
+  .title {
+    font-size: 2rem;
+    padding-right: 56px;
+  }
+}
+
+.description {
+  margin: 0;
+  font-family: var(--hdw-font-serif);
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--hdw-ink-soft);
+  letter-spacing: -0.003em;
+}
+
+@media (min-width: 900px) {
+  .description {
+    font-size: 1.05rem;
+    line-height: 1.55;
+  }
+}
+
+.nutrition {
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hdw-line);
+}
+
+.nutritionGrid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.nutritionCell {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  min-height: 64px;
+  padding: 4px 6px;
+  text-align: left;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  border-right: 1px solid var(--hdw-line);
+}
+
+.nutritionCell:last-child {
+  border-right: none;
+}
+
+.nutritionLabel {
+  margin: 0;
+  font-family: var(--hdw-font-sans);
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hdw-ink-subtle);
+  line-height: 1.2;
+}
+
+.nutritionValue {
+  margin: 0;
+  font-family: var(--hdw-font-serif);
+  font-size: 1.15rem;
+  font-weight: 500;
+  color: var(--hdw-ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+/* Sticky action bar at the bottom of the copy column. */
+.actionBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--hdw-line);
+  background: var(--hdw-surface);
+  flex-shrink: 0;
+}
+
+@media (min-width: 540px) {
+  .actionBar {
+    padding-bottom: 16px;
+  }
+}
+
+@media (min-width: 900px) {
+  .actionBar {
+    padding: 18px 36px;
+  }
+}
+
+.price {
+  font-family: var(--hdw-font-serif);
+  font-weight: 500;
+  font-size: 1.4rem;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--hdw-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 900px) {
+  .price {
+    font-size: 1.7rem;
+  }
+}
+
+.addBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px;
+  border: none;
+  border-radius: var(--hdw-r-full);
+  background: var(--hdw-ink);
+  color: var(--hdw-surface);
+  font-family: var(--hdw-font-sans);
+  font-size: 0.86rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgb(26 22 19 / 22%);
+  transition:
+    background 0.18s ease,
+    transform 0.15s ease,
+    box-shadow 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.addBtnIcon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.addBtnIcon svg {
+  width: 100%;
+  height: 100%;
+}
+
+@media (hover: hover) {
+  .addBtn:hover {
+    background: var(--hdw-accent);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgb(122 31 31 / 30%);
+  }
+}
+
+.addBtn:focus-visible {
+  outline: 2px solid var(--hdw-ink);
+  outline-offset: 3px;
+}
+
+.pillCounter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 48px;
+  padding: 0 6px;
+  border-radius: var(--hdw-r-full);
+  background: var(--hdw-ink);
+  color: var(--hdw-surface);
+  box-shadow: 0 4px 14px rgb(26 22 19 / 22%);
+  min-width: 148px;
+  justify-content: space-between;
+  animation: pillIn 0.22s ease;
+}
+
+@keyframes pillIn {
+  from {
+    opacity: 0.7;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.pillBtn {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--hdw-surface);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pillBtn svg {
+  width: 55%;
+  height: 55%;
+  display: block;
+}
+
+@media (hover: hover) {
+  .pillBtn:hover {
+    background: rgb(255 255 255 / 12%);
+  }
+}
+
+.pillBtn:focus-visible {
+  outline: 2px solid var(--hdw-surface);
+  outline-offset: -2px;
+}
+
+.pillValue {
+  flex: 1;
+  text-align: center;
+  font-family: var(--hdw-font-serif);
+  font-size: 1.15rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}

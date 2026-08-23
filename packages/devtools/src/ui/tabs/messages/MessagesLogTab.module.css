@@ -1,0 +1,43 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 20px;
+  color: #4b5563;
+  font-size: 13px;
+  text-align: center;
+}
+
+.emptyReset {
+  padding: 4px 14px;
+  background: transparent;
+  border: 1px solid #374151;
+  border-radius: 5px;
+  color: #6b7280;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.emptyReset:hover {
+  border-color: #6b7280;
+  color: #e5e7eb;
+}

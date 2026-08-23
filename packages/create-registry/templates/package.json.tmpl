@@ -1,0 +1,26 @@
+{
+  "name": "{{PACKAGE_NAME}}",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./domains/*": {
+      "import": "./dist/domains/*.js",
+      "types": "./dist/domains/*.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "node scripts/build.mjs && tsc",
+    "dev": "node scripts/build.mjs --watch & tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}

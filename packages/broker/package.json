@@ -1,0 +1,74 @@
+{
+  "name": "@hedwigjs/broker",
+  "version": "0.1.0",
+  "description": "Runtime broker for the Hedwig messaging toolkit. One API over any transport.",
+  "private": true,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hedwigjs/hedwig.git",
+    "directory": "packages/broker"
+  },
+  "bugs": {
+    "url": "https://github.com/hedwigjs/hedwig/issues"
+  },
+  "homepage": "https://github.com/hedwigjs/hedwig/tree/main/packages/broker#readme",
+  "scripts": {
+    "build": "rm -rf dist && tsup",
+    "watch": "tsup --watch",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "format": "prettier --write \"src/**/*.{ts,tsx,json,md}\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "jest": "^29.5.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "prettier": "^3.0.0",
+    "ts-jest": "^29.1.0",
+    "ts-node": "^10.9.2",
+    "tsup": "^8.5.1",
+    "typescript": "^5.8.3"
+  },
+  "keywords": [
+    "hedwig",
+    "message-broker",
+    "event-bus",
+    "pubsub",
+    "microfrontend",
+    "type-safe",
+    "typescript"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/benchmarks/**/*.test.ts",
+      "**/src/**/*.test.ts"
+    ],
+    "testTimeout": 60000
+  }
+}

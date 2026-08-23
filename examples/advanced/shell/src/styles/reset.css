@@ -1,0 +1,72 @@
+:root {
+  /* Warm editorial palette */
+  --hdw-bg: #f2ece1;
+  --hdw-surface: #fbf7f0;
+  --hdw-surface-alt: #ede4d3;
+  --hdw-ink: #1a1613;
+  --hdw-ink-soft: #3a3129;
+  --hdw-ink-muted: #6b5f55;
+  --hdw-ink-subtle: #8f8577;
+  --hdw-line: #e2d6c4;
+  --hdw-line-strong: #c8b89e;
+  --hdw-accent: #7a1f1f;
+  --hdw-accent-hover: #941f1f;
+  --hdw-accent-ink: #fbf7f0;
+  --hdw-gold: #b88746;
+  --hdw-danger: #a1341f;
+
+  /* Radii — deliberate ratio, not uniform 20px */
+  --hdw-r-sm: 6px;
+  --hdw-r-md: 10px;
+  --hdw-r-lg: 16px;
+  --hdw-r-xl: 22px;
+  --hdw-r-full: 999px;
+
+  /* Shadows — warm undertone */
+  --hdw-shadow-hair: 0 1px 0 rgb(26 22 19 / 4%);
+  --hdw-shadow-soft: 0 2px 8px rgb(26 22 19 / 5%);
+  --hdw-shadow-lift: 0 12px 40px rgb(26 22 19 / 14%);
+  --hdw-shadow-inset-line: inset 0 0 0 1px var(--hdw-line);
+
+  /* Typography */
+  --hdw-font-serif:
+    'Fraunces', 'GT Sectra', 'Recoleta', Georgia, 'Times New Roman', serif;
+  --hdw-font-sans:
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'YS Text', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --hdw-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo,
+    monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--hdw-font-sans);
+  font-feature-settings: 'ss01', 'cv11';
+  color: var(--hdw-ink);
+  background: var(--hdw-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+::selection {
+  background: var(--hdw-accent);
+  color: var(--hdw-accent-ink);
+}

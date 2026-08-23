@@ -1,0 +1,28 @@
+{
+  "name": "@hedwig-demo/ai-chat",
+  "version": "0.0.0",
+  "private": true,
+  "description": "AI concierge chat MFE — streams predefined replies (SSE-ready).",
+  "scripts": {
+    "dev": "webpack serve",
+    "build": "webpack --mode production"
+  },
+  "dependencies": {
+    "@hedwig-demo/contracts": "*",
+    "@hedwig-demo/mock-bus": "*",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "css-loader": "^6.10.0",
+    "html-webpack-plugin": "^5.6.3",
+    "style-loader": "^3.3.4",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.8.3",
+    "webpack": "^5.99.8",
+    "webpack-cli": "^6.0.1",
+    "webpack-dev-server": "^5.2.2"
+  }
+}

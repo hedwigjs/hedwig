@@ -1,0 +1,8 @@
+{
+  "name": "@hedwig-demo/mock-bus",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Temporary in-process pub/sub stub. Will be replaced by @hedwigjs/broker.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts"
+}

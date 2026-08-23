@@ -1,0 +1,48 @@
+.handle {
+  position: absolute;
+  z-index: 2;
+  flex-shrink: 0;
+  background: transparent;
+  touch-action: none;
+  user-select: none;
+}
+
+.handle:hover {
+  background: rgba(245, 158, 11, 0.25);
+}
+
+/* Panel docked to bottom — handle on the top edge of the panel. */
+.edgeTop {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+/* Panel docked to top — handle on the bottom edge. */
+.edgeBottom {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+/* Panel docked to left — handle on the right edge. */
+.edgeRight {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+/* Panel docked to right — handle on the left edge. */
+.edgeLeft {
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+}

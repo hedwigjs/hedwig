@@ -1,0 +1,156 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+  background: rgb(26 22 19 / 55%);
+  backdrop-filter: blur(4px);
+}
+
+@media (min-width: 540px) {
+  .backdrop {
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    padding-bottom: max(32px, env(safe-area-inset-bottom));
+  }
+}
+
+.dialog {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  background: #fbf7f0;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: hdwCheckoutInMobile 0.24s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@media (min-width: 540px) {
+  .dialog {
+    width: 100%;
+    max-width: 680px;
+    height: auto;
+    max-height: min(92vh, 820px);
+    border-radius: 22px;
+    border: 1px solid #e2d6c4;
+    box-shadow: 0 24px 60px rgb(26 22 19 / 24%);
+    animation: hdwCheckoutInDesktop 0.22s ease;
+  }
+}
+
+/* On desktop the iframe fills a comfortable minimum so the form is never squeezed. */
+@media (min-width: 900px) {
+  .dialog {
+    max-width: 720px;
+  }
+}
+
+@keyframes hdwCheckoutInMobile {
+  from {
+    transform: translateY(24px);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes hdwCheckoutInDesktop {
+  from {
+    transform: translateY(-8px) scale(0.98);
+    opacity: 0.5;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  border-bottom: 1px solid #e2d6c4;
+  flex-shrink: 0;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.eyebrow {
+  font-family:
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #6b5f55;
+}
+
+.total {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 500;
+  font-size: 1.5rem;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: #1a1613;
+  font-variant-numeric: tabular-nums;
+}
+
+.closeBtn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #1a1613;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
+}
+
+@media (hover: hover) {
+  .closeBtn:hover {
+    background: rgb(26 22 19 / 6%);
+    transform: scale(1.04);
+  }
+}
+
+.closeBtn:focus-visible {
+  outline: 2px solid #1a1613;
+  outline-offset: 2px;
+}
+
+.frame {
+  flex: 1;
+  width: 100%;
+  min-height: 480px;
+  border: none;
+  background: #fbf7f0;
+  display: block;
+}

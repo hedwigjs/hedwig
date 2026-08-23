@@ -1,0 +1,24 @@
+{
+  "name": "@hedwig-demo/advanced",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Hedwig reference stand — Yandex.Eda-flavoured 'Hedwig Café' exercising the full feature surface: bus, MFEs, adapters, iframe, SSE, WS.",
+  "scripts": {
+    "predev": "npm run build -w @hedwig-demo/contracts",
+    "dev": "concurrently -k --kill-signal SIGINT --handle-input -n ctr,bkd,shl,stf,crt,ai,ntf,chk -c gray,blue,green,yellow,magenta,cyan,red,white \"npm:dev:*\"",
+    "dev:contracts": "npm run dev -w @hedwig-demo/contracts",
+    "dev:backend": "npm run dev -w @hedwig-demo/backend",
+    "dev:shell": "npm run dev -w @hedwig-demo/shell",
+    "dev:storefront": "npm run dev -w @hedwig-demo/storefront",
+    "dev:cart": "npm run dev -w @hedwig-demo/cart",
+    "dev:ai-chat": "npm run dev -w @hedwig-demo/ai-chat",
+    "dev:notifications": "npm run dev -w @hedwig-demo/notifications",
+    "dev:checkout": "npm run dev -w @hedwig-demo/checkout",
+    "build:contracts": "npm run build -w @hedwig-demo/contracts",
+    "stop": "lsof -nP -t -iTCP:3000,3001,3002,3003,3004,3005,4000 -sTCP:LISTEN | xargs kill 2>/dev/null || true",
+    "restart": "npm run stop && npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

@@ -1,0 +1,28 @@
+.root {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--hdw-line);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--hdw-font-serif);
+  font-size: 1.4rem;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  color: var(--hdw-ink);
+}
+
+.badge {
+  font-family: var(--hdw-font-sans);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--hdw-ink-subtle);
+  font-variant-numeric: tabular-nums;
+}

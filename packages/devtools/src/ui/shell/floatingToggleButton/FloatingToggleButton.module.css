@@ -1,0 +1,80 @@
+.anchor {
+  position: fixed;
+  z-index: 99999;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+.anchorBottom {
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.anchorTop {
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.anchorRight {
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.anchorLeft {
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.mascot {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  padding: 10px;
+  border: 1px solid #374151;
+  border-radius: 50%;
+  background: #111827;
+  color: #e5e7eb;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  position: relative;
+  transition: background 0.15s ease, transform 0.12s ease;
+}
+
+.btn:hover {
+  background: #1f2937;
+  transform: scale(1.04);
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.status {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid #111827;
+}
+
+.statusOn {
+  background: #22c55e;
+}
+
+.statusOff {
+  background: #6b7280;
+}

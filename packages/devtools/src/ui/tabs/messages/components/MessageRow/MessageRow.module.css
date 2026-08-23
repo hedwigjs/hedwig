@@ -1,0 +1,16 @@
+.row {
+  border-bottom: 1px solid #1f2937;
+}
+
+.row[data-status="delivered"] {
+  border-left: 3px solid #22c55e;
+}
+
+.row[data-status="failed"] {
+  border-left: 3px solid #ef4444;
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.row[data-status="pending"] {
+  border-left: 3px solid #f59e0b;
+}
