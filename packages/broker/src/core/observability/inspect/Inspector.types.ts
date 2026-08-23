@@ -10,4 +10,11 @@ export interface BridgeInfo {
   id: string;
   /** Topic patterns this bridge forwards to its transport. */
   forwardPatterns: ReadonlyArray<string>;
+  /**
+   * Transport class name with the `Transport` suffix stripped —
+   * e.g. `WebSocket`, `PostMessage`, `SSE`, `BroadcastChannel`, or the
+   * bare constructor name for custom implementations. `undefined` when
+   * the transport was created from an anonymous class expression.
+   */
+  transportKind?: string;
 }

@@ -48,6 +48,41 @@
   letter-spacing: 0.03em;
 }
 
+.transport {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.transportWs {
+  background: #14532d;
+  color: #86efac;
+}
+
+.transportSse {
+  background: #4c1d95;
+  color: #ddd6fe;
+}
+
+.transportPm {
+  background: #7c2d12;
+  color: #fed7aa;
+}
+
+.transportBc {
+  background: #164e63;
+  color: #7dd3fc;
+}
+
+.transportOther {
+  background: #374151;
+  color: #d1d5db;
+}
+
 .meta {
   margin-left: auto;
   display: flex;

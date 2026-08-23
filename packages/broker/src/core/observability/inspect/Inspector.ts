@@ -76,7 +76,11 @@ export class Inspector<T extends string, P extends Record<T, any>> {
   getBridges(): ReadonlyArray<BridgeInfo> {
     const result: BridgeInfo[] = [];
     for (const [id, bridge] of this.#bridges) {
-      result.push({ id, forwardPatterns: bridge.forwardPatterns });
+      result.push({
+        id,
+        forwardPatterns: bridge.forwardPatterns,
+        transportKind: bridge.transportKind,
+      });
     }
     return result;
   }

@@ -22,7 +22,7 @@ type ClientBase = Pick<ClientEntry, "id" | "connectedAt"> & {
   subscriptions: Array<Pick<ClientSubscriptionEntry, "topic" | "options">>;
 };
 
-type BridgeBase = Pick<BridgeEntry, "id" | "forwardPatterns">;
+type BridgeBase = Pick<BridgeEntry, "id" | "forwardPatterns" | "transportKind">;
 
 function computeLastReceivedAt(
   clientId: string,
@@ -126,6 +126,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
       return {
         id: base.id,
         forwardPatterns: base.forwardPatterns,
+        transportKind: base.transportKind,
         sentThroughCount,
         receivedFromCount,
       };
@@ -211,6 +212,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
     bridgesBase = broker.inspect.getBridges().map((info) => ({
       id: info.id,
       forwardPatterns: info.forwardPatterns,
+      transportKind: info.transportKind,
     }));
     emit();
   }

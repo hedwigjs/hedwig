@@ -7,8 +7,29 @@ interface BridgeRowProps {
   bridge: BridgeEntry;
 }
 
+function transportBadgeClass(kind: string | undefined): string {
+  switch (kind) {
+    case "WebSocket":
+      return styles.transportWs;
+    case "SSE":
+      return styles.transportSse;
+    case "PostMessage":
+      return styles.transportPm;
+    case "BroadcastChannel":
+      return styles.transportBc;
+    default:
+      return styles.transportOther;
+  }
+}
+
 export function BridgeRow({ bridge }: BridgeRowProps): ReactNode {
-  const { id, forwardPatterns, sentThroughCount, receivedFromCount } = bridge;
+  const {
+    id,
+    forwardPatterns,
+    transportKind,
+    sentThroughCount,
+    receivedFromCount,
+  } = bridge;
   const active = sentThroughCount + receivedFromCount > 0;
 
   return (
@@ -19,6 +40,14 @@ export function BridgeRow({ bridge }: BridgeRowProps): ReactNode {
           <div className={styles.main}>
             <span className={styles.toggle}>{open ? "−" : "+"}</span>
             <span className={styles.id}>{id}</span>
+            {transportKind && (
+              <span
+                className={`${styles.transport} ${transportBadgeClass(transportKind)}`}
+                title="Transport type (from `transport.constructor.name`)"
+              >
+                {transportKind}
+              </span>
+            )}
             <span className={styles.patternsBadge}>
               {forwardPatterns.length} pattern
               {forwardPatterns.length === 1 ? "" : "s"}

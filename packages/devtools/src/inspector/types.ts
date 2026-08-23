@@ -166,6 +166,13 @@ export interface BridgeEntry {
   id: string;
   forwardPatterns: ReadonlyArray<string>;
   /**
+   * Transport class name (`WebSocket`, `SSE`, `PostMessage`,
+   * `BroadcastChannel`, or a custom class name). Populated by the broker
+   * from the transport's constructor; may be `undefined` for anonymous
+   * transports.
+   */
+  transportKind?: string;
+  /**
    * Approx. count of local emits whose topic matches this bridge's
    * forward patterns — i.e. messages that WOULD have been sent out
    * through this transport. Broker doesn't expose per-bridge attribution

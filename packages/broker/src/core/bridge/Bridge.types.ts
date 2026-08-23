@@ -53,6 +53,14 @@ export interface Bridge {
   readonly forwardPatterns: ReadonlyArray<string>;
 
   /**
+   * Transport class name with the `Transport` suffix stripped
+   * (e.g. `WebSocket`, `SSE`). Used only by the Inspector to label
+   * bridges in DevTools. `undefined` for transports whose constructor
+   * is an anonymous class.
+   */
+  readonly transportKind?: string;
+
+  /**
    * Check if topic should be forwarded to transport
    */
   shouldForward(topic: string): boolean;

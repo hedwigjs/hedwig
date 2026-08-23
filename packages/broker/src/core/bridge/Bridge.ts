@@ -53,6 +53,17 @@ export class Bridge<T extends string = string, P extends Record<T, any> = any>
   }
 
   /**
+   * Human-friendly transport class name, derived from the constructor —
+   * `WebSocket` for `WebSocketTransport`, etc. Used by DevTools to label
+   * bridges. `undefined` for anonymous-class transports.
+   */
+  get transportKind(): string | undefined {
+    const raw = this.#transport.constructor?.name;
+    if (!raw) return undefined;
+    return raw.endsWith("Transport") ? raw.slice(0, -"Transport".length) : raw;
+  }
+
+  /**
    * Check if topic matches forward patterns
    */
   shouldForward(topic: string): boolean {
