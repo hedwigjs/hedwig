@@ -5,9 +5,12 @@ import type { MessageInspectorStore } from "./createInspectorStore";
 /**
  * Attaches the inspector store to broker hooks + system events.
  *
- * Extension hooks (useBeforeSendHook / useAfterSendHook) are used for the live
- * message feed. System events (`client.*`, `subscription.*`) keep the client
- * tree in sync — they live on the broker-internal `$systemEvents` channel.
+ * Two channels:
+ *  - Extension hooks (useBeforeSendHook / useAfterSendHook) drive the
+ *    live user-message feed with pending → delivered/failed transitions.
+ *  - `$systemEvents` (client/subscription/bridge lifecycle) drives two
+ *    things: the aggregate Clients tab (via `refresh`) and the dedicated
+ *    System Events log (via `pushSystemEvent`).
  *
  * @returns Detach function that unsubscribes everything.
  */
@@ -21,6 +24,21 @@ export function attachInspector(
   store.refreshClients(broker);
   store.refreshHistory(broker);
 
+  // Synthesize `bridge.added` for bridges that were registered BEFORE the
+  // inspector attached. Otherwise the log would miss any bridge whose
+  // registration is synchronous during app bootstrap — DevTools mounts
+  // via React useEffect, which is a tick later than sync `addBridge`
+  // calls in the shell. Also covers late-attach scenarios (DevTools
+  // toggled off then on).
+  for (const bridge of broker.inspect.getBridges()) {
+    store.pushSystemEvent("bridge.added", {
+      bridgeId: bridge.id,
+      // Non-standard field: signals the event was reconstructed from a
+      // snapshot rather than observed live. Consumers may ignore it.
+      hydrated: true,
+    });
+  }
+
   const unsubBefore = broker.useBeforeSendHook((message: Readonly<Message>) => {
     store.onBeforeSend(message);
     return { allowed: true };
@@ -32,14 +50,33 @@ export function attachInspector(
     store.refreshHistory(broker);
   });
 
-  // Subscribe to all client/subscription lifecycle events. Each event
-  // triggers a full client snapshot refresh — granular diffs can come later
-  // when DevTools needs per-event UX (e.g. "just-connected" highlights).
-  const refresh = () => store.refreshClients(broker);
-  const unsubClientRegistered = broker.$systemEvents.on("client.registered", refresh);
-  const unsubClientUnregistered = broker.$systemEvents.on("client.unregistered", refresh);
-  const unsubSubscriptionAdded = broker.$systemEvents.on("subscription.added", refresh);
-  const unsubSubscriptionRemoved = broker.$systemEvents.on("subscription.removed", refresh);
+  // System events: log every event AND refresh the affected view.
+  // Client/subscription events also trigger a client-tree refresh so the
+  // Clients tab stays in sync.
+  const refreshClients = () => store.refreshClients(broker);
+
+  const unsubClientRegistered = broker.$systemEvents.on("client.registered", (payload) => {
+    store.pushSystemEvent("client.registered", payload);
+    refreshClients();
+  });
+  const unsubClientUnregistered = broker.$systemEvents.on("client.unregistered", (payload) => {
+    store.pushSystemEvent("client.unregistered", payload);
+    refreshClients();
+  });
+  const unsubSubscriptionAdded = broker.$systemEvents.on("subscription.added", (payload) => {
+    store.pushSystemEvent("subscription.added", payload);
+    refreshClients();
+  });
+  const unsubSubscriptionRemoved = broker.$systemEvents.on("subscription.removed", (payload) => {
+    store.pushSystemEvent("subscription.removed", payload);
+    refreshClients();
+  });
+  const unsubBridgeAdded = broker.$systemEvents.on("bridge.added", (payload) => {
+    store.pushSystemEvent("bridge.added", payload);
+  });
+  const unsubBridgeRemoved = broker.$systemEvents.on("bridge.removed", (payload) => {
+    store.pushSystemEvent("bridge.removed", payload);
+  });
 
   return () => {
     unsubBefore();
@@ -48,6 +85,8 @@ export function attachInspector(
     unsubClientUnregistered();
     unsubSubscriptionAdded();
     unsubSubscriptionRemoved();
+    unsubBridgeAdded();
+    unsubBridgeRemoved();
     store.setAttached(false);
   };
 }

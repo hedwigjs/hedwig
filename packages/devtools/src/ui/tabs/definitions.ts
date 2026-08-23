@@ -24,4 +24,9 @@ export const MBDT_TAB_DEFINITIONS: ReadonlyArray<TabDefinition> = [
     label: "Replay Buffer",
     getBadge: (snapshot) => snapshot.historyEntries.length,
   },
+  {
+    id: "system-events",
+    label: "System Events",
+    getBadge: (snapshot) => snapshot.systemEvents.length,
+  },
 ] as const;

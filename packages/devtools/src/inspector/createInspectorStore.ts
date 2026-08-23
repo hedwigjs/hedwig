@@ -6,9 +6,11 @@ import type {
   ClientSubscriptionEntry,
   MessagesFilter,
   MessageBrokerForDevTools,
+  SystemEventLogEntry,
+  SystemEventName,
 } from "./types";
 import { serializeDataPreview, snapshotFrom, EMPTY_MESSAGES_FILTER } from "./types";
-import { createMessageRingBuffer } from "./ringLog";
+import { createMessageRingBuffer, createRingBuffer } from "./ringLog";
 
 export interface CreateInspectorStoreOptions {
   maxEvents: number;
@@ -74,6 +76,8 @@ function computeReceivedCount(clientId: string, entries: MessageLogEntry[]): num
 export function createInspectorStore(options: CreateInspectorStoreOptions) {
   const { maxEvents } = options;
   const ring = createMessageRingBuffer(maxEvents);
+  const systemEventsRing = createRingBuffer<SystemEventLogEntry>(maxEvents);
+  let systemEventSeq = 0;
   const pendingStart = new Map<string, number>();
   const listeners = new Set<() => void>();
   let totalSeen = 0;
@@ -87,6 +91,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
     attached,
     [],
     messagesFilter,
+    [],
     [],
   );
 
@@ -104,7 +109,15 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
         lastReceivedAt: computeLastReceivedAt(base.id, sub.topic, entries),
       })),
     }));
-    snapshotCache = snapshotFrom(entries, totalSeen, attached, clients, messagesFilter, historyEntries);
+    snapshotCache = snapshotFrom(
+      entries,
+      totalSeen,
+      attached,
+      clients,
+      messagesFilter,
+      historyEntries,
+      systemEventsRing.toArray(),
+    );
     listeners.forEach((l) => l());
   }
 
@@ -126,6 +139,21 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
     ring.clear();
     pendingStart.clear();
     totalSeen = 0;
+    emit();
+  }
+
+  function pushSystemEvent(name: SystemEventName, payload: unknown): void {
+    systemEventsRing.push({
+      id: `sys-${++systemEventSeq}`,
+      at: new Date().toISOString(),
+      name,
+      payload,
+    });
+    emit();
+  }
+
+  function clearSystemEvents() {
+    systemEventsRing.clear();
     emit();
   }
 
@@ -238,6 +266,8 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
     clearMessagesFilter,
     refreshClients,
     refreshHistory,
+    pushSystemEvent,
+    clearSystemEvents,
   };
 }
 

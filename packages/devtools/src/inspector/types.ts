@@ -103,6 +103,32 @@ export const DEFAULT_MESSAGES_ROLLUP: MessagesRollupConfig = {
   windowMs: 1000,
 };
 
+// ─── System events log ──────────────────────────────────────────────────────
+
+/**
+ * One system event surfaced by `broker.$systemEvents`. These are broker
+ * infrastructure signals (client / subscription / bridge lifecycle) —
+ * NOT user message topics. DevTools shows them in a dedicated tab so
+ * they don't drown out (or get drowned by) the user-message feed.
+ */
+export type SystemEventName =
+  | "client.registered"
+  | "client.unregistered"
+  | "subscription.added"
+  | "subscription.removed"
+  | "bridge.added"
+  | "bridge.removed";
+
+export interface SystemEventLogEntry {
+  /** Monotonic local id, assigned by the store on ingestion. */
+  id: string;
+  /** ISO timestamp when DevTools received the event. */
+  at: string;
+  name: SystemEventName;
+  /** Raw payload from broker — shape depends on `name`. */
+  payload: unknown;
+}
+
 // ─── Client snapshot ─────────────────────────────────────────────────────────
 
 export interface ClientSubscriptionEntry {
@@ -135,6 +161,8 @@ export interface InspectorSnapshot {
   messagesFilter: MessagesFilter;
   /** Current contents of the broker's replay buffer (oldest → newest). */
   historyEntries: ReadonlyArray<HistoryEntry>;
+  /** Recent system events (oldest → newest). Ring-buffered by `maxEvents`. */
+  systemEvents: ReadonlyArray<SystemEventLogEntry>;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -156,8 +184,17 @@ function snapshotFrom(
   clients: ClientEntry[],
   messagesFilter: MessagesFilter,
   historyEntries: ReadonlyArray<HistoryEntry>,
+  systemEvents: ReadonlyArray<SystemEventLogEntry>,
 ): InspectorSnapshot {
-  return { entries: list, totalSeen, attached, clients, messagesFilter, historyEntries };
+  return {
+    entries: list,
+    totalSeen,
+    attached,
+    clients,
+    messagesFilter,
+    historyEntries,
+    systemEvents,
+  };
 }
 
 export { serializeDataPreview, snapshotFrom };

@@ -8,6 +8,7 @@ import type { DevToolsTabId } from "../shell/layout/panelTypes";
 import { MessagesLogTab } from "./messages/MessagesLogTab";
 import { ClientsLogTab } from "./clients/ClientsLogTab";
 import { ReplayBufferTab } from "./replay-buffer/ReplayBufferTab";
+import { SystemEventsTab } from "./system-events/SystemEventsTab";
 
 export interface TabNavigateOptions {
   filterPatch?: Partial<MessagesFilter>;
@@ -35,6 +36,8 @@ export function renderActiveTab(
       return <ClientsLogTab store={store} onNavigate={context.onNavigate} />;
     case "replay-buffer":
       return <ReplayBufferTab store={store} />;
+    case "system-events":
+      return <SystemEventsTab store={store} />;
     default:
       return <MessagesLogTab store={store} rollup={context.messagesRollup} />;
   }

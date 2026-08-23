@@ -7,7 +7,7 @@ export type DevToolsPanelPosition = "top" | "bottom" | "left" | "right";
 /**
  * Tab identifiers. Add new sections here and in `renderActiveTab.tsx`.
  */
-export type DevToolsTabId = "messages" | "clients" | "replay-buffer";
+export type DevToolsTabId = "messages" | "clients" | "replay-buffer" | "system-events";
 
 export interface DevToolsPreFullscreen {
   sizeMain: number;
