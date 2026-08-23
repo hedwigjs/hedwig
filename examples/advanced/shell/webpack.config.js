@@ -12,6 +12,12 @@ module.exports = {
   },
   resolve: {
     extensions: ['.tsx', '.ts', '.js'],
+    // Allow ESM-style `.js` imports inside TS source (`@hedwig-demo/contracts`
+    // uses them for nodenext compatibility) to resolve to the actual `.ts`
+    // sibling. Only affects source imports; built artifacts stay `.js`.
+    extensionAlias: {
+      '.js': ['.ts', '.tsx', '.js'],
+    },
   },
   module: {
     rules: [
@@ -57,6 +63,10 @@ module.exports = {
         'react-dom': { singleton: true, eager: true, requiredVersion: '19.1.1' },
         'single-spa': { singleton: true, eager: true, requiredVersion: '^6.0.3' },
         '@hedwigjs/broker': { singleton: true, eager: true, requiredVersion: '^0.1.0' },
+        // DevTools is host-only (mounted from the shell) — no MFE consumes
+        // it, but sharing keeps a single React tree in scope if anyone
+        // does later.
+        '@hedwigjs/devtools': { singleton: true, eager: true, requiredVersion: '^0.1.0' },
       },
     }),
     new HtmlWebpackPlugin({

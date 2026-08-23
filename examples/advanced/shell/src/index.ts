@@ -6,6 +6,7 @@ import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
 
 import { renderChrome } from './chrome/renderChrome';
 import { registerMicrofrontends } from './registerMicrofrontends';
+import { mountDevTools } from './devtools';
 
 // Bring up the broker once for this browser realm — every MFE that calls
 // `createClient(id)` will get a client bound to this instance (MF `shared:
@@ -16,6 +17,7 @@ initBroker<Topic, TopicPayloads>({
 
 async function main() {
   renderChrome();
+  mountDevTools();
   await registerMicrofrontends();
 }
 
