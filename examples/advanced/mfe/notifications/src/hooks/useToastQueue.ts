@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { TopicPayloads } from '@hedwig-demo/contracts';
 
-import { bus } from '../clients/bus';
+import { toastBus } from '../clients/bus';
 
 export type ToastItem = TopicPayloads['notification.show.v1'] & {
   id: string;
@@ -29,7 +29,7 @@ export function useToastQueue() {
   }, []);
 
   useEffect(() => {
-    const off = bus.on('notification.show.v1', (msg) => {
+    const off = toastBus.on('notification.show.v1', (msg) => {
       const payload = msg.data;
       const id = `n_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
       setToasts((prev) => [...prev, { id, ...payload }].slice(-MAX_TOASTS));

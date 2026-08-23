@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 
 import type { TopicPayloads } from '@hedwig-demo/contracts';
 
-import { bus } from '../clients/bus';
+import { wsBus } from '../clients/bus';
 
 type Envelope = {
   topic: 'notification.show.v1';
@@ -59,7 +59,7 @@ export function useNotificationsSocket(url: string): void {
           return;
         }
         if (!isEnvelope(parsed)) return;
-        void bus.emit('notification.show.v1', parsed.payload);
+        void wsBus.emit('notification.show.v1', parsed.payload);
       });
 
       socket.addEventListener('close', () => {
