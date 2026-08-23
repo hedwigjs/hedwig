@@ -1,4 +1,8 @@
-import { getBroker, WebSocketTransport } from '@hedwigjs/broker';
+import {
+  getBroker,
+  BroadcastChannelTransport,
+  WebSocketTransport,
+} from '@hedwigjs/broker';
 import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
 
 const NOTIFICATIONS_WS_URL =
@@ -6,6 +10,8 @@ const NOTIFICATIONS_WS_URL =
   'ws://localhost:4000/ws/notifications';
 
 const BRIDGE_ID = 'backend-notifications';
+const CROSS_TAB_BRIDGE_ID = 'cross-tab-cart';
+const CROSS_TAB_CHANNEL = 'hedwig-cart-sync';
 const MAX_RECONNECT_DELAY_MS = 15_000;
 
 /**
@@ -68,4 +74,37 @@ export function installBackendNotificationsBridge(): void {
 
   // No teardown API for now — shell lives for the whole session.
   void retryTimer;
+}
+
+/**
+ * Cross-tab cart sync via BroadcastChannel.
+ *
+ * Every tab hosts its own cart runtime that derives the snapshot from
+ * the stream of `cart.item-*` commands. We broadcast ONLY those commands
+ * (not the snapshot) — each tab replays them and arrives at the same
+ * state deterministically. Sync is symmetric: any tab can be the one
+ * where the user clicks; every other tab picks up the same command with
+ * `fromExternal=true`, feeds its own runtime, and re-renders.
+ *
+ * Why not broadcast the snapshot: two tabs would race to overwrite each
+ * other's state on independent actions. Command-level sync keeps each
+ * runtime authoritative for its own inputs and idempotent for others.
+ */
+export function installCrossTabCartBridge(): () => void {
+  const broker = getBroker<Topic, TopicPayloads>();
+  const transport = new BroadcastChannelTransport(CROSS_TAB_CHANNEL);
+  const removeBridge = broker.addBridge(CROSS_TAB_BRIDGE_ID, {
+    transport,
+    forward: [
+      'cart.item-added.v1',
+      'cart.item-incremented.v1',
+      'cart.item-decremented.v1',
+      'cart.item-removed.v1',
+    ],
+  });
+
+  return () => {
+    removeBridge();
+    transport.destroy();
+  };
 }
