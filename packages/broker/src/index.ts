@@ -80,6 +80,10 @@ export {
 export {
   WebSocketTransport,
 } from './transports/WebSocketTransport';
+export {
+  SSETransport,
+  type SSETransportConfig,
+} from './transports/SSETransport';
 
 // ── Backpressure configuration ──────────────────────────────────────────
 export type { BackpressureOptions } from './core/backpressure/BackpressureHandler.types';
