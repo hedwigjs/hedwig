@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
-import type { MessageBrokerForDevTools } from "../inspector/types";
+import type {
+  MessageBrokerForDevTools,
+  MessagesRollupConfig,
+} from "../inspector/types";
+import { DEFAULT_MESSAGES_ROLLUP } from "../inspector/types";
 import { createInspectorStore } from "../inspector/createInspectorStore";
 import { attachInspector } from "../inspector/attachInspector";
 import { DevToolsShell } from "./shell/devtoolsShell/DevToolsShell";
@@ -33,6 +37,16 @@ export interface MessageBrokerDevToolsProps {
   defaultOpen?: boolean;
   /** Icon for the floating toggle button. Falls back to the built-in mascot PNG. */
   toggleIcon?: ReactNode;
+  /**
+   * Auto-collapse bursts of same-source same-topic events into stream rows
+   * in the Messages tab. Prevents streaming producers (SSE chunks,
+   * chatty polling loops) from flooding the log.
+   *
+   * - `undefined` (default) — enabled with `{ minCount: 5, windowMs: 1000 }`.
+   * - `false` — disabled, flat log for every event.
+   * - `{ minCount, windowMs }` — custom thresholds.
+   */
+  rollup?: MessagesRollupConfig | false;
 }
 
 export const MessageBrokerDevTools = ({
@@ -44,8 +58,14 @@ export const MessageBrokerDevTools = ({
   storageKey,
   defaultOpen = false,
   toggleIcon,
+  rollup,
 }: MessageBrokerDevToolsProps): ReactNode => {
   const store = useMemo(() => createInspectorStore({ maxEvents }), [maxEvents]);
+
+  const messagesRollup = useMemo<MessagesRollupConfig | null>(() => {
+    if (rollup === false) return null;
+    return rollup ?? DEFAULT_MESSAGES_ROLLUP;
+  }, [rollup]);
 
   const [
     layout,
@@ -87,6 +107,7 @@ export const MessageBrokerDevTools = ({
         <DevToolsShell
           store={store}
           layout={layout}
+          messagesRollup={messagesRollup}
           onClose={() => setOpen(false)}
           onPositionChange={setPosition}
           onTabChange={setActiveTab}

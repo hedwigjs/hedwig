@@ -80,6 +80,29 @@ export interface MessagesFilter {
 
 export const EMPTY_MESSAGES_FILTER: MessagesFilter = { topic: "" };
 
+// ─── Messages rollup ────────────────────────────────────────────────────────
+
+/**
+ * Configuration for collapsing high-frequency same-topic bursts (e.g. SSE
+ * chunk streams) into a single expandable row so a flood of events from
+ * one source doesn't drown out everything else in the log.
+ *
+ * A group is formed when consecutive entries share the same `(topic, source)`
+ * and each pair is within `windowMs`. Groups with < `minCount` entries stay
+ * flattened as individual rows — the rollup only kicks in for real bursts.
+ */
+export interface MessagesRollupConfig {
+  /** Minimum consecutive matching entries to fold into a stream row. */
+  minCount: number;
+  /** Max gap (ms) between adjacent entries to still consider them one stream. */
+  windowMs: number;
+}
+
+export const DEFAULT_MESSAGES_ROLLUP: MessagesRollupConfig = {
+  minCount: 5,
+  windowMs: 1000,
+};
+
 // ─── Client snapshot ─────────────────────────────────────────────────────────
 
 export interface ClientSubscriptionEntry {

@@ -1,13 +1,24 @@
 import { useMemo, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import type { MessageInspectorStore } from "../../../inspector/createInspectorStore";
-import type { MessageLogEntry, MessagesFilter } from "../../../inspector/types";
+import type {
+  MessageLogEntry,
+  MessagesFilter,
+  MessagesRollupConfig,
+} from "../../../inspector/types";
 import { MessagesToolbar } from "./components/MessagesToolbar/MessagesToolbar";
 import { MessageRow } from "./components/MessageRow/MessageRow";
+import { StreamRow } from "./components/StreamRow/StreamRow";
+import { computeDisplayItems } from "./rollup";
 import styles from "./MessagesLogTab.module.css";
 
 export interface MessagesLogTabProps {
   store: MessageInspectorStore;
+  /**
+   * Auto-rollup high-frequency same-source bursts into collapsible stream
+   * rows. Pass `null` to disable and always show a flat log.
+   */
+  rollup: MessagesRollupConfig | null;
 }
 
 function matchesFilter(entry: MessageLogEntry, filter: MessagesFilter): boolean {
@@ -37,19 +48,9 @@ function matchesFilter(entry: MessageLogEntry, filter: MessagesFilter): boolean 
   return true;
 }
 
-export function MessagesLogTab({ store }: MessagesLogTabProps): ReactNode {
+export function MessagesLogTab({ store, rollup }: MessagesLogTabProps): ReactNode {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const { entries, totalSeen, messagesFilter } = snapshot;
-
-  const visibleEntries = useMemo(() => {
-    const reversed = entries.slice().reverse();
-    const hasActiveFilter =
-      messagesFilter.topic ||
-      messagesFilter.clientId ||
-      messagesFilter.kind ||
-      messagesFilter.result;
-    return hasActiveFilter ? reversed.filter((e) => matchesFilter(e, messagesFilter)) : reversed;
-  }, [entries, messagesFilter]);
 
   const hasActiveFilter = Boolean(
     messagesFilter.topic ||
@@ -59,6 +60,27 @@ export function MessagesLogTab({ store }: MessagesLogTabProps): ReactNode {
       messagesFilter.result,
   );
 
+  // Apply the filter first, then group. Rollup operates on chronological
+  // order so it can detect adjacency; the reverse (newest-first) happens
+  // at the view layer inside the display-items mapping.
+  const displayItems = useMemo(() => {
+    const filtered = hasActiveFilter
+      ? entries.filter((e) => matchesFilter(e, messagesFilter))
+      : entries;
+    const items = computeDisplayItems(filtered, rollup);
+    // Reverse so newest streams / entries appear at the top of the list.
+    return items.slice().reverse();
+  }, [entries, messagesFilter, hasActiveFilter, rollup]);
+
+  const visibleCount = useMemo(
+    () =>
+      displayItems.reduce(
+        (sum, item) => sum + (item.kind === "stream" ? item.count : 1),
+        0,
+      ),
+    [displayItems],
+  );
+
   return (
     <div className={styles.container}>
       <MessagesToolbar
@@ -66,21 +88,25 @@ export function MessagesLogTab({ store }: MessagesLogTabProps): ReactNode {
         onFilterChange={(patch) => store.setMessagesFilter(patch)}
         onClear={() => store.clearMessagesFilter()}
         onClearLog={store.clearLog}
-        visibleCount={visibleEntries.length}
+        visibleCount={visibleCount}
         totalCount={entries.length}
         totalSeen={totalSeen}
       />
 
       <div role="list" className={styles.list}>
-        {visibleEntries.map((e) => (
-          <MessageRow key={e.id} entry={e} />
-        ))}
+        {displayItems.map((item) =>
+          item.kind === "stream" ? (
+            <StreamRow key={item.key} group={item} />
+          ) : (
+            <MessageRow key={item.entry.id} entry={item.entry} />
+          ),
+        )}
 
-        {visibleEntries.length === 0 && entries.length === 0 && (
+        {displayItems.length === 0 && entries.length === 0 && (
           <div className={styles.empty}>No messages yet.</div>
         )}
 
-        {visibleEntries.length === 0 && entries.length > 0 && hasActiveFilter && (
+        {displayItems.length === 0 && entries.length > 0 && hasActiveFilter && (
           <div className={styles.empty}>
             No messages match the current filter.
             <button

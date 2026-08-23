@@ -6,3 +6,4 @@ export { MessageBrokerDevTools } from "./ui/MessageBrokerDevTools";
 export type { MessageBrokerDevToolsProps, DevToolsPanelPosition } from "./ui/MessageBrokerDevTools";
 export { useTopicsRegistry } from "./ui/topicsRegistry";
 export type { TopicsRegistry, TopicContractInfo } from "./ui/topicsRegistry";
+export type { MessagesRollupConfig } from "./inspector/types";

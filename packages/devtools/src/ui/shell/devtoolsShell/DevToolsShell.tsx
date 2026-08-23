@@ -1,6 +1,7 @@
 import { useMemo, useSyncExternalStore } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { MessageInspectorStore } from "../../../inspector/createInspectorStore";
+import type { MessagesRollupConfig } from "../../../inspector/types";
 import { MBDT_TAB_DEFINITIONS } from "../../tabs/definitions";
 import { renderActiveTab } from "../../tabs/renderActiveTab";
 import type { TabRenderContext } from "../../tabs/renderActiveTab";
@@ -62,6 +63,7 @@ function shellInlineStyle(layout: DevToolsLayoutState): CSSProperties {
 export interface DevToolsShellProps {
   store: MessageInspectorStore;
   layout: DevToolsLayoutState;
+  messagesRollup: MessagesRollupConfig | null;
   onClose: () => void;
   onPositionChange: (p: DevToolsPanelPosition) => void;
   onTabChange: (t: DevToolsTabId) => void;
@@ -72,6 +74,7 @@ export interface DevToolsShellProps {
 export const DevToolsShell = ({
   store,
   layout,
+  messagesRollup,
   onClose,
   onPositionChange,
   onTabChange,
@@ -103,8 +106,9 @@ export const DevToolsShell = ({
         if (options?.filterPatch) store.setMessagesFilter(options.filterPatch);
         onTabChange(tab);
       },
+      messagesRollup,
     }),
-    [store, onTabChange],
+    [store, onTabChange, messagesRollup],
   );
 
   return (
