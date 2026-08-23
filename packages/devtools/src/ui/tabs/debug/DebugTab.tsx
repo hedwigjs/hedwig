@@ -207,19 +207,16 @@ export function DebugTab({ store, broker }: DebugTabProps): ReactNode {
           {mode === "unicast" && (
             <div className={styles.field}>
               <label className={styles.label}>Recipient</label>
-              <select
-                className={styles.select}
+              <SourcePicker
                 value={recipient === BROADCAST_TARGET ? "" : recipient}
-                onChange={(e) => setRecipient(e.target.value || BROADCAST_TARGET)}
-              >
-                <option value="">— select client —</option>
-                {knownClientIds.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
+                suggestions={knownClientIds}
+                onChange={(v) => setRecipient(v || BROADCAST_TARGET)}
+                placeholder="Client id"
+              />
               <div className={styles.hint}>
+                Pick from registered clients or type any id. Sending to a
+                non-registered id returns{" "}
+                <code className={styles.code}>NACK NO_SUBSCRIBERS</code>.
                 Handler's return value is captured in{" "}
                 <code className={styles.code}>result.data</code>.
               </div>
