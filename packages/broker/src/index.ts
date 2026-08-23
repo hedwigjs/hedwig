@@ -66,6 +66,21 @@ export type { HistoryEntry, HistoryStats } from './core/history/MessageHistory.t
 // ── Bridge extension point ──────────────────────────────────────────────
 export type { BridgeTransport, BridgeConfig } from './core/bridge/Bridge.types';
 
+// ── Built-in transports ─────────────────────────────────────────────────
+// Ready-to-use implementations for the common cross-context wires. Kept
+// here for zero-config demo integrations; framework-specific adapters
+// (`@hedwigjs/adapter-*`) may re-export or wrap these.
+export {
+  PostMessageTransport,
+  type PostMessageTransportConfig,
+} from './transports/PostMessageTransport';
+export {
+  BroadcastChannelTransport,
+} from './transports/BroadcastChannelTransport';
+export {
+  WebSocketTransport,
+} from './transports/WebSocketTransport';
+
 // ── Backpressure configuration ──────────────────────────────────────────
 export type { BackpressureOptions } from './core/backpressure/BackpressureHandler.types';
 
