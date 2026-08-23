@@ -7,7 +7,6 @@ import CartItemDecrementedV1 from "./domains/cart/item-decremented.v1";
 import CartItemIncrementedV1 from "./domains/cart/item-incremented.v1";
 import CartItemRemovedV1 from "./domains/cart/item-removed.v1";
 import CartSnapshotV1 from "./domains/cart/snapshot.v1";
-import ChatAskV1 from "./domains/chat/ask.v1";
 import ChatMessageSentV1 from "./domains/chat/message-sent.v1";
 import ChatReplyCancelledV1 from "./domains/chat/reply-cancelled.v1";
 import ChatReplyChunkV1 from "./domains/chat/reply-chunk.v1";
@@ -26,7 +25,6 @@ export const registry = {
   "cart.item-incremented.v1": CartItemIncrementedV1,
   "cart.item-removed.v1": CartItemRemovedV1,
   "cart.snapshot.v1": CartSnapshotV1,
-  "chat.ask.v1": ChatAskV1,
   "chat.message-sent.v1": ChatMessageSentV1,
   "chat.reply-cancelled.v1": ChatReplyCancelledV1,
   "chat.reply-chunk.v1": ChatReplyChunkV1,
@@ -52,7 +50,6 @@ export const TOPICS = {
   CART_ITEM_INCREMENTED_V1: "cart.item-incremented.v1",
   CART_ITEM_REMOVED_V1: "cart.item-removed.v1",
   CART_SNAPSHOT_V1: "cart.snapshot.v1",
-  CHAT_ASK_V1: "chat.ask.v1",
   CHAT_MESSAGE_SENT_V1: "chat.message-sent.v1",
   CHAT_REPLY_CANCELLED_V1: "chat.reply-cancelled.v1",
   CHAT_REPLY_CHUNK_V1: "chat.reply-chunk.v1",
