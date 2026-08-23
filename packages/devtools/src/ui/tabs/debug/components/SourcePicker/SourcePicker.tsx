@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import styles from "./SourcePicker.module.css";
 
@@ -40,18 +40,6 @@ export function SourcePicker({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  const filtered = useMemo(() => {
-    const q = value.trim().toLowerCase();
-    if (!q) return suggestions;
-    // When value is an exact match of one of the suggestions, the user
-    // most likely wants to browse the full list — not see a filter
-    // narrowed down to just that one entry. Only apply substring
-    // filtering when the user is actively refining (partial input).
-    const isExact = suggestions.some((id) => id.toLowerCase() === q);
-    if (isExact) return suggestions;
-    return suggestions.filter((id) => id.toLowerCase().includes(q));
-  }, [suggestions, value]);
-
   return (
     <div className={styles.wrapper} ref={wrapperRef}>
       <input
@@ -76,12 +64,16 @@ export function SourcePicker({
       >
         ▾
       </button>
-      {open && filtered.length > 0 && (
+      {open && suggestions.length > 0 && (
         <ul className={styles.dropdown} role="listbox">
-          {filtered.map((id) => (
+          {suggestions.map((id) => (
             <li
               key={id}
-              className={styles.item}
+              className={
+                id === value
+                  ? `${styles.item} ${styles.itemSelected}`
+                  : styles.item
+              }
               role="option"
               aria-selected={id === value}
               onMouseDown={(e) => {
@@ -91,6 +83,11 @@ export function SourcePicker({
               }}
             >
               <code className={styles.itemName}>{id}</code>
+              {id === value && (
+                <span className={styles.itemMark} aria-hidden="true">
+                  ✓
+                </span>
+              )}
             </li>
           ))}
         </ul>
