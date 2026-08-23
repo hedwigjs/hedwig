@@ -62,9 +62,41 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function writeSse(res: Response, event: string, data: unknown): void {
-  res.write(`event: ${event}\n`);
-  res.write(`data: ${JSON.stringify(data)}\n\n`);
+let envelopeSeq = 0;
+
+/**
+ * Backend Message shape — matches @hedwigjs/broker Message so the client
+ * can inject SSE frames directly via SSETransport + addBridge (see
+ * mfe/ai-chat useChat). One SSE `data:` frame == one broker Message.
+ * We deliberately do NOT use named `event:` lines — SSETransport
+ * multiplexes on the message's own `topic` field, not on the SSE event
+ * name.
+ */
+type Envelope<Topic extends string, Data> = {
+  id: string;
+  topic: Topic;
+  source: 'ai-backend';
+  target: '*';
+  data: Data;
+  timestamp: number;
+};
+
+function envelope<Topic extends string, Data>(
+  topic: Topic,
+  data: Data,
+): Envelope<Topic, Data> {
+  return {
+    id: `ai-backend-${++envelopeSeq}`,
+    topic,
+    source: 'ai-backend',
+    target: '*',
+    data,
+    timestamp: Date.now(),
+  };
+}
+
+function writeMessage(res: Response, msg: unknown): void {
+  res.write(`data: ${JSON.stringify(msg)}\n\n`);
 }
 
 async function handleStream(req: Request, res: Response): Promise<void> {
@@ -74,39 +106,43 @@ async function handleStream(req: Request, res: Response): Promise<void> {
       : typeof req.query?.prompt === 'string'
         ? (req.query.prompt as string)
         : '';
+  const replyId =
+    typeof req.query?.replyId === 'string'
+      ? (req.query.replyId as string)
+      : `r_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
   res.status(200);
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.flushHeaders?.();
+  // Хинт для EventSource на случай реконнекта.
+  res.write('retry: 3000\n\n');
 
   const reply = pickReply(prompt);
   const tokens = tokenize(reply);
-  const replyId = `r_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
   let aborted = false;
-  // `req.on('close')` в Node 15+ триггерится и когда body-parser дочитал тело,
-  // поэтому на POST-стриме использовать его нельзя — падаем ложно после `start`.
-  // Слушаем `res.on('close')` — он стреляет только когда клиент реально отвалился.
   res.on('close', () => {
     aborted = true;
   });
-
-  writeSse(res, 'start', { replyId });
 
   await sleep(180);
   if (aborted) return;
 
   for (const token of tokens) {
     if (aborted) return;
-    writeSse(res, 'chunk', { replyId, chunk: token });
+    writeMessage(res, envelope('chat.reply-chunk.v1', { replyId, chunk: token }));
     await sleep(28 + Math.random() * 22);
   }
 
   if (aborted) return;
-  writeSse(res, 'done', { replyId, fullText: reply });
+  writeMessage(
+    res,
+    envelope('chat.reply-completed.v1', { replyId, fullText: reply }),
+  );
   res.end();
 }
 
@@ -114,7 +150,8 @@ export function registerAiRoutes(app: Express): void {
   app.post('/ai/stream', (req, res) => {
     void handleStream(req, res);
   });
-  // GET-вариант удобен для быстрой проверки в браузере / EventSource.
+  // GET-вариант — используется браузерным EventSource'ом (единственный
+  // способ, у него нет body). Клиент передаёт prompt и replyId в query.
   app.get('/ai/stream', (req, res) => {
     void handleStream(req, res);
   });
