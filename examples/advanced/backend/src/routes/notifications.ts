@@ -96,61 +96,13 @@ export function registerNotificationsRoutes(
     return sent;
   }
 
-  // ── SSE канал ─────────────────────────────────────────────────────────
-  //
-  // Живёт параллельно с WebSocket'ом и отдаёт тот же envelope. Shell
-  // сейчас потребляет ИМЕННО SSE (см. bridges.ts) — WebSocket остаётся
-  // на бэке как эталон для сравнения / будущего duplex-канала.
-  const sseClients = new Set<Response>();
-
-  app.get('/sse/notifications', (_req: Request, res: Response) => {
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-    // CORS для dev — shell на 3000, бэк на 4000.
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.flushHeaders?.();
-    // Retry hint браузеру: сколько подождать перед реконнектом.
-    res.write('retry: 3000\n\n');
-
-    sseClients.add(res);
-    // eslint-disable-next-line no-console
-    console.log(
-      `[notifications:sse] client connected (total=${sseClients.size})`,
-    );
-
-    _req.on('close', () => {
-      sseClients.delete(res);
-      // eslint-disable-next-line no-console
-      console.log(
-        `[notifications:sse] client disconnected (total=${sseClients.size})`,
-      );
-    });
-  });
-
-  function broadcastSse(payload: NotificationPayload): number {
-    const frame = `data: ${JSON.stringify(envelope(payload))}\n\n`;
-    let sent = 0;
-    for (const res of sseClients) {
-      if (!res.writableEnded) {
-        res.write(frame);
-        sent += 1;
-      }
-    }
-    return sent;
-  }
-
-  // Автопуш случайного демо-уведомления каждые 25 секунд. Летит и в WS,
-  // и в SSE — так демо работает вне зависимости от того, какой транспорт
-  // подключён на клиенте.
+  // Автопуш случайного демо-уведомления каждые 25 секунд.
   const AUTO_PUSH_INTERVAL_MS = 25_000;
   setInterval(() => {
-    if (clients.size === 0 && sseClients.size === 0) return;
+    if (clients.size === 0) return;
     const picked =
       DEMO_NOTIFICATIONS[Math.floor(Math.random() * DEMO_NOTIFICATIONS.length)]!;
     broadcast(picked);
-    broadcastSse(picked);
   }, AUTO_PUSH_INTERVAL_MS);
 
   // POST /notify — dev-триггер. Тело: { kind?, title, body? } или пусто (тогда случайное).
@@ -167,13 +119,7 @@ export function registerNotificationsRoutes(
             Math.floor(Math.random() * DEMO_NOTIFICATIONS.length)
           ]!;
 
-    const wsCount = broadcast(payload);
-    const sseCount = broadcastSse(payload);
-    res.json({
-      ok: true,
-      sent: wsCount + sseCount,
-      channels: { ws: wsCount, sse: sseCount },
-      payload,
-    });
+    const sent = broadcast(payload);
+    res.json({ ok: true, sent, payload });
   });
 }
