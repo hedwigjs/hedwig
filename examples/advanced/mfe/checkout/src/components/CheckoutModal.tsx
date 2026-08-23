@@ -11,6 +11,12 @@ type Props = {
   totalPrice: number;
   itemCount: number;
   onClose: () => void;
+  /**
+   * Fires once the iframe finishes loading, with its `contentWindow`.
+   * Owner uses this to attach a broker bridge (PostMessageTransport)
+   * to the freshly-loaded document.
+   */
+  onIframeReady?: (win: Window) => void;
 };
 
 export const CheckoutModal: FC<Props> = ({
@@ -18,6 +24,7 @@ export const CheckoutModal: FC<Props> = ({
   totalPrice,
   itemCount,
   onClose,
+  onIframeReady,
 }) => {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -59,6 +66,10 @@ export const CheckoutModal: FC<Props> = ({
           className={styles.frame}
           src={iframeUrl}
           title="Форма оплаты"
+          onLoad={(e) => {
+            const win = e.currentTarget.contentWindow;
+            if (win) onIframeReady?.(win);
+          }}
         />
       </div>
     </div>

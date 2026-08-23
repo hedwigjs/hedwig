@@ -172,9 +172,19 @@ const IFRAME_HTML = `<!DOCTYPE html>
       const data = await res.json();
       status.classList.add('on');
       status.innerHTML = 'Заказ <em>' + data.orderId + '</em> принят. Статус: ' + data.status + '.';
-      // Сообщаем родителю (shell) через postMessage.
+      // Отправляем через postMessage в форме broker Message'а — на parent'е
+      // висит @hedwigjs/broker bridge с PostMessageTransport, он подхватит
+      // и заинжектит в шину. Iframe не запускает свой broker — только
+      // формирует конверт нужной формы.
       window.parent?.postMessage(
-        { source: 'hedwig-checkout', topic: 'checkout.completed.v1', payload: data },
+        {
+          id: 'checkout-iframe-' + data.orderId,
+          topic: 'checkout.completed.v1',
+          source: 'checkout-iframe',
+          target: '*',
+          data: data,
+          timestamp: Date.now(),
+        },
         '*',
       );
     });
