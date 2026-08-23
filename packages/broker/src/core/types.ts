@@ -35,6 +35,14 @@ export interface Message<T extends string = string, P = any> {
 
   /** Indicates if this message was received from external source (bridge) */
   fromExternal?: boolean;
+
+  /**
+   * Marks a debug/test message injected via `broker.$debug.send(...)`.
+   * Routing, hooks, history and bridge forwarding all treat it as a
+   * real message — the flag is purely metadata so DevTools and integration
+   * tests can distinguish spoofed traffic from production events.
+   */
+  synthetic?: boolean;
 }
 
 /**

@@ -258,7 +258,51 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     data: P[K],
     options?: MessageOptions,
   ): Promise<RoutingResult<R>> {
-    return this.#runPipeline<K, R>(topic, sender, recipient, data, options, false);
+    return this.#runPipeline<K, R>(topic, sender, recipient, data, options, false, false);
+  }
+
+  /**
+   * Broker-internal debug channel.
+   *
+   * `send()` runs the full message pipeline exactly like a normal
+   * `Client.emit()` / `Client.request()` — routing, hooks, history and
+   * bridge forwarding all apply — but with two differences:
+   *
+   *  1. `source` is an arbitrary string, not tied to a registered client.
+   *     Nothing gets reset in the client registry: safe to «impersonate»
+   *     any client id for testing subscribers without breaking that
+   *     client's own subscriptions.
+   *  2. `message.synthetic === true` on the resulting Message, so
+   *     DevTools and integration tests can distinguish spoofed traffic
+   *     from production events (e.g. render a `SYNTHETIC` badge).
+   *
+   * Multicast vs unicast is picked by `target`: `'*'` fans out to all
+   * subscribers, a specific `ClientID` targets one recipient and captures
+   * that handler's return value in `RoutingResult.data`.
+   *
+   * The `$` prefix marks this as a broker-internal API — for DevTools
+   * and integration tests, not for business code.
+   */
+  get $debug(): {
+    send<K extends T, R = unknown>(
+      source: ClientID,
+      topic: K,
+      target: ClientID | '*',
+      data: P[K],
+      options?: MessageOptions,
+    ): Promise<RoutingResult<R>>;
+  } {
+    return {
+      send: <K extends T, R = unknown>(
+        source: ClientID,
+        topic: K,
+        target: ClientID | '*',
+        data: P[K],
+        options?: MessageOptions,
+      ): Promise<RoutingResult<R>> => {
+        return this.#runPipeline<K, R>(topic, source, target, data, options, false, true);
+      },
+    };
   }
 
   /**
@@ -281,7 +325,9 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
    *     send what it just received right back to its transport.
    *
    * `fromExternal` gates stages 3 and 6 — the two places where local and
-   * external paths diverge. It is an internal flag, never on the public API.
+   * external paths diverge. `synthetic` is metadata-only: routing, hooks,
+   * history and bridge forwarding all treat the message as real. Both
+   * flags are internal — never on the public API.
    */
   async #runPipeline<K extends T, R = unknown>(
     topic: K,
@@ -290,6 +336,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     data: P[K],
     options: MessageOptions | undefined,
     fromExternal: boolean,
+    synthetic: boolean,
   ): Promise<RoutingResult<R>> {
     if (this.#isDestroyed) {
       return RoutingResult.create<R>('NACK', RoutingReason.BROKER_DESTROYED, 'Broker is destroyed');
@@ -300,6 +347,9 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
 
     if (fromExternal) {
       message.fromExternal = true;
+    }
+    if (synthetic) {
+      message.synthetic = true;
     }
 
     const frozenMessage = deepFreeze(message);
@@ -369,7 +419,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     }
 
     const inject: ExternalMessageInjector<T, P> = (topic, sender, recipient, data) =>
-      this.#runPipeline(topic, sender, recipient, data, undefined, true);
+      this.#runPipeline(topic, sender, recipient, data, undefined, true, false);
 
     const bridge = new BridgeImpl<T, P>(inject, config, this.logger);
     this.#bridges.set(id, bridge);

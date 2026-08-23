@@ -6,6 +6,30 @@ import type {
   BeforeSendHook,
   AfterSendHook,
 } from './hooks/HooksRegistry.types';
+import type { ClientID, MessageOptions } from './types';
+import type { RoutingResult } from './routing/RoutingResult';
+
+/**
+ * Broker-internal debug channel — see {@link MessageBroker.$debug}.
+ */
+export interface DebugChannel<T extends string, P extends Record<T, any>> {
+  /**
+   * Inject a message into the pipeline with an arbitrary `source`.
+   *
+   * Runs full routing/hooks/history/bridge-forward like a normal emit;
+   * only difference is `message.synthetic === true` and `source` is not
+   * validated against the client registry. Multicast when `target === '*'`,
+   * unicast otherwise (return value from the handler is captured in
+   * `RoutingResult.data`).
+   */
+  send<K extends T, R = unknown>(
+    source: ClientID,
+    topic: K,
+    target: ClientID | '*',
+    data: P[K],
+    options?: MessageOptions,
+  ): Promise<RoutingResult<R>>;
+}
 
 /**
  * MessageBroker — the public contract of the broker instance.
@@ -60,6 +84,19 @@ export interface MessageBroker<T extends string, P extends Record<T, any>> {
    * const history = broker.inspect.getHistory();
    */
   readonly inspect: Inspector<T, P>;
+
+  /**
+   * Broker-internal debug channel (test / DevTools).
+   *
+   * `$debug.send(source, topic, target, data)` runs the full pipeline
+   * with an arbitrary source id and no client-registry side effects.
+   * Messages are tagged `synthetic: true` so tools can distinguish
+   * spoofed traffic from production events. See {@link DebugChannel}.
+   *
+   * The `$` prefix marks this as broker-internal — for DevTools and
+   * integration tests, not for business code.
+   */
+  readonly $debug: DebugChannel<T, P>;
 
   /**
    * Register a bridge for cross-context communication (idempotent).
