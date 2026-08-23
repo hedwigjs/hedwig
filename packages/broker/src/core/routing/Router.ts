@@ -29,7 +29,13 @@ export class Router<T extends string, P extends Record<T, any>> {
   }
 
   /**
-   * Route unicast message to specific recipient
+   * Route unicast message to specific recipient.
+   *
+   * If the recipient registered multiple handlers on the topic, the FIRST
+   * one (in registration order) receives the message and its return value
+   * is captured. Multi-handler unicast is not a supported responder pattern
+   * — callers that expect a single response should keep unicast slots to
+   * one handler.
    */
   async unicast<K extends T, R = unknown>(
     message: Message<K, P[K]>,
@@ -44,8 +50,9 @@ export class Router<T extends string, P extends Record<T, any>> {
       );
     }
 
-    const handler = this.#subscriptions.getHandler(recipient, message.topic);
-    const { success, data: responseData } = await this.#executeHandler<R>(message, handler);
+    const entries = this.#subscriptions.getEntries(recipient, message.topic);
+    const first = entries[0]?.handler;
+    const { success, data: responseData } = await this.#executeHandler<R>(message, first);
 
     return RoutingResult.create<R>(
       success ? 'ACK' : 'NACK',
@@ -61,6 +68,11 @@ export class Router<T extends string, P extends Record<T, any>> {
   /**
    * Route multicast message to all subscribers except sender.
    *
+   * A subscriber may have registered multiple handlers on the topic — every
+   * one of them fires. The `dispatched` count reflects unique recipients
+   * (not handler invocations) to keep the ACK payload consistent with the
+   * subscriber-centric mental model.
+   *
    * Handlers run fire-and-forget — ACK means dispatch completed, not that
    * every subscriber finished processing the message.
    */
@@ -70,11 +82,13 @@ export class Router<T extends string, P extends Record<T, any>> {
     const dispatched: ClientID[] = [];
     for (const clientId of subscribers) {
       if (clientId === sender) continue;
-      const handler = this.#subscriptions.getHandler(clientId, message.topic);
-      if (handler) {
-        this.#executeHandlerFireAndForget(message, handler, clientId);
-        dispatched.push(clientId);
+      const entries = this.#subscriptions.getEntries(clientId, message.topic);
+      if (entries.length === 0) continue;
+
+      for (const entry of entries) {
+        this.#executeHandlerFireAndForget(message, entry.handler, clientId);
       }
+      dispatched.push(clientId);
     }
 
     if (dispatched.length === 0) {

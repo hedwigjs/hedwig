@@ -12,18 +12,21 @@ import { RateLimitStrategy } from './strategies/RateLimitStrategy';
  * - Create appropriate strategy based on options
  * - Wrap handlers with strategy logic
  * - Manage strategy lifecycle (cleanup on unsubscribe)
- * - Track active strategies per client
  *
  * Available strategies:
  * - Throttle: Limit handler calls to once per period
  * - Debounce: Delay execution until silence
  * - Rate Limit: Drop messages exceeding rate limit
  *
- * Note: Only ONE strategy can be specified per subscription.
- * Specifying multiple strategies will throw an error.
+ * Multi-handler model: each subscription on a `(clientId, topic)` pair
+ * gets its own strategy instance, keyed by the subscription id.
+ *
+ * Note: Only ONE strategy can be specified per subscription. Specifying
+ * multiple strategies will throw an error.
  */
 export class BackpressureHandler {
-  #strategies = new Map<string, BackpressureStrategy>();
+  /** subscriptionId → strategy. One entry per handler that opted into BP. */
+  #strategies = new Map<number, BackpressureStrategy>();
   #logger: BrokerLogger;
 
   constructor(logger: BrokerLogger) {
@@ -36,32 +39,35 @@ export class BackpressureHandler {
    * If options.backpressure is undefined/null, returns original handler (no backpressure).
    * Otherwise creates appropriate strategy and returns wrapped handler.
    *
-   * @param clientId - Unique client identifier
-   * @param topic - Topic being subscribed to
+   * @param subscriptionId - Unique id of this handler subscription.
+   *   The id is emitted by {@link Subscriptions.subscribe} — the caller is
+   *   responsible for reserving it and passing the same value to both
+   *   `wrap()` and `subscribe()` so the strategy can be released via
+   *   {@link removeOne} when that specific handler unsubscribes.
+   * @param clientId - Unique client identifier (for logging context)
+   * @param topic - Topic being subscribed to (for logging context)
    * @param handler - Original handler function
    * @param options - Subscription options (optional)
    * @returns Wrapped handler or original handler if no backpressure options
    */
   wrap(
+    subscriptionId: number,
     clientId: ClientID,
     topic: string,
     handler: MessageHandler,
     options?: SubscriptionOptions,
   ): MessageHandler {
-    // Extract backpressure options
-    const bpOptions = options?.backpressure;
+    void clientId;
+    void topic;
 
-    // No backpressure options → return original handler
+    const bpOptions = options?.backpressure;
     if (!bpOptions) {
       return handler;
     }
 
-    // Create strategy based on backpressure options
     const strategy = this.#createStrategy(bpOptions);
-    const key = this.#getKey(clientId, topic);
-    this.#strategies.set(key, strategy);
+    this.#strategies.set(subscriptionId, strategy);
 
-    // Return wrapped handler
     return (message) => {
       strategy.process(message, handler);
     };
@@ -116,27 +122,29 @@ export class BackpressureHandler {
   }
 
   /**
-   * Remove strategy for client/topic
+   * Release the strategy attached to a single subscription id.
    *
-   * Called when client unsubscribes.
-   * Flushes pending messages and cleans up resources.
-   *
-   * @param clientId - Client identifier
-   * @param topic - Topic
+   * Called when the corresponding handler unsubscribes. Flushes pending
+   * messages and destroys the strategy. No-op when the subscription had
+   * no backpressure.
    */
-  remove(clientId: ClientID, topic: string): void {
-    const key = this.#getKey(clientId, topic);
-    const strategy = this.#strategies.get(key);
+  removeOne(subscriptionId: number): void {
+    const strategy = this.#strategies.get(subscriptionId);
+    if (!strategy) return;
+    strategy.flush();
+    strategy.destroy();
+    this.#strategies.delete(subscriptionId);
+  }
 
-    if (strategy) {
-      // Flush pending messages (ensure nothing is lost)
-      strategy.flush();
-
-      // Cleanup resources
-      strategy.destroy();
-
-      // Remove from map
-      this.#strategies.delete(key);
+  /**
+   * Bulk release for a set of subscription ids.
+   *
+   * Used when a client unsubscribes from a whole topic (or resets), which
+   * removes N handlers at once.
+   */
+  removeMany(subscriptionIds: Iterable<number>): void {
+    for (const id of subscriptionIds) {
+      this.removeOne(id);
     }
   }
 
@@ -158,12 +166,5 @@ export class BackpressureHandler {
    */
   get activeStrategies(): number {
     return this.#strategies.size;
-  }
-
-  /**
-   * Create unique key for client/topic pair
-   */
-  #getKey(clientId: ClientID, topic: string): string {
-    return `${clientId}:${topic}`;
   }
 }

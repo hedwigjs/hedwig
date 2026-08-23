@@ -124,8 +124,15 @@ export interface SubscriptionOptions {
 
 export interface ClientSubscriptionInfo {
   topic: string;
-  /** Subscription options (backpressure, replay). */
+  /**
+   * Options of the first handler registered on this (client, topic) pair.
+   * A pair may hold multiple handlers, each with distinct options — this
+   * field surfaces one representative set for observability tools that
+   * predate the multi-handler model.
+   */
   options?: SubscriptionOptions;
+  /** Total number of handlers this client has attached to the topic. */
+  handlerCount: number;
 }
 
 /** Point-in-time snapshot of a single registered client. */

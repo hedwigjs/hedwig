@@ -3,14 +3,31 @@ import type { ClientID, MessageHandler, SubscriptionOptions } from '../types';
 /**
  * Subscriptions - Efficient subscription and handler management
  *
- * Manages client subscriptions to topics with O(1) lookups using bidirectional indexes:
- * - Topic → Clients mapping for fast multicast recipient lookup
- * - Client → Topics mapping for fast unsubscribe operations
- * - Centralized handler storage with composite keys
- * - Backpressure options storage
+ * A single `(clientId, topic)` pair may hold MANY handlers. Each individual
+ * subscription is identified by a monotonic numeric id returned from
+ * {@link subscribe}, so callers can remove one handler without touching the
+ * others. Bulk operations (`unsubscribe(clientId, topic)`,
+ * `unsubscribeAll(clientId)`) still nuke every handler in scope.
+ *
+ * Bidirectional indexes for O(1) lookups:
+ * - Topic → Clients mapping (multicast recipient lookup — a client appears
+ *   once no matter how many handlers it registered)
+ * - Client → Topics mapping (unsubscribe fan-out)
+ * - Composite key → ordered handler entries
+ * - Subscription id → location (for O(1) per-handler removal)
  *
  * @internal This class is used internally by BrokerCore and Router
  */
+
+/** Opaque handle returned by {@link Subscriptions.subscribe}. */
+export type SubscriptionId = number;
+
+export type SubscriptionEntry = {
+  readonly id: SubscriptionId;
+  readonly handler: MessageHandler;
+  readonly options?: SubscriptionOptions;
+};
+
 export class Subscriptions<T extends string> {
   // ========================================
   // BIDIRECTIONAL INDEXES FOR O(1) OPERATIONS
@@ -22,42 +39,51 @@ export class Subscriptions<T extends string> {
   /** Client → Topics mapping for fast unsubscribe operations */
   #clientSubscriptions = new Map<ClientID, Set<T>>();
 
-  /** Centralized handler storage with composite keys */
-  #handlers = new Map<string, MessageHandler>();
+  /** Composite key → ordered handler entries (many per pair). */
+  #entries = new Map<string, SubscriptionEntry[]>();
 
-  /** Backpressure options storage */
-  #handlerOptions = new Map<string, SubscriptionOptions>();
+  /** Subscription id → its location, for O(1) single-handler removal. */
+  #entryLocations = new Map<SubscriptionId, { clientId: ClientID; topic: T }>();
+
+  /** Monotonic subscription id counter. */
+  #nextId: SubscriptionId = 1;
 
   /** Shared empty set to avoid allocations */
   readonly #emptySet: ReadonlySet<ClientID> = Object.freeze(new Set<ClientID>());
+  readonly #emptyEntries: readonly SubscriptionEntry[] = Object.freeze([]);
 
   // ========================================
   // SUBSCRIPTION OPERATIONS
   // ========================================
 
   /**
-   * Subscribe a client to a topic
+   * Reserve a subscription id ahead of {@link subscribe}.
    *
-   * Maintains bidirectional indexes for O(1) lookups:
-   * - Adds client to topic's subscriber set
-   * - Adds topic to client's subscription set
-   * - Stores handler with composite key
-   * - Stores backpressure options (if provided)
+   * Callers that need the id BEFORE the handler is finalized (e.g. to key
+   * a backpressure strategy by that id) can pre-allocate here and then
+   * pass the reserved id to {@link subscribe}.
+   */
+  reserveId(): SubscriptionId {
+    return this.#nextId++;
+  }
+
+  /**
+   * Subscribe a handler to a (client, topic) pair.
    *
-   * Note: Only one handler per client per topic.
-   * Subsequent subscriptions will replace the previous handler.
+   * Appends a new entry — previously registered handlers on the same pair
+   * are preserved. Returns the subscription id so the caller can remove
+   * this specific handler later via {@link unsubscribeOne}.
    *
-   * @param clientId - Unique client identifier
-   * @param topic - Topic to subscribe to
-   * @param handler - Message handler function
-   * @param options - Backpressure options (optional)
+   * If `preReservedId` is provided (from {@link reserveId}), that id is
+   * used instead of generating a new one.
    */
   subscribe(
     clientId: ClientID,
     topic: T,
     handler: MessageHandler,
     options?: SubscriptionOptions,
-  ): void {
+    preReservedId?: SubscriptionId,
+  ): SubscriptionId {
     if (!this.#subscriptions.has(topic)) {
       this.#subscriptions.set(topic, new Set());
     }
@@ -68,82 +94,134 @@ export class Subscriptions<T extends string> {
     }
     this.#clientSubscriptions.get(clientId)!.add(topic);
 
-    const handlerKey = this.#getHandlerKey(clientId, topic);
-    this.#handlers.set(handlerKey, handler);
+    const id: SubscriptionId = preReservedId ?? this.#nextId++;
+    const entry: SubscriptionEntry = { id, handler, options };
 
-    // Store backpressure options if provided
-    if (options) {
-      this.#handlerOptions.set(handlerKey, options);
+    const key = this.#getKey(clientId, topic);
+    let list = this.#entries.get(key);
+    if (!list) {
+      list = [];
+      this.#entries.set(key, list);
     }
+    list.push(entry);
+
+    this.#entryLocations.set(id, { clientId, topic });
+
+    return id;
   }
 
   /**
-   * Unsubscribe a client from a topic
+   * Remove a single handler by its subscription id.
    *
-   * Removes the subscription and cleans up empty entries.
+   * If this was the last handler for the pair, the pair is fully removed
+   * from the bidirectional indexes (mirroring `unsubscribe` semantics).
    *
-   * @param clientId - Unique client identifier
-   * @param topic - Topic to unsubscribe from
-   * @returns `true` if a subscription actually existed and was removed,
-   *          `false` if there was nothing to remove (no-op). Callers use
-   *          this to decide whether to emit `subscription.removed` without
-   *          an extra pre-read of the state.
+   * @returns Removal outcome: the removed entry, the pair it belonged to,
+   *          and whether it was the last handler on that pair. `undefined`
+   *          when no such id existed.
    */
-  unsubscribe(clientId: ClientID, topic: T): boolean {
-    const existed = this.#clientSubscriptions.get(clientId)?.has(topic) ?? false;
-    if (!existed) return false;
+  unsubscribeOne(id: SubscriptionId):
+    | {
+        entry: SubscriptionEntry;
+        clientId: ClientID;
+        topic: T;
+        wasLast: boolean;
+      }
+    | undefined {
+    const location = this.#entryLocations.get(id);
+    if (!location) return undefined;
+
+    const { clientId, topic } = location;
+    const key = this.#getKey(clientId, topic);
+    const list = this.#entries.get(key);
+    if (!list) {
+      this.#entryLocations.delete(id);
+      return undefined;
+    }
+
+    const idx = list.findIndex((e) => e.id === id);
+    if (idx === -1) {
+      this.#entryLocations.delete(id);
+      return undefined;
+    }
+
+    const [removed] = list.splice(idx, 1);
+    this.#entryLocations.delete(id);
+
+    const wasLast = list.length === 0;
+    if (wasLast) {
+      this.#entries.delete(key);
+      this.#subscriptions.get(topic)?.delete(clientId);
+      this.#clientSubscriptions.get(clientId)?.delete(topic);
+
+      if (this.#subscriptions.get(topic)?.size === 0) {
+        this.#subscriptions.delete(topic);
+      }
+    }
+
+    return { entry: removed, clientId, topic, wasLast };
+  }
+
+  /**
+   * Unsubscribe every handler a client holds on a topic.
+   *
+   * @returns Entries that were actually removed. Empty when the client had
+   *          no handlers on the topic. Callers use this to release
+   *          per-handler resources (e.g. backpressure strategies).
+   */
+  unsubscribe(clientId: ClientID, topic: T): readonly SubscriptionEntry[] {
+    const key = this.#getKey(clientId, topic);
+    const list = this.#entries.get(key);
+    if (!list || list.length === 0) return this.#emptyEntries;
+
+    for (const entry of list) {
+      this.#entryLocations.delete(entry.id);
+    }
+    this.#entries.delete(key);
 
     this.#subscriptions.get(topic)?.delete(clientId);
     this.#clientSubscriptions.get(clientId)?.delete(topic);
-
-    const handlerKey = this.#getHandlerKey(clientId, topic);
-    this.#handlers.delete(handlerKey);
-    this.#handlerOptions.delete(handlerKey);
 
     if (this.#subscriptions.get(topic)?.size === 0) {
       this.#subscriptions.delete(topic);
     }
 
-    return true;
+    return list;
   }
 
   /**
    * Remove every subscription held by a given client.
    *
-   * This class groups subscriptions by `clientId` as an indexing key — it does
-   * not own "client" as an entity (that's `ClientRegistry`). So the operation
-   * is framed as the bulk counterpart of `unsubscribe(clientId, topic)`:
-   * "unsubscribe the client from everything".
-   *
-   * Efficiently walks the client → topics index.
-   * Time complexity: O(n) where n = number of client's subscriptions.
-   *
-   * @param clientId - Unique client identifier (group key in this context)
-   * @returns Topics from which the client was unsubscribed, in iteration
-   *          order. Empty array when the client had no active subscriptions.
-   *          Callers use this to emit granular `subscription.removed` events
-   *          without a pre-read of the state.
+   * @returns Per-topic entry buckets that were removed, in iteration order.
+   *          Empty when the client had no active subscriptions. Callers use
+   *          this to release per-handler resources and emit per-topic
+   *          `subscription.removed` events.
    */
-  unsubscribeAll(clientId: ClientID): readonly T[] {
+  unsubscribeAll(
+    clientId: ClientID,
+  ): ReadonlyArray<{ topic: T; entries: readonly SubscriptionEntry[] }> {
     const clientTopics = this.#clientSubscriptions.get(clientId);
     if (!clientTopics || clientTopics.size === 0) {
       this.#clientSubscriptions.delete(clientId);
       return [];
     }
 
-    const removed: T[] = [];
+    const removed: Array<{ topic: T; entries: readonly SubscriptionEntry[] }> = [];
     for (const topic of clientTopics) {
-      this.#subscriptions.get(topic)?.delete(clientId);
+      const key = this.#getKey(clientId, topic);
+      const list = this.#entries.get(key);
+      if (list) {
+        for (const entry of list) {
+          this.#entryLocations.delete(entry.id);
+        }
+        this.#entries.delete(key);
+        removed.push({ topic, entries: list });
+      }
 
+      this.#subscriptions.get(topic)?.delete(clientId);
       if (this.#subscriptions.get(topic)?.size === 0) {
         this.#subscriptions.delete(topic);
       }
-
-      const handlerKey = this.#getHandlerKey(clientId, topic);
-      this.#handlers.delete(handlerKey);
-      this.#handlerOptions.delete(handlerKey);
-
-      removed.push(topic);
     }
 
     this.#clientSubscriptions.delete(clientId);
@@ -156,56 +234,44 @@ export class Subscriptions<T extends string> {
 
   /**
    * Get all topics a client is subscribed to
-   *
-   * Used by BrokerCore.resetClient() to iterate and clean up each subscription.
-   *
-   * @param clientId - Unique client identifier
-   * @returns Set of topics or undefined if client has no subscriptions
    */
   getClientTopics(clientId: ClientID): ReadonlySet<T> | undefined {
     return this.#clientSubscriptions.get(clientId);
   }
 
   /**
-   * Check if a client is subscribed to a topic
-   *
-   * @param clientId - Unique client identifier
-   * @param topic - Topic to check
-   * @returns True if subscribed, false otherwise
+   * Check if a client has at least one handler on a topic.
    */
   isSubscribed(clientId: ClientID, topic: T): boolean {
     return this.#clientSubscriptions.get(clientId)?.has(topic) ?? false;
   }
 
   /**
-   * Get the handler for a specific client and topic
-   *
-   * @param clientId - Unique client identifier
-   * @param topic - Topic
-   * @returns Handler function or undefined if not found
+   * All handler entries a client has on a topic, in registration order.
    */
-  getHandler(clientId: ClientID, topic: T): MessageHandler | undefined {
-    const handlerKey = this.#getHandlerKey(clientId, topic);
-    return this.#handlers.get(handlerKey);
+  getEntries(clientId: ClientID, topic: T): readonly SubscriptionEntry[] {
+    return this.#entries.get(this.#getKey(clientId, topic)) ?? this.#emptyEntries;
   }
 
   /**
-   * Get backpressure options for a specific client and topic
+   * Options of the first handler registered on `(clientId, topic)`.
    *
-   * @param clientId - Unique client identifier
-   * @param topic - Topic
-   * @returns Backpressure options or undefined if not set
+   * Convenience for read-only observers (e.g. Inspector) that predate the
+   * multi-handler model and expect a single options blob per pair.
    */
-  getOptions(clientId: ClientID, topic: T): SubscriptionOptions | undefined {
-    const handlerKey = this.#getHandlerKey(clientId, topic);
-    return this.#handlerOptions.get(handlerKey);
+  getFirstOptions(clientId: ClientID, topic: T): SubscriptionOptions | undefined {
+    return this.#entries.get(this.#getKey(clientId, topic))?.[0]?.options;
+  }
+
+  /**
+   * Number of handlers a client holds on a topic (0 = not subscribed).
+   */
+  getHandlerCount(clientId: ClientID, topic: T): number {
+    return this.#entries.get(this.#getKey(clientId, topic))?.length ?? 0;
   }
 
   /**
    * Get all subscribers for a topic (read-only)
-   *
-   * @param topic - Topic
-   * @returns Readonly set of client IDs
    */
   getSubscribers(topic: T): ReadonlySet<ClientID> {
     return this.#subscriptions.get(topic) ?? this.#emptySet;
@@ -213,8 +279,6 @@ export class Subscriptions<T extends string> {
 
   /**
    * Get list of all clients that have active subscriptions
-   *
-   * @returns Array of client IDs
    */
   getAllSubscribedClients(): ClientID[] {
     return Array.from(this.#clientSubscriptions.keys());
@@ -222,10 +286,6 @@ export class Subscriptions<T extends string> {
 
   /**
    * Get detailed subscription map for all clients
-   *
-   * Used by observability tools and DevTools for inspection.
-   *
-   * @returns Record mapping clientId to array of subscribed topics
    */
   getAllSubscriptions(): Record<string, string[]> {
     const result: Record<string, string[]> = {};
@@ -240,27 +300,30 @@ export class Subscriptions<T extends string> {
   // ========================================
 
   /**
-   * Clear all subscriptions and handlers
+   * Clear all subscriptions and handlers.
    *
-   * Called by BrokerCore.destroy() to clean up all resources.
+   * @returns All entries that were held, so the caller can release
+   *          per-handler resources (e.g. backpressure strategies).
    */
-  clear(): void {
+  clear(): readonly SubscriptionEntry[] {
+    const all: SubscriptionEntry[] = [];
+    for (const list of this.#entries.values()) {
+      for (const entry of list) {
+        all.push(entry);
+      }
+    }
     this.#subscriptions.clear();
     this.#clientSubscriptions.clear();
-    this.#handlers.clear();
-    this.#handlerOptions.clear();
+    this.#entries.clear();
+    this.#entryLocations.clear();
+    return all;
   }
 
   // ========================================
   // PRIVATE HELPERS
   // ========================================
 
-  /**
-   * Create composite key for handler storage
-   * Format: "clientId:topic"
-   * @private
-   */
-  #getHandlerKey(clientId: ClientID, topic: T): string {
+  #getKey(clientId: ClientID, topic: T): string {
     return `${clientId}:${topic}`;
   }
 }

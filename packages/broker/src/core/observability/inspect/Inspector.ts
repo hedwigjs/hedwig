@@ -52,7 +52,12 @@ export class Inspector<T extends string, P extends Record<T, any>> {
       connectedAt: this.#clients.getConnectedAt(id) ?? Date.now(),
       subscriptions: Array.from(this.#subscriptions.getClientTopics(id) ?? []).map((topic) => ({
         topic,
-        options: this.#subscriptions.getOptions(id, topic as T),
+        // A pair may hold N handlers with different options — the Inspector
+        // surface predates the multi-handler model and exposes a single
+        // options blob. First handler wins; drill into `getEntries()` for
+        // full detail.
+        options: this.#subscriptions.getFirstOptions(id, topic as T),
+        handlerCount: this.#subscriptions.getHandlerCount(id, topic as T),
       })),
     }));
   }

@@ -137,10 +137,13 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   /**
    * Subscribe a client to a topic.
    *
-   * @param clientId - Client identifier
-   * @param topic - Topic to subscribe to (e.g. 'user.login.v1')
-   * @param handler - Message handler function
-   * @param options - Subscription options (backpressure, replay)
+   * Multiple handlers may be attached to the same `(clientId, topic)` pair —
+   * each call returns a distinct subscription id that identifies THIS
+   * handler for later removal via {@link unsubscribeOne}.
+   *
+   * @returns Subscription id, or `0` when the call was a no-op (broker
+   *          destroyed). Zero is never a valid id.
+   *
    * @throws Error if subscription is blocked on onSubscribe hook
    *
    * @internal Called by {@link BrokerClient.on}. Not part of the public
@@ -151,27 +154,31 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     topic: T,
     handler: MessageHandler,
     options?: SubscriptionOptions,
-  ): void {
+  ): number {
     if (this.#isDestroyed) {
       this.logger.warn('broker.subscribe.after_destroy', { clientId, topic });
-      return;
+      return 0;
     }
 
-    // Check if onSubscribe hooks allow this subscription
     const hookResult = this.#hooks.onSubscribe(topic, clientId);
-
     if (!hookResult.allowed) {
       throw new Error(hookResult.message);
     }
 
-    // Wrap handler with backpressure strategy (if options provided)
-    const wrappedHandler = this.#backpressure.wrap(clientId, topic, handler, options);
+    // Reserve id first so backpressure keys its strategy by the same value
+    // we hand back to the caller.
+    const subscriptionId = this.#subscriptions.reserveId();
+    const wrappedHandler = this.#backpressure.wrap(
+      subscriptionId,
+      clientId,
+      topic,
+      handler,
+      options,
+    );
 
-    // Subscribe with wrapped handler
-    this.#subscriptions.subscribe(clientId, topic, wrappedHandler, options);
+    this.#subscriptions.subscribe(clientId, topic, wrappedHandler, options, subscriptionId);
     this.#systemEvents.emit('subscription.added', { clientId, topic, options });
 
-    // Replay historical messages if requested
     if (options?.replay) {
       if (!this.#replay) {
         this.logger.warn('broker.replay.history_disabled', { clientId, topic });
@@ -179,21 +186,48 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
         this.#replay.start(clientId, topic, wrappedHandler, options.replay);
       }
     }
+    return subscriptionId;
   }
 
   /**
-   * Unsubscribe a client from a topic.
+   * Unsubscribe a client from a topic — removes every handler this client
+   * has attached to the topic.
    *
-   * @internal Called by {@link BrokerClient.off} / the unsubscribe closure
-   * returned by {@link BrokerClient.on}. Not part of the public
+   * @internal Called by {@link BrokerClient.off}. Not part of the public
    * `MessageBroker` contract.
    */
   unsubscribe(clientId: ClientID, topic: T): void {
-    // Remove backpressure strategy (flush pending messages)
-    this.#backpressure.remove(clientId, topic);
+    const removed = this.#subscriptions.unsubscribe(clientId, topic);
+    if (removed.length === 0) return;
 
-    if (this.#subscriptions.unsubscribe(clientId, topic)) {
-      this.#systemEvents.emit('subscription.removed', { clientId, topic });
+    for (const entry of removed) {
+      this.#backpressure.removeOne(entry.id);
+    }
+    this.#systemEvents.emit('subscription.removed', { clientId, topic });
+  }
+
+  /**
+   * Unsubscribe a single handler by its subscription id.
+   *
+   * Fires `subscription.removed` only if this was the last handler that
+   * client had on the topic — otherwise the client is still subscribed.
+   *
+   * @internal Called by the unsubscribe closure returned from {@link BrokerClient.on}.
+   */
+  unsubscribeOne(subscriptionId: number): void {
+    if (subscriptionId === 0) return;
+    const outcome = this.#subscriptions.unsubscribeOne(subscriptionId);
+    if (!outcome) return;
+
+    this.#backpressure.removeOne(outcome.entry.id);
+
+    // Only surface subscription.removed when the pair is fully drained —
+    // otherwise the client is still subscribed via other handlers.
+    if (outcome.wasLast) {
+      this.#systemEvents.emit('subscription.removed', {
+        clientId: outcome.clientId,
+        topic: outcome.topic,
+      });
     }
   }
 
@@ -377,11 +411,14 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
    * @internal Called by {@link BrokerClient.destroy}.
    */
   unregisterClient(clientId: ClientID): void {
-    const removedTopics = this.#subscriptions.unsubscribeAll(clientId);
+    const removed = this.#subscriptions.unsubscribeAll(clientId);
     this.#clientRegistry.unregister(clientId);
 
-    for (const topic of removedTopics) {
-      this.#systemEvents.emit('subscription.removed', { clientId, topic });
+    for (const bucket of removed) {
+      for (const entry of bucket.entries) {
+        this.#backpressure.removeOne(entry.id);
+      }
+      this.#systemEvents.emit('subscription.removed', { clientId, topic: bucket.topic });
     }
     this.#systemEvents.emit('client.unregistered', { clientId, at: Date.now() });
   }
@@ -506,8 +543,14 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
 
     this.#hooks.clear();
     this.#history?.destroy();
+    // Release per-handler backpressure strategies via the cleared entries,
+    // then run destroy() as a belt-and-suspenders sweep for anything that
+    // somehow escaped bookkeeping.
+    const cleared = this.#subscriptions.clear();
+    for (const entry of cleared) {
+      this.#backpressure.removeOne(entry.id);
+    }
     this.#backpressure.destroy();
-    this.#subscriptions.clear();
     this.#clientRegistry.clear();
     this.#systemEvents.clear();
   }

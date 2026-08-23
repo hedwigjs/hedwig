@@ -46,10 +46,15 @@ export class BrokerClient<T extends string, P extends Record<T, any>>
       throw new Error('BrokerClient requires explicit handler function');
     }
 
-    this.#core.subscribe(this.id, topic, handler as MessageHandler, options);
+    const subscriptionId = this.#core.subscribe(
+      this.id,
+      topic,
+      handler as MessageHandler,
+      options,
+    );
 
     return () => {
-      this.#core.unsubscribe(this.id, topic);
+      this.#core.unsubscribeOne(subscriptionId);
     };
   }
 

@@ -26,7 +26,7 @@ describe('BackpressureHandler', () => {
       const handler = new BackpressureHandler(defaultLogger);
       const originalHandler = jest.fn();
 
-      const wrapped = handler.wrap('client-1', 'event.v1', originalHandler);
+      const wrapped = handler.wrap(1, 'client-1', 'event.v1', originalHandler);
 
       expect(wrapped).toBe(originalHandler); // Same reference
       expect(handler.activeStrategies).toBe(0); // No strategy created
@@ -36,7 +36,7 @@ describe('BackpressureHandler', () => {
       const handler = new BackpressureHandler(defaultLogger);
       const originalHandler = jest.fn();
 
-      const wrapped = handler.wrap('client-1', 'event.v1', originalHandler, undefined);
+      const wrapped = handler.wrap(1, 'client-1', 'event.v1', originalHandler, undefined);
 
       expect(wrapped).toBe(originalHandler);
     });
@@ -47,7 +47,7 @@ describe('BackpressureHandler', () => {
       const handler = new BackpressureHandler(defaultLogger);
       const originalHandler = jest.fn();
 
-      const wrapped = handler.wrap('client-1', 'event.v1', originalHandler, {
+      const wrapped = handler.wrap(1, 'client-1', 'event.v1', originalHandler, {
         backpressure: { throttle: 100 },
       });
 
@@ -59,16 +59,20 @@ describe('BackpressureHandler', () => {
       const handler = new BackpressureHandler(defaultLogger);
       const originalHandler = jest.fn();
 
-      const wrapped = handler.wrap('client-1', 'event.v1', originalHandler, {
+      const wrapped = handler.wrap(1, 'client-1', 'event.v1', originalHandler, {
         backpressure: { throttle: 100 },
       });
 
-      // Call wrapped handler multiple times
+      // Send 3 events rapidly
       wrapped(createMockMessage({ value: 1 }));
       wrapped(createMockMessage({ value: 2 }));
       wrapped(createMockMessage({ value: 3 }));
 
-      expect(originalHandler).toHaveBeenCalledTimes(1); // Only first call
+      // Only first should execute (throttle leading edge)
+      expect(originalHandler).toHaveBeenCalledTimes(1);
+      expect(originalHandler).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { value: 1 } }),
+      );
     });
   });
 
@@ -77,7 +81,7 @@ describe('BackpressureHandler', () => {
       const handler = new BackpressureHandler(defaultLogger);
       const originalHandler = jest.fn();
 
-      const wrapped = handler.wrap('client-1', 'event.v1', originalHandler, {
+      const wrapped = handler.wrap(1, 'client-1', 'event.v1', originalHandler, {
         backpressure: { debounce: 300 },
       });
 
@@ -89,63 +93,64 @@ describe('BackpressureHandler', () => {
       const handler = new BackpressureHandler(defaultLogger);
       const originalHandler = jest.fn();
 
-      const wrapped = handler.wrap('client-1', 'event.v1', originalHandler, {
+      const wrapped = handler.wrap(1, 'client-1', 'event.v1', originalHandler, {
         backpressure: { debounce: 300 },
       });
 
       wrapped(createMockMessage({ value: 1 }));
       wrapped(createMockMessage({ value: 2 }));
 
-      expect(originalHandler).not.toHaveBeenCalled();
+      expect(originalHandler).not.toHaveBeenCalled(); // Not called yet
 
       jest.advanceTimersByTime(300);
 
-      expect(originalHandler).toHaveBeenCalledTimes(1);
+      expect(originalHandler).toHaveBeenCalledTimes(1); // Called with latest
+      expect(originalHandler).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { value: 2 } }),
+      );
     });
   });
 
-  describe('Wrap - Rate Limit', () => {
+  describe('Wrap - RateLimit', () => {
     test('should create RateLimitStrategy for rateLimit option', () => {
       const handler = new BackpressureHandler(defaultLogger);
       const originalHandler = jest.fn();
 
-      const wrapped = handler.wrap('client-1', 'event.v1', originalHandler, {
-        backpressure: { rateLimit: { max: 10, window: 1000 } },
+      const wrapped = handler.wrap(1, 'client-1', 'event.v1', originalHandler, {
+        backpressure: { rateLimit: { max: 5, window: 1000 } },
       });
 
       expect(wrapped).not.toBe(originalHandler);
       expect(handler.activeStrategies).toBe(1);
     });
 
-    test('should rate limit events', () => {
+    test('should limit rate of handler calls', () => {
       const handler = new BackpressureHandler(defaultLogger);
       const originalHandler = jest.fn();
-      const onDrop = jest.fn();
 
-      const wrapped = handler.wrap('client-1', 'event.v1', originalHandler, {
-        backpressure: { rateLimit: { max: 3, window: 1000 }, onDrop },
+      const wrapped = handler.wrap(1, 'client-1', 'event.v1', originalHandler, {
+        backpressure: { rateLimit: { max: 2, window: 1000 } },
       });
 
       // Send 5 events
-      for (let i = 0; i < 5; i++) {
+      for (let i = 1; i <= 5; i++) {
         wrapped(createMockMessage({ value: i }));
       }
 
-      expect(originalHandler).toHaveBeenCalledTimes(3); // Only first 3
-      expect(onDrop).toHaveBeenCalledTimes(2); // 2 dropped
+      expect(originalHandler).toHaveBeenCalledTimes(2); // Only max allowed
     });
   });
 
-  describe('Multiple Clients', () => {
+  describe('Wrap - Multiple Clients', () => {
     test('should handle multiple clients independently', () => {
       const handler = new BackpressureHandler(defaultLogger);
       const handler1 = jest.fn();
       const handler2 = jest.fn();
 
-      const wrapped1 = handler.wrap('client-1', 'event.v1', handler1, {
+      const wrapped1 = handler.wrap(1, 'client-1', 'event.v1', handler1, {
         backpressure: { throttle: 100 },
       });
-      const wrapped2 = handler.wrap('client-2', 'event.v1', handler2, {
+      const wrapped2 = handler.wrap(2, 'client-2', 'event.v1', handler2, {
         backpressure: { debounce: 300 },
       });
 
@@ -163,27 +168,45 @@ describe('BackpressureHandler', () => {
       const handler1 = jest.fn();
       const handler2 = jest.fn();
 
-      const wrapped1 = handler.wrap('client-1', 'event.v1', handler1, {
+      handler.wrap(1, 'client-1', 'event.v1', handler1, {
         backpressure: { throttle: 100 },
       });
-      const wrapped2 = handler.wrap('client-1', 'event.v2', handler2, {
+      handler.wrap(2, 'client-1', 'event.v2', handler2, {
         backpressure: { debounce: 300 },
       });
 
       expect(handler.activeStrategies).toBe(2);
     });
+
+    test('should hold a distinct strategy per handler on the same pair', () => {
+      const handler = new BackpressureHandler(defaultLogger);
+      const handlerA = jest.fn();
+      const handlerB = jest.fn();
+
+      handler.wrap(1, 'client-1', 'event.v1', handlerA, {
+        backpressure: { throttle: 100 },
+      });
+      handler.wrap(2, 'client-1', 'event.v1', handlerB, {
+        backpressure: { debounce: 300 },
+      });
+
+      // Two independent strategies keyed by subscriptionId, not by pair.
+      expect(handler.activeStrategies).toBe(2);
+    });
   });
 
-  describe('Remove', () => {
+  describe('RemoveOne', () => {
     test('should remove strategy and cleanup', () => {
       const handler = new BackpressureHandler(defaultLogger);
       const originalHandler = jest.fn();
 
-      handler.wrap('client-1', 'event.v1', originalHandler, { backpressure: { throttle: 100 } });
+      handler.wrap(1, 'client-1', 'event.v1', originalHandler, {
+        backpressure: { throttle: 100 },
+      });
 
       expect(handler.activeStrategies).toBe(1);
 
-      handler.remove('client-1', 'event.v1');
+      handler.removeOne(1);
 
       expect(handler.activeStrategies).toBe(0);
     });
@@ -192,7 +215,7 @@ describe('BackpressureHandler', () => {
       const handler = new BackpressureHandler(defaultLogger);
       const originalHandler = jest.fn();
 
-      const wrapped = handler.wrap('client-1', 'event.v1', originalHandler, {
+      const wrapped = handler.wrap(1, 'client-1', 'event.v1', originalHandler, {
         backpressure: { debounce: 300 },
       });
 
@@ -201,7 +224,7 @@ describe('BackpressureHandler', () => {
       expect(originalHandler).not.toHaveBeenCalled();
 
       // Remove (should flush)
-      handler.remove('client-1', 'event.v1');
+      handler.removeOne(1);
 
       expect(originalHandler).toHaveBeenCalledTimes(1); // Flushed
     });
@@ -209,7 +232,7 @@ describe('BackpressureHandler', () => {
     test('should handle remove for non-existent strategy', () => {
       const handler = new BackpressureHandler(defaultLogger);
 
-      expect(() => handler.remove('client-1', 'event.v1')).not.toThrow();
+      expect(() => handler.removeOne(999)).not.toThrow();
     });
   });
 
@@ -219,8 +242,8 @@ describe('BackpressureHandler', () => {
       const handler1 = jest.fn();
       const handler2 = jest.fn();
 
-      handler.wrap('client-1', 'event.v1', handler1, { backpressure: { throttle: 100 } });
-      handler.wrap('client-2', 'event.v2', handler2, { backpressure: { debounce: 300 } });
+      handler.wrap(1, 'client-1', 'event.v1', handler1, { backpressure: { throttle: 100 } });
+      handler.wrap(2, 'client-2', 'event.v2', handler2, { backpressure: { debounce: 300 } });
 
       expect(handler.activeStrategies).toBe(2);
 
@@ -234,10 +257,10 @@ describe('BackpressureHandler', () => {
       const handler1 = jest.fn();
       const handler2 = jest.fn();
 
-      const wrapped1 = handler.wrap('client-1', 'event.v1', handler1, {
+      const wrapped1 = handler.wrap(1, 'client-1', 'event.v1', handler1, {
         backpressure: { debounce: 300 },
       });
-      const wrapped2 = handler.wrap('client-2', 'event.v2', handler2, {
+      const wrapped2 = handler.wrap(2, 'client-2', 'event.v2', handler2, {
         backpressure: { debounce: 300 },
       });
 
@@ -260,7 +283,9 @@ describe('BackpressureHandler', () => {
       const originalHandler = jest.fn();
 
       expect(() => {
-        handler.wrap('client-1', 'event.v1', originalHandler, { backpressure: {} } as any);
+        handler.wrap(1, 'client-1', 'event.v1', originalHandler, {
+          backpressure: {},
+        } as any);
       }).toThrow('No backpressure strategy specified');
     });
 
@@ -269,7 +294,7 @@ describe('BackpressureHandler', () => {
       const originalHandler = jest.fn();
 
       expect(() => {
-        handler.wrap('client-1', 'event.v1', originalHandler, {
+        handler.wrap(1, 'client-1', 'event.v1', originalHandler, {
           backpressure: {
             throttle: 100,
             debounce: 300,
@@ -283,7 +308,7 @@ describe('BackpressureHandler', () => {
       const originalHandler = jest.fn();
 
       expect(() => {
-        handler.wrap('client-1', 'event.v1', originalHandler, {
+        handler.wrap(1, 'client-1', 'event.v1', originalHandler, {
           backpressure: {
             throttle: 100,
             debounce: 300,

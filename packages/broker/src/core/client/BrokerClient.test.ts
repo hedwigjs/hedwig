@@ -251,4 +251,82 @@ describe('BrokerClient', () => {
       expect(handler2).toHaveBeenCalled();
     });
   });
+
+  describe('Multiple handlers on the same (client, topic) pair', () => {
+    test('fires every registered handler on emit', async () => {
+      const sender = new BrokerClient('sender', core);
+      const receiver = new BrokerClient('receiver', core);
+
+      const h1 = jest.fn();
+      const h2 = jest.fn();
+      const h3 = jest.fn();
+
+      receiver.on('test.event.v1', h1);
+      receiver.on('test.event.v1', h2);
+      receiver.on('test.event.v1', h3);
+
+      await sender.emit('test.event.v1', { message: 'hi' });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(h1).toHaveBeenCalledTimes(1);
+      expect(h2).toHaveBeenCalledTimes(1);
+      expect(h3).toHaveBeenCalledTimes(1);
+    });
+
+    test('unsubscribe closure removes only its own handler', async () => {
+      const sender = new BrokerClient('sender', core);
+      const receiver = new BrokerClient('receiver', core);
+
+      const h1 = jest.fn();
+      const h2 = jest.fn();
+
+      const unsub1 = receiver.on('test.event.v1', h1);
+      receiver.on('test.event.v1', h2);
+
+      unsub1();
+
+      await sender.emit('test.event.v1', { message: 'hi' });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(h1).not.toHaveBeenCalled();
+      expect(h2).toHaveBeenCalledTimes(1);
+    });
+
+    test('client.off(topic) removes every handler on that topic', async () => {
+      const sender = new BrokerClient('sender', core);
+      const receiver = new BrokerClient('receiver', core);
+
+      const h1 = jest.fn();
+      const h2 = jest.fn();
+
+      receiver.on('test.event.v1', h1);
+      receiver.on('test.event.v1', h2);
+
+      receiver.off('test.event.v1');
+
+      await sender.emit('test.event.v1', { message: 'hi' });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(h1).not.toHaveBeenCalled();
+      expect(h2).not.toHaveBeenCalled();
+    });
+
+    test('inspector reports the correct handler count', () => {
+      const receiver = new BrokerClient('receiver', core);
+
+      receiver.on('test.event.v1', jest.fn());
+      receiver.on('test.event.v1', jest.fn());
+      receiver.on('user.created.v1', jest.fn());
+
+      const info = core.inspect
+        .getClients()
+        .find((c) => c.id === 'receiver');
+
+      const testEvent = info?.subscriptions.find((s) => s.topic === 'test.event.v1');
+      const userCreated = info?.subscriptions.find((s) => s.topic === 'user.created.v1');
+
+      expect(testEvent?.handlerCount).toBe(2);
+      expect(userCreated?.handlerCount).toBe(1);
+    });
+  });
 });
