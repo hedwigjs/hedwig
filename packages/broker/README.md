@@ -5,14 +5,13 @@ event and request messages across modules — in-process, cross-frame,
 cross-tab, and cross-process — with hooks and observability built in.
 
 ```bash
-# not yet published to npm — inside the Hedwig monorepo:
 npm install @hedwigjs/broker
 ```
 
-> Pre-release (`0.1.0`, private). The public surface documented here is
-> stable across the pre-release; anything marked *internal* may change.
+> Pre-release. The public surface documented here is stable across
+> the pre-release; anything marked *internal* may change.
 
-**Full project docs & reference stand →** [`../..#readme`](../..#readme)
+**Live demo →** [hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced) · **Full project docs →** [`../..#readme`](../..#readme)
 
 ---
 

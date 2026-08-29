@@ -6,16 +6,15 @@ hook-driven rejections, and hand-craft synthetic messages against a
 running broker — all from a docked panel you mount in your own app.
 
 ```bash
-# not yet published to npm — inside the Hedwig monorepo:
 npm install @hedwigjs/devtools
 ```
 
 Peer deps: `@hedwigjs/broker`, `react`, `react-dom` (React 19).
 
-> Pre-release (`0.1.0`, private). The panel props documented here are
-> the stable surface; anything marked *internal* may change.
+> Pre-release. The panel props documented here are the stable surface;
+> anything marked *internal* may change.
 
-**Full project docs & reference stand →** [`../..#readme`](../..#readme)
+**See it live →** click the mascot on the right edge of [hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced) · **Full project docs →** [`../..#readme`](../..#readme)
 
 ---
 

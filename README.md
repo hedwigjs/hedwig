@@ -163,9 +163,9 @@ each other without any of them knowing about the others.
 
 | Package                     | What it is                                                                                                                                                                                                                                                                                        | Status                  |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `@hedwigjs/broker`          | Runtime broker. Typed `emit` / `request` / `on`. Routes messages **in-process** between clients on the same broker, and — through **built-in or custom bridges** — across contexts (iframes, tabs, workers, backends via `postMessage` / `BroadcastChannel` / `WebSocket` / `SSE` / your own). Hook system (`beforeSend` / `afterSend` / `onSubscribe`), message history + replay, backpressure primitives. | Ported (0.1.0, private) |
-| `@hedwigjs/devtools`        | React panel that mounts inside the host app. Messages, clients, bridges, replay buffer, dedicated system-events stream.                                                                                                                                                                            | Ported (0.1.0, private) |
-| `@hedwigjs/create-registry` | Optional CLI (`npm create @hedwigjs/registry`) that scaffolds a topic-registry package with contract files + codegen. Broker also accepts topic types from Zod / Protobuf / GraphQL / hand-written — registry is a pattern, not a mandate.                                                          | Ported (0.1.0, private) |
+| `@hedwigjs/broker`          | Runtime broker. Typed `emit` / `request` / `on`. Routes messages **in-process** between clients on the same broker, and — through **built-in or custom bridges** — across contexts (iframes, tabs, workers, backends via `postMessage` / `BroadcastChannel` / `WebSocket` / `SSE` / your own). Hook system (`beforeSend` / `afterSend` / `onSubscribe`), message history + replay, backpressure primitives. | Published |
+| `@hedwigjs/devtools`        | React panel that mounts inside the host app. Messages, clients, bridges, replay buffer, dedicated system-events stream.                                                                                                                                                                            | Published |
+| `@hedwigjs/create-registry` | Optional CLI (`npm create @hedwigjs/registry`) that scaffolds a topic-registry package with contract files + codegen. Broker also accepts topic types from Zod / Protobuf / GraphQL / hand-written — registry is a pattern, not a mandate.                                                          | Published |
 
 ## Quickstart
 
@@ -205,6 +205,12 @@ the receiver.
 
 ## Reference stand
 
+> **Live demo → [hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced)**
+>
+> Deployed on a Yandex Cloud VM behind Let's Encrypt HTTPS. Auto-updated
+> from `main` via GitHub Actions ([`.github/workflows/deploy-stand.yml`](./.github/workflows/deploy-stand.yml)).
+> Click the mascot on the right edge to open the DevTools panel.
+
 `examples/advanced/` hosts **Hedwig Café** — a food-delivery demo that
 puts every value prop above in one screen: unified API across modules,
 both message intents (event and request) plus retained-history events
@@ -227,16 +233,25 @@ ACL layer implemented through hooks.
 
 **Backend (over transports):**
 
-| Module                  | Bridge          | Role                                                              |
-| ----------------------- | --------------- | ----------------------------------------------------------------- |
-| `notifications-backend` | SSE             | Streams `notification.show.v1` to every subscribed frontend module |
-| `ai-backend`            | SSE / WebSocket | Streams `chat.reply-chunk.v1` and `chat.reply-completed.v1`        |
+| Module                  | Bridge      | Role                                                              |
+| ----------------------- | ----------- | ----------------------------------------------------------------- |
+| `notifications-backend` | WebSocket   | Pushes `notification.show.v1` to every connected frontend module   |
+| `ai-backend`            | SSE         | Streams `chat.reply-chunk.v1` + `chat.reply-completed.v1`          |
+| `checkout-iframe`       | PostMessage | Iframe HTML at `/checkout`; sends `checkout.completed.v1` on submit |
 
-Both backend modules speak the same topics as any frontend module — they
-just cross a transport bridge to reach the broker. In the DevTools log
-you can't tell them apart except by the `[external]` badge.
+Backend modules speak the same topics as any frontend module — they
+just cross a transport bridge to reach the broker. In DevTools they
+appear with an `external` pill on the message row.
 
-### Ports
+### Running locally
+
+```bash
+npm install
+npm run dev:demo        # every service in parallel
+npm run stop:demo       # frees ports 3000-3006, 4000
+```
+
+Local ports:
 
 | Service        | URL                     |
 | -------------- | ----------------------- |
@@ -249,30 +264,40 @@ you can't tell them apart except by the `[external]` badge.
 | analytics      | http://localhost:3006   |
 | backend        | http://localhost:4000   |
 
-### Running
-
-```bash
-npm install
-npm run dev:demo        # every service in parallel
-npm run stop:demo       # frees ports 3000-3006, 4000
-```
-
 ### 60-second walkthrough
 
-1. Open http://localhost:3000, click the yellow owl-tab on the right
-   edge → DevTools docks at the bottom.
+Works on either the [live demo](https://hedwigjs.com/demo/advanced) or
+your local http://localhost:3000.
+
+1. Click the mascot button on the right edge → DevTools docks at the
+   bottom.
 2. Add a dish. In the *Messages* tab you see three messages in one
    flow: `cart.add-item.v1` (**request** — unicast, awaits response
    from `cart-runtime`), `cart.snapshot.v1` (**event** with
    `{ history: true }` — retained so any late-joining module gets the
    current cart via `replay`), `notification.show.v1` (**event** —
-   multicast, from a backend module through the SSE bridge).
+   multicast, from a backend module through the WebSocket bridge).
 3. Click «Оформить заказ» → `checkout.start.v1` request from cart to
    the checkout MFE, response captured in `RoutingResult.data`.
 4. Under the cart, use the analytics widget's two «попробовать
    нарушить» buttons → open the *System Events* tab and watch
    `subscription.rejected` + `message.rejected` appear with the ACL
    message inline.
+5. Toggle **EN · RU** in the top-right header — everything relocalizes,
+   including the backend-served AI replies and notification bodies
+   (each client passes `?lang=` to the WS / SSE handshake).
+
+### Deployment
+
+The live demo runs behind a single-VM setup — nginx serves the static
+shell + MFE bundles under `/demo/advanced/`, proxies WebSocket / SSE /
+checkout iframe to a Node backend on the same host. Full nginx config
+is version-controlled at
+[`examples/advanced/deploy/nginx.conf`](./examples/advanced/deploy/nginx.conf).
+
+Any push to `main` that touches `examples/advanced/**`,
+`packages/broker/**`, or `packages/devtools/**` triggers the deploy
+workflow — rebuild → rsync → smoke test → done in ~1 minute.
 
 ## Benchmarks
 
@@ -317,8 +342,8 @@ enforcement (event vs request vs retained state), correlation-id-based
 cross-bridge requests, per-topic retention policy, and eventually
 splitting transports into standalone `@hedwigjs/adapter-*` packages —
 lives in [`docs/content/rfcs/`](./docs/content/rfcs) as design docs.
-None of it is required to use the current runtime; everything above
-ships in `0.1.0`.
+None of it is required to use the current runtime — everything above
+ships today.
 
 ## License
 

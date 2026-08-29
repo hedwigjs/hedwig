@@ -1,6 +1,6 @@
 name: Deploy reference stand
 
-# Rebuilds the "Hedwig Café" reference stand (shell + 6 MFEs + backend) and
+# Rebuilds the "Hedwig Café" reference stand (shell + MFEs + backend) and
 # rsyncs the artifacts to the production VM behind hedwigjs.com. Triggered
 # on pushes to main that touch stand-relevant paths, plus manual dispatch
 # for on-demand redeploys.

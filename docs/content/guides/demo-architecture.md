@@ -1,8 +1,19 @@
 # The `examples/advanced/` reference stand — architecture
 
-> Kitchen-sink demo showing the full breadth of what Hedwig will support once
-> the packages ship. Reads code that already runs; no theory that isn't
-> exercised somewhere in the stand.
+> **Doc status (2026-08):** this page predates the CQRS-style cart
+> refactor, the `analytics` and `late-mount` MFEs, and the switch from
+> the in-tree `mock-bus` to the real `@hedwigjs/broker`. Names like
+> `storefront` are now `menu`; the bus is a real published package.
+> The current authoritative overview is
+> [`examples/advanced/README.md`](../../../examples/advanced/README.md);
+> the live deployment is at
+> **[hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced)**.
+> The message-flow prose below still applies conceptually — the transport
+> and hook mechanisms are unchanged.
+
+Kitchen-sink demo showing the full breadth of what Hedwig supports —
+reads code that already runs; no theory that isn't exercised somewhere
+in the stand.
 
 ## What the stand demonstrates
 
@@ -44,17 +55,20 @@ examples/advanced/
     └── src/routes/{ai, notifications, checkout}.ts
 ```
 
-Ports:
+Local ports (up-to-date):
 
 | Service | URL |
 | --- | --- |
 | shell | http://localhost:3000 |
-| storefront | http://localhost:3001 |
+| menu | http://localhost:3001 |
 | cart | http://localhost:3002 |
 | ai-chat | http://localhost:3003 |
 | notifications | http://localhost:3004 |
 | checkout | http://localhost:3005 |
+| analytics | http://localhost:3006 |
 | backend | http://localhost:4000 |
+
+Production URL: **[hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced)** — nginx serves the shell + MFEs under one origin and proxies WS/SSE/checkout/health/notify to the same Node backend. See [`examples/advanced/deploy/nginx.conf`](../../../examples/advanced/deploy/nginx.conf).
 
 ## The bus mental model
 

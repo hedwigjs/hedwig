@@ -10,8 +10,8 @@ Hedwig.
 
 | Directory   | npm name             | Role                                                                                                | Status                  |
 | ----------- | -------------------- | --------------------------------------------------------------------------------------------------- | ----------------------- |
-| `broker/`   | `@hedwigjs/broker`   | Runtime broker + observability primitives. Ships the built-in bridges for postMessage / BroadcastChannel / WebSocket / SSE. | Ported (0.1.0, private) |
-| `devtools/` | `@hedwigjs/devtools` | React panel: message timeline, clients, bridges, replay buffer, system events.                       | Ported (0.1.0, private) |
+| `broker/`   | `@hedwigjs/broker`   | Runtime broker + observability primitives. Ships the built-in bridges for postMessage / BroadcastChannel / WebSocket / SSE. | Published |
+| `devtools/` | `@hedwigjs/devtools` | React panel: message timeline, clients, bridges, replay buffer, system events.                       | Published |
 
 ## Starter kits (optional)
 
@@ -19,7 +19,7 @@ Convenience tooling around the core. Not required to use Hedwig.
 
 | Directory          | npm name                    | Role                                                                                                                                                                                                                                       | Status                  |
 | ------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------- |
-| `create-registry/` | `@hedwigjs/create-registry` | Initializer CLI (`npm create @hedwigjs/registry`) that scaffolds an opinionated topic-registry package for TS-first greenfield projects. Optional — broker accepts topic types from any source (Zod, Protobuf, GraphQL, hand-written, mixed). | Ported (0.1.0, private) |
+| `create-registry/` | `@hedwigjs/create-registry` | Initializer CLI (`npm create @hedwigjs/registry`) that scaffolds an opinionated topic-registry package for TS-first greenfield projects. Optional — broker accepts topic types from any source (Zod, Protobuf, GraphQL, hand-written, mixed). | Published |
 
 See [`docs/content/guides/bring-your-own-contracts.md`](../docs/content/guides/bring-your-own-contracts.md)
 for alternatives.

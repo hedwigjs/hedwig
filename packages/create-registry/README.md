@@ -6,7 +6,6 @@ where each event lives in its own file and the runtime types
 (`Topic`, `TopicPayloads`, `TOPICS`, `registry`) are generated for you.
 
 ```bash
-# planned CLI, not yet published to npm:
 npm create @hedwigjs/registry my-topics
 ```
 
@@ -16,9 +15,9 @@ npm create @hedwigjs/registry my-topics
 > you already have a contracts pipeline, keep it — see
 > [Bring your own contracts](../../docs/content/guides/bring-your-own-contracts.md).
 
-> Pre-release (`0.1.0`, private). Not yet published to npm.
+> Pre-release.
 
-**Full project docs & reference stand →** [`../..#readme`](../..#readme)
+**Live demo →** [hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced) · **Full project docs →** [`../..#readme`](../..#readme)
 
 ---
 
