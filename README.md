@@ -305,8 +305,7 @@ hedwig/
 │   └── create-registry/# @hedwigjs/create-registry — scaffolder
 ├── examples/
 │   └── advanced/       # "Hedwig Café" reference stand
-├── docs/               # documentation + RFCs
-└── tooling/            # shared dev configs
+└── docs/               # documentation + RFCs
 ```
 
 Design decisions live under [`docs/content/rfcs/`](./docs/content/rfcs).

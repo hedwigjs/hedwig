@@ -15,7 +15,6 @@
   "homepage": "https://github.com/hedwigjs/hedwig#readme",
   "workspaces": [
     "packages/*",
-    "tooling/*",
     "examples/advanced",
     "examples/advanced/shell",
     "examples/advanced/mfe/*",
@@ -28,6 +27,8 @@
     "restart:demo": "npm run restart -w @hedwig-demo/advanced"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "^1.0.0",
+    "@changesets/cli": "^3.0.1",
     "typescript": "^5.8.3"
   },
   "engines": {
