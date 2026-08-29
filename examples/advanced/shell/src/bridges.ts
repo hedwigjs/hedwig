@@ -5,9 +5,14 @@ import {
 } from '@hedwigjs/broker';
 import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
 
+import { getLang } from '../../shared/i18n/useLang';
+
 // Baked at build time by webpack's EnvironmentPlugin (see webpack.config.js).
-// Falls back to the dev-server localhost URL when the env is absent.
-const NOTIFICATIONS_WS_URL = process.env.NOTIFICATIONS_WS_URL as string;
+// Falls back to the dev-server localhost URL when the env is absent. The
+// language query is appended at runtime so backend can localize the toast
+// content for the connecting client.
+const NOTIFICATIONS_WS_URL_BASE = process.env.NOTIFICATIONS_WS_URL as string;
+const NOTIFICATIONS_WS_URL = `${NOTIFICATIONS_WS_URL_BASE}?lang=${getLang()}`;
 
 const BRIDGE_ID = 'backend-notifications';
 const CROSS_TAB_BRIDGE_ID = 'cross-tab-cart';

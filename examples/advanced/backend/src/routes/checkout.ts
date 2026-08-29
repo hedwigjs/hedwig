@@ -18,12 +18,45 @@ function newOrderId(): string {
   return `A-${stamp}-${rand}`;
 }
 
-const IFRAME_HTML = `<!DOCTYPE html>
-<html lang="ru">
+type Lang = 'en' | 'ru';
+
+const HTML_STRINGS: Record<Lang, Record<string, string>> = {
+  en: {
+    lang: 'en',
+    title: 'Hedwig Checkout',
+    h1: 'Order payment',
+    lead: "Test form. Data goes nowhere except this local backend.",
+    labelCard: 'Card number',
+    labelName: 'Cardholder',
+    submit: 'Confirm payment',
+    statusA: 'Order',
+    statusB: 'accepted. Status:',
+  },
+  ru: {
+    lang: 'ru',
+    title: 'Hedwig Checkout',
+    h1: 'Оплата заказа',
+    lead: "Тестовая форма. Данные никуда не уходят, кроме локального backend'а.",
+    labelCard: 'Номер карты',
+    labelName: 'Держатель',
+    submit: 'Подтвердить оплату',
+    statusA: 'Заказ',
+    statusB: 'принят. Статус:',
+  },
+};
+
+function pickLang(raw: unknown): Lang {
+  return raw === 'ru' ? 'ru' : 'en';
+}
+
+const iframeHtml = (lang: Lang): string => {
+  const s = HTML_STRINGS[lang];
+  return `<!DOCTYPE html>
+<html lang="${s.lang}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Hedwig Checkout</title>
+  <title>${s.title}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500;600&display=swap" />
@@ -129,12 +162,12 @@ const IFRAME_HTML = `<!DOCTYPE html>
 </head>
 <body>
   <span class="eyebrow">Hedwig Checkout · iframe</span>
-  <h1>Оплата заказа</h1>
-  <p class="lead">Тестовая форма. Данные никуда не уходят, кроме локального backend'а.</p>
+  <h1>${s.h1}</h1>
+  <p class="lead">${s.lead}</p>
 
   <form id="f">
     <div class="row">
-      <label for="card">Номер карты</label>
+      <label for="card">${s.labelCard}</label>
       <input id="card" value="4242 4242 4242 4242" inputmode="numeric" />
     </div>
     <div class="grid">
@@ -148,10 +181,10 @@ const IFRAME_HTML = `<!DOCTYPE html>
       </div>
     </div>
     <div class="row">
-      <label for="name">Держатель</label>
+      <label for="name">${s.labelName}</label>
       <input id="name" value="IVAN IVANOV" />
     </div>
-    <button type="submit">Подтвердить оплату</button>
+    <button type="submit">${s.submit}</button>
   </form>
 
   <div id="status" class="status"></div>
@@ -171,7 +204,7 @@ const IFRAME_HTML = `<!DOCTYPE html>
       });
       const data = await res.json();
       status.classList.add('on');
-      status.innerHTML = 'Заказ <em>' + data.orderId + '</em> принят. Статус: ' + data.status + '.';
+      status.innerHTML = '${s.statusA} <em>' + data.orderId + '</em> ${s.statusB} ' + data.status + '.';
       // Отправляем через postMessage в форме broker Message'а — на parent'е
       // висит @hedwigjs/broker bridge с PostMessageTransport, он подхватит
       // и заинжектит в шину. Iframe не запускает свой broker — только
@@ -191,12 +224,14 @@ const IFRAME_HTML = `<!DOCTYPE html>
   </script>
 </body>
 </html>`;
+};
 
 export function registerCheckoutRoutes(app: Express): void {
-  app.get('/checkout', (_req, res) => {
+  app.get('/checkout', (req, res) => {
+    const lang = pickLang(req.query?.lang);
     res.status(200);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(IFRAME_HTML);
+    res.send(iframeHtml(lang));
   });
 
   app.post('/checkout', (req: Request<unknown, unknown, CheckoutBody>, res: Response) => {

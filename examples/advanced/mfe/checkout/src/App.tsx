@@ -18,7 +18,7 @@ import { getLang } from '../../../shared/i18n/useLang';
 // Baked at build time by webpack's EnvironmentPlugin (see webpack.config.js).
 const IFRAME_ORIGIN = process.env.CHECKOUT_IFRAME_ORIGIN as string;
 
-const IFRAME_URL = `${IFRAME_ORIGIN}/checkout`;
+const IFRAME_URL = `${IFRAME_ORIGIN}/checkout?lang=${getLang()}`;
 
 const BRIDGE_ID = 'checkout-iframe';
 

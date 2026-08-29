@@ -149,7 +149,7 @@ export function useChat() {
       // which closes it. Bridge is per-request because the endpoint is
       // per-request (backend closes the stream after `chat.reply-completed`);
       // otherwise the browser would auto-reconnect and re-run the reply.
-      const url = `${BACKEND_URL}?prompt=${encodeURIComponent(trimmed)}&replyId=${encodeURIComponent(replyId)}`;
+      const url = `${BACKEND_URL}?prompt=${encodeURIComponent(trimmed)}&replyId=${encodeURIComponent(replyId)}&lang=${getLang()}`;
       const transport = new SSETransport({ url });
 
       const broker = getBroker<Topic, TopicPayloads>();
