@@ -22,6 +22,7 @@ concurrency:
 
 env:
   DOMAIN: hedwigjs.com
+  BASE_PATH: /demo/advanced
   NODE_VERSION: "22"
 
 jobs:
@@ -50,15 +51,15 @@ jobs:
       - name: Build shell (with prod remotes + WS URL)
         working-directory: examples/advanced/shell
         env:
-          NOTIFICATIONS_WS_URL: wss://${{ env.DOMAIN }}/ws/notifications
-          MFE_REMOTES_BASE: /mfe
+          NOTIFICATIONS_WS_URL: wss://${{ env.DOMAIN }}${{ env.BASE_PATH }}/ws/notifications
+          MFE_REMOTES_BASE: ${{ env.BASE_PATH }}/mfe
         run: npm run build
 
       - name: Build MFEs (parallel)
         working-directory: examples/advanced
         env:
-          AI_STREAM_URL: https://${{ env.DOMAIN }}/ai/stream
-          CHECKOUT_IFRAME_ORIGIN: https://${{ env.DOMAIN }}
+          AI_STREAM_URL: https://${{ env.DOMAIN }}${{ env.BASE_PATH }}/ai/stream
+          CHECKOUT_IFRAME_URL: https://${{ env.DOMAIN }}${{ env.BASE_PATH }}/checkout
         run: |
           set -e
           for m in menu cart ai-chat notifications checkout analytics; do
@@ -113,6 +114,22 @@ jobs:
             "${{ secrets.HEDWIG_VM_USER }}@${{ secrets.HEDWIG_VM_HOST }}" \
             "echo '${{ steps.backend.outputs.fp }}' > /var/www/hedwig/.backend-fingerprint"
 
+      - name: Sync nginx config + reload (only if it changed)
+        run: |
+          scp -i ~/.ssh/hedwig_vm -o StrictHostKeyChecking=no \
+            examples/advanced/deploy/nginx.conf \
+            "${{ secrets.HEDWIG_VM_USER }}@${{ secrets.HEDWIG_VM_HOST }}:/tmp/hedwig-nginx.conf"
+          ssh -i ~/.ssh/hedwig_vm -o StrictHostKeyChecking=no \
+            "${{ secrets.HEDWIG_VM_USER }}@${{ secrets.HEDWIG_VM_HOST }}" \
+            'if ! sudo diff -q /tmp/hedwig-nginx.conf /etc/nginx/sites-available/hedwig >/dev/null 2>&1; then
+               sudo mv /tmp/hedwig-nginx.conf /etc/nginx/sites-available/hedwig
+               sudo nginx -t && sudo systemctl reload nginx
+               echo "nginx config updated + reloaded"
+             else
+               rm /tmp/hedwig-nginx.conf
+               echo "nginx config unchanged"
+             fi'
+
       - name: Reinstall backend deps + restart (if backend changed)
         if: steps.backend.outputs.changed == 'yes'
         run: |
@@ -123,14 +140,17 @@ jobs:
       - name: Smoke test
         run: |
           set -e
-          curl -sf -o /dev/null -w "shell=%{http_code}\n"    "https://${{ env.DOMAIN }}/"
-          curl -sf -o /dev/null -w "menu.js=%{http_code}\n"  "https://${{ env.DOMAIN }}/mfe/menu/remoteEntry.js"
-          curl -sf -o /dev/null -w "cart.js=%{http_code}\n"  "https://${{ env.DOMAIN }}/mfe/cart/remoteEntry.js"
-          curl -sf -o /dev/null -w "health=%{http_code}\n"   "https://${{ env.DOMAIN }}/health"
+          BASE="https://${{ env.DOMAIN }}${{ env.BASE_PATH }}"
+          curl -sf -o /dev/null -w "shell=%{http_code}\n"    "$BASE/"
+          curl -sf -o /dev/null -w "menu.js=%{http_code}\n"  "$BASE/mfe/menu/remoteEntry.js"
+          curl -sf -o /dev/null -w "cart.js=%{http_code}\n"  "$BASE/mfe/cart/remoteEntry.js"
+          curl -sf -o /dev/null -w "health=%{http_code}\n"   "$BASE/health"
+          # Root should 302 to the demo path.
+          curl -s -o /dev/null -w "root_redirect=%{http_code}\n" "https://${{ env.DOMAIN }}/"
 
       - name: Summary
         run: |
-          echo "## 🚀 Deployed to https://${{ env.DOMAIN }}" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Deployed to https://${{ env.DOMAIN }}${{ env.BASE_PATH }}/" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- Backend restarted: **${{ steps.backend.outputs.changed }}**" >> $GITHUB_STEP_SUMMARY
           echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY

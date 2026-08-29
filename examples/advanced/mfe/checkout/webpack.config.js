@@ -2,8 +2,12 @@ const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { ModuleFederationPlugin } = require('webpack').container;
 
-const CHECKOUT_ORIGIN =
-  process.env.CHECKOUT_IFRAME_ORIGIN ?? 'http://localhost:4000';
+// Full URL where the iframe is served from (protocol + host + path,
+// no query). Dev default = local backend at root; prod build passes
+// something like `https://hedwigjs.com/demo/advanced/checkout`.
+const CHECKOUT_IFRAME_URL =
+  process.env.CHECKOUT_IFRAME_URL ?? 'http://localhost:4000/checkout';
+const CHECKOUT_ORIGIN = new URL(CHECKOUT_IFRAME_URL).origin;
 
 module.exports = {
   mode: 'development',
@@ -63,7 +67,7 @@ module.exports = {
       },
     }),
     new (require('webpack').EnvironmentPlugin)({
-      CHECKOUT_IFRAME_ORIGIN: CHECKOUT_ORIGIN,
+      CHECKOUT_IFRAME_URL,
     }),
   ],
   devServer: {

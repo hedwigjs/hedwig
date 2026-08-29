@@ -197,7 +197,9 @@ const iframeHtml = (lang: Lang): string => {
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const res = await fetch('/checkout', {
+      // Relative — resolves to the iframe's own path (/checkout in dev,
+      // /demo/advanced/checkout in prod). Keeps the backend URL-prefix-agnostic.
+      const res = await fetch('checkout', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ items: [], totalPrice: 0 }),

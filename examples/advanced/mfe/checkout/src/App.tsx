@@ -15,10 +15,14 @@ import { CheckoutModal } from './components/CheckoutModal';
 
 import { getLang } from '../../../shared/i18n/useLang';
 
-// Baked at build time by webpack's EnvironmentPlugin (see webpack.config.js).
-const IFRAME_ORIGIN = process.env.CHECKOUT_IFRAME_ORIGIN as string;
+// Full URL base for the iframe (protocol + host + path prefix — everything
+// except the query string). Baked at build time by webpack's
+// EnvironmentPlugin. Dev default points at the backend dev-server; prod
+// points at nginx-proxied path under /demo/advanced.
+const IFRAME_URL_BASE = process.env.CHECKOUT_IFRAME_URL as string;
 
-const IFRAME_URL = `${IFRAME_ORIGIN}/checkout?lang=${getLang()}`;
+const IFRAME_ORIGIN = new URL(IFRAME_URL_BASE).origin;
+const IFRAME_URL = `${IFRAME_URL_BASE}?lang=${getLang()}`;
 
 const BRIDGE_ID = 'checkout-iframe';
 
