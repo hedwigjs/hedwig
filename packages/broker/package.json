@@ -1,6 +1,6 @@
 {
   "name": "@hedwigjs/broker",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Runtime broker for the Hedwig messaging toolkit. One API over any transport.",
   "publishConfig": {
     "access": "public"
