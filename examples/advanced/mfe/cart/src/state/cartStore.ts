@@ -1,4 +1,9 @@
 import type { CartItem } from '@hedwig-demo/contracts';
+import type {
+  CartAddItemResponse,
+  CartDecrementResponse,
+  CartRemoveItemResponse,
+} from '@hedwig-demo/contracts';
 
 import { runtimeBus } from '../clients/bus';
 
@@ -36,19 +41,28 @@ function parsePrice(price: string): number {
   return digits ? parseInt(digits, 10) : 0;
 }
 
+function computeSubtotal(items: CartItem[]): number {
+  return items.reduce((sum, i) => sum + parsePrice(i.price) * i.quantity, 0);
+}
+
 function computeTotals(items: CartItem[]) {
   const totalItems = items.reduce((sum, i) => sum + i.quantity, 0);
-  const totalPrice = items.reduce(
-    (sum, i) => sum + parsePrice(i.price) * i.quantity,
-    0,
-  );
+  const totalPrice = computeSubtotal(items);
   return { totalItems, totalPrice };
 }
 
 /**
- * Идемпотентный старт. Первый вызов подписывает runtime на bus'у и начинает
- * держать состояние. Все последующие — no-op. Безопасно звать из любого
- * bootstrap'а (panel/header-trigger) — кто первый смонтировался, тот и запустил.
+ * Идемпотентный старт. Первый вызов регистрирует cart-runtime как обработчик
+ * request'ов на мутации корзины и как publisher `cart.snapshot.v1`. Все
+ * последующие — no-op. Безопасно звать из любого bootstrap'а.
+ *
+ * Архитектурная разметка после перевода на CQRS:
+ *  - Мутации приходят как **request** от любого MFE (menu, cart-ui,
+ *    checkout). Handler возвращает response — sender видит результат
+ *    (`RoutingResult.data`).
+ *  - Текущее состояние — **state broadcast** `cart.snapshot.v1` с
+ *    `history: true`, чтобы late-joiner получал последний snapshot через
+ *    `on(..., { replay: { limit: 1 } })`.
  */
 export function startCartRuntime(): void {
   const rt = getRuntime();
@@ -69,57 +83,72 @@ export function startCartRuntime(): void {
     );
   };
 
-  runtimeBus.on('cart.item-added.v1', (msg) => {
+  runtimeBus.on('cart.add-item.v1', (msg): CartAddItemResponse => {
     const payload = msg.data;
-    if (state[payload.itemId]) return;
+    const existing = state[payload.itemId];
+    const nextQuantity = existing ? existing.quantity + 1 : 1;
+
     state = {
       ...state,
-      [payload.itemId]: {
-        itemId: payload.itemId,
-        name: payload.name,
-        price: payload.price,
-        quantity: 1,
-      },
+      [payload.itemId]: existing
+        ? { ...existing, quantity: nextQuantity }
+        : {
+            itemId: payload.itemId,
+            name: payload.name,
+            price: payload.price,
+            quantity: 1,
+          },
     };
+
     emitSnapshot();
+    return {
+      itemId: payload.itemId,
+      quantity: nextQuantity,
+      subtotal: computeSubtotal(Object.values(state)),
+    };
   });
 
-  runtimeBus.on('cart.item-incremented.v1', (msg) => {
+  runtimeBus.on('cart.decrement.v1', (msg): CartDecrementResponse => {
     const { itemId } = msg.data;
     const current = state[itemId];
-    if (!current) return;
-    state = {
-      ...state,
-      [itemId]: { ...current, quantity: current.quantity + 1 },
-    };
-    emitSnapshot();
-  });
-
-  runtimeBus.on('cart.item-decremented.v1', (msg) => {
-    const { itemId } = msg.data;
-    const current = state[itemId];
-    if (!current) return;
+    if (!current) {
+      return { itemId, quantity: 0, subtotal: computeSubtotal(Object.values(state)) };
+    }
     if (current.quantity <= 1) {
       const { [itemId]: _dropped, ...rest } = state;
       state = rest;
-    } else {
-      state = {
-        ...state,
-        [itemId]: { ...current, quantity: current.quantity - 1 },
-      };
+      emitSnapshot();
+      return { itemId, quantity: 0, subtotal: computeSubtotal(Object.values(state)) };
     }
+    const nextQuantity = current.quantity - 1;
+    state = {
+      ...state,
+      [itemId]: { ...current, quantity: nextQuantity },
+    };
     emitSnapshot();
+    return {
+      itemId,
+      quantity: nextQuantity,
+      subtotal: computeSubtotal(Object.values(state)),
+    };
   });
 
-  runtimeBus.on('cart.item-removed.v1', (msg) => {
+  runtimeBus.on('cart.remove-item.v1', (msg): CartRemoveItemResponse => {
     const { itemId } = msg.data;
-    if (!state[itemId]) return;
+    if (!state[itemId]) {
+      return { itemId, removed: false, subtotal: computeSubtotal(Object.values(state)) };
+    }
     const { [itemId]: _dropped, ...rest } = state;
     state = rest;
     emitSnapshot();
+    return {
+      itemId,
+      removed: true,
+      subtotal: computeSubtotal(Object.values(state)),
+    };
   });
 
   // Fire an initial empty snapshot so late-joining subscribers (with `replay`)
-  // don't get `undefined` before any bus events.
+  // don't get `undefined` before any commands.
   emitSnapshot();
 }

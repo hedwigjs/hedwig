@@ -12,7 +12,7 @@
  * hooks, state). Everything else stays local to its event contract file.
  */
 
-/** A menu dish, referenced by `ui.menu-item-opened.v1` payload and by storefront UI. */
+/** A menu dish, referenced by `ui.menu-item-opened.v1` payload and by the menu MFE UI. */
 export type MenuNutrition = {
   caloriesKcal: number;
   proteinG: number;
@@ -29,7 +29,7 @@ export type MenuItem = {
   nutrition: MenuNutrition;
 };
 
-/** A cart line item, referenced by `cart.snapshot.v1`, `cart.checkout-requested.v1` and by cart/storefront UI. */
+/** A cart line item, referenced by `cart.snapshot.v1`, `checkout.start.v1` and by cart/menu UI. */
 export type CartItem = {
   itemId: number;
   name: string;

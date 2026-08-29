@@ -2,7 +2,13 @@ import type { FC } from 'react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getBroker, PostMessageTransport } from '@hedwigjs/broker';
-import type { CartItem, Topic, TopicPayloads } from '@hedwig-demo/contracts';
+import type {
+  CartItem,
+  CartRemoveItemResponse,
+  CheckoutStartResponse,
+  Topic,
+  TopicPayloads,
+} from '@hedwig-demo/contracts';
 
 import { bus } from './clients/bus';
 import { CheckoutModal } from './components/CheckoutModal';
@@ -53,12 +59,20 @@ export const App: FC = () => {
     });
   }, []);
 
-  // Trigger from cart
+  // Handler for the cart → checkout START request. Registered on the same
+  // topic as any sender (cart-ui) would call. Returning the response synchronously
+  // ACKs the cart before the modal is even mounted — sender's `await` resolves
+  // with `{ sessionId, ready: true }` and knows the hand-off succeeded.
   useEffect(() => {
-    return bus.on('cart.checkout-requested.v1', (msg) => {
+    return bus.on('checkout.start.v1', (msg): CheckoutStartResponse => {
       const { items, totalPrice } = msg.data;
-      if (items.length === 0) return;
-      setPending({ items, totalPrice });
+      if (items.length > 0) {
+        setPending({ items, totalPrice });
+      }
+      return {
+        sessionId: `chk-${Date.now().toString(36)}`,
+        ready: true,
+      };
     });
   }, []);
 
@@ -74,9 +88,16 @@ export const App: FC = () => {
         body: 'Скоро появится статус в панели уведомлений.',
       });
 
+      // Clear the checked-out lines from the cart via targeted requests to
+      // cart-runtime — checkout doesn't own cart state, it just asks the
+      // runtime to drop each purchased line.
       const items = pendingRef.current?.items ?? [];
       for (const item of items) {
-        void bus.emit('cart.item-removed.v1', { itemId: item.itemId });
+        void bus.request<'cart.remove-item.v1', CartRemoveItemResponse>(
+          'cart-runtime',
+          'cart.remove-item.v1',
+          { itemId: item.itemId },
+        );
       }
 
       setPending(null);

@@ -79,28 +79,26 @@ export function installBackendNotificationsBridge(): void {
 /**
  * Cross-tab cart sync via BroadcastChannel.
  *
- * Every tab hosts its own cart runtime that derives the snapshot from
- * the stream of `cart.item-*` commands. We broadcast ONLY those commands
- * (not the snapshot) — each tab replays them and arrives at the same
- * state deterministically. Sync is symmetric: any tab can be the one
- * where the user clicks; every other tab picks up the same command with
- * `fromExternal=true`, feeds its own runtime, and re-renders.
+ * With the CQRS refactor, mutations are addressed **requests** to a specific
+ * cart-runtime instance and cannot be broadcast — a request needs its
+ * recipient to be locally subscribed on the receiving broker to get a
+ * response. Instead we broadcast the **state** — `cart.snapshot.v1` — which
+ * is exactly the retained payload late/other-tab subscribers already know
+ * how to render. Each tab's cart-runtime is the source of truth for its own
+ * mutations; when its snapshot lands in another tab via this bridge, the
+ * remote tab's UI re-renders from that snapshot without touching its local
+ * runtime.
  *
- * Why not broadcast the snapshot: two tabs would race to overwrite each
- * other's state on independent actions. Command-level sync keeps each
- * runtime authoritative for its own inputs and idempotent for others.
+ * Note: this converges to "last write wins" if two tabs mutate at the same
+ * time. For richer conflict handling later — CRDT snapshots, vector clocks,
+ * or an explicit owner-tab election.
  */
 export function installCrossTabCartBridge(): () => void {
   const broker = getBroker<Topic, TopicPayloads>();
   const transport = new BroadcastChannelTransport(CROSS_TAB_CHANNEL);
   const removeBridge = broker.addBridge(CROSS_TAB_BRIDGE_ID, {
     transport,
-    forward: [
-      'cart.item-added.v1',
-      'cart.item-incremented.v1',
-      'cart.item-decremented.v1',
-      'cart.item-removed.v1',
-    ],
+    forward: ['cart.snapshot.v1'],
   });
 
   return () => {

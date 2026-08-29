@@ -52,11 +52,12 @@ module.exports = {
       remotes: {
         // Add new MFEs here as they come online. Each remote is a separate
         // dev-server on its own port.
-        storefront: 'storefront@http://localhost:3001/remoteEntry.js',
+        menu: 'menu@http://localhost:3001/remoteEntry.js',
         cart: 'cart@http://localhost:3002/remoteEntry.js',
         ai_chat: 'ai_chat@http://localhost:3003/remoteEntry.js',
         notifications: 'notifications@http://localhost:3004/remoteEntry.js',
         checkout: 'checkout@http://localhost:3005/remoteEntry.js',
+        analytics: 'analytics@http://localhost:3006/remoteEntry.js',
       },
       shared: {
         react: { singleton: true, eager: true, requiredVersion: '19.1.1' },
@@ -71,12 +72,13 @@ module.exports = {
     }),
     new HtmlWebpackPlugin({
       template: './public/index.html',
+      favicon: './public/favicon.png',
     }),
   ],
   devServer: {
     port: 3000,
     historyApiFallback: true,
-    static: path.join(__dirname, 'dist'),
+    static: [path.join(__dirname, 'dist'), path.join(__dirname, 'public')],
     hot: false,
     headers: {
       'Access-Control-Allow-Origin': '*',

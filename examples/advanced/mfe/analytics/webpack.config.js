@@ -32,22 +32,22 @@ module.exports = {
                 auto: /\.module\.\w+$/i,
                 namedExport: false,
                 exportLocalsConvention: 'camelCase',
-                localIdentName: '[name]__[local]--[hash:base64:6]',
+                // MFE-scoped prefix — different MFE workspaces have same
+                // `App.module.css` filenames and same class names (`.title`),
+                // and a 6-char hash of the module ident can collide across
+                // remotes. Scoping the identifier by MFE name eliminates the
+                // ambiguity — global styles no longer leak between remotes.
+                localIdentName: 'analytics__[name]__[local]--[hash:base64:8]',
               },
             },
           },
         ],
       },
-      {
-        test: /\.(png|jpg|jpeg|gif|svg|webp)$/i,
-        type: 'asset',
-        parser: { dataUrlCondition: { maxSize: 8 * 1024 } },
-      },
     ],
   },
   plugins: [
     new ModuleFederationPlugin({
-      name: 'storefront',
+      name: 'analytics',
       filename: 'remoteEntry.js',
       exposes: {
         './App': './src/bootstrap.tsx',
@@ -63,7 +63,7 @@ module.exports = {
     }),
   ],
   devServer: {
-    port: 3001,
+    port: 3006,
     historyApiFallback: true,
     static: path.join(__dirname, 'dist'),
     hot: true,

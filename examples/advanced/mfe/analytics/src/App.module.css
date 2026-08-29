@@ -1,0 +1,245 @@
+/*
+ * Analytics widget — visually a sibling of the cart panel that sits above
+ * it in the right column. Typography and rhythm mirror the cart's own
+ * components (see CartHeader / CartFooter / CartEmpty in mfe/cart) so the
+ * two blocks look like one design system, not two.
+ */
+
+.card {
+  background: var(--hdw-surface, #fbf7f0);
+  border: 1px solid var(--hdw-line, #e2d6c4);
+  border-radius: var(--hdw-r-xl, 22px);
+  padding: 24px 22px;
+  box-shadow: var(--hdw-shadow-soft, 0 2px 8px rgba(26, 22, 19, 0.05));
+  color: var(--hdw-ink, #1a1613);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Header — mirrors CartHeader (baseline aligned title + upper-cased badge). */
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--hdw-line, #e2d6c4);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--hdw-font-serif, Georgia, serif);
+  font-size: 1.4rem;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  color: var(--hdw-ink, #1a1613);
+  line-height: 1.1;
+}
+
+/* Header badge — mirrors REPLAY DEMO in LateMountDemo and Cart's `2 ПОЗИЦИИ`
+   badge so all right-column card headers share the same "small caps label"
+   affordance. */
+
+.badge {
+  font-family: var(--hdw-font-sans, -apple-system, sans-serif);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--hdw-ink-subtle, #8f8577);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Section captions — same recipe as CartFooter's small header labels. */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-family: var(--hdw-font-sans, -apple-system, sans-serif);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--hdw-ink-subtle, #8f8577);
+}
+
+/* Received-events counter — moved out of the header (it was a big red
+   number competing with the title). Lives next to the section it actually
+   describes: how many events made it through the ACL onto our subscriptions. */
+
+.counter {
+  font-family: var(--hdw-font-sans, -apple-system, sans-serif);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hdw-ink-subtle, #8f8577);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.counterNumber {
+  color: var(--hdw-accent, #7a1f1f);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.allowedList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--hdw-r-full, 999px);
+  background: var(--hdw-surface-alt, #ede4d3);
+  color: var(--hdw-ink-soft, #3a3129);
+  font-family: var(
+    --hdw-font-mono,
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace
+  );
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.pillCheck {
+  color: var(--hdw-gold, #b88746);
+  font-weight: 700;
+}
+
+/* Demo section — divider mirrors the cart's dashed footer separators. */
+
+.demoBox {
+  border-top: 1px dashed var(--hdw-line-strong, #c8b89e);
+  padding-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.attemptRow {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.attemptHint {
+  margin: 0;
+  font-family: var(--hdw-font-sans, -apple-system, sans-serif);
+  font-size: 0.88rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--hdw-ink-muted, #6b5f55);
+}
+
+.attemptHint strong {
+  color: var(--hdw-ink, #1a1613);
+  font-weight: 600;
+}
+
+.attemptHint code {
+  font-family: var(
+    --hdw-font-mono,
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace
+  );
+  font-size: 0.8rem;
+  padding: 1px 5px;
+  background: var(--hdw-surface-alt, #ede4d3);
+  border-radius: var(--hdw-r-sm, 6px);
+  color: var(--hdw-ink-soft, #3a3129);
+}
+
+.btn {
+  appearance: none;
+  border: 1.5px solid var(--hdw-line-strong, #c8b89e);
+  background: transparent;
+  color: var(--hdw-ink, #1a1613);
+  border-radius: var(--hdw-r-md, 10px);
+  padding: 10px 14px;
+  font-family: var(
+    --hdw-font-mono,
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace
+  );
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.btn:hover {
+  border-color: var(--hdw-accent, #7a1f1f);
+  color: var(--hdw-accent, #7a1f1f);
+  background: rgba(122, 31, 31, 0.04);
+}
+
+.btn:active {
+  background: rgba(122, 31, 31, 0.08);
+}
+
+.result {
+  font-family: var(
+    --hdw-font-mono,
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace
+  );
+  font-size: 0.72rem;
+  padding: 10px 12px;
+  border-radius: var(--hdw-r-md, 10px);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.resultOk {
+  background: rgba(184, 135, 70, 0.14);
+  color: var(--hdw-ink-soft, #3a3129);
+  border: 1px solid rgba(184, 135, 70, 0.4);
+}
+
+.resultDenied {
+  background: rgba(161, 52, 31, 0.08);
+  color: var(--hdw-danger, #a1341f);
+  border: 1px solid rgba(161, 52, 31, 0.3);
+}
+
+.resultLabel {
+  font-weight: 700;
+  margin-right: 6px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+}
