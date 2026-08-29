@@ -206,10 +206,6 @@ the receiver.
 ## Reference stand
 
 > **Live demo → [hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced)**
->
-> Deployed on a Yandex Cloud VM behind Let's Encrypt HTTPS. Auto-updated
-> from `main` via GitHub Actions ([`.github/workflows/deploy-stand.yml`](./.github/workflows/deploy-stand.yml)).
-> Click the mascot on the right edge to open the DevTools panel.
 
 `examples/advanced/` hosts **Hedwig Café** — a food-delivery demo that
 puts every value prop above in one screen: unified API across modules,
