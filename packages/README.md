@@ -5,28 +5,35 @@ workspace with its own `package.json`, `tsconfig.json`, and build output.
 
 ## Core
 
-The three packages that make up the Hedwig product itself. These are what
-users install to build on Hedwig.
+The packages that make up Hedwig itself — what users install to build on
+Hedwig.
 
-| Directory              | npm name                        | Role                                                              | Status |
-| ---------------------- | ------------------------------- | ----------------------------------------------------------------- | --- |
-| `broker/`              | `@hedwigjs/broker`              | Runtime broker. Unified transport API + observability primitives. | Ported (0.1.0, private) |
-| `devtools/`            | `@hedwigjs/devtools`            | React panel: message timeline, clients, topics-registry view.     | Ported (0.1.0, private) |
-| `adapter-websocket/`   | `@hedwigjs/adapter-websocket`   | First-party WS transport adapter.                                 | Planned |
-| `adapter-sse/`         | `@hedwigjs/adapter-sse`         | First-party SSE (EventSource) adapter.                            | Planned |
-| `adapter-postmessage/` | `@hedwigjs/adapter-postmessage` | First-party `postMessage` adapter for iframe / worker.            | Planned |
-| `adapter-cloudevents/` | `@hedwigjs/adapter-cloudevents` | CNCF CloudEvents envelope adapter.                                | Planned |
-
-Adapter design is documented in
-[`docs/content/rfcs/0001-transport-adapters.md`](../docs/content/rfcs/0001-transport-adapters.md).
+| Directory   | npm name             | Role                                                                                                | Status                  |
+| ----------- | -------------------- | --------------------------------------------------------------------------------------------------- | ----------------------- |
+| `broker/`   | `@hedwigjs/broker`   | Runtime broker + observability primitives. Ships the built-in bridges for postMessage / BroadcastChannel / WebSocket / SSE. | Ported (0.1.0, private) |
+| `devtools/` | `@hedwigjs/devtools` | React panel: message timeline, clients, bridges, replay buffer, system events.                       | Ported (0.1.0, private) |
 
 ## Starter kits (optional)
 
 Convenience tooling around the core. Not required to use Hedwig.
 
-| Directory              | npm name                        | Role                                                              | Status |
-| ---------------------- | ------------------------------- | ----------------------------------------------------------------- | --- |
-| `create-registry/`     | `@hedwigjs/create-registry`     | Initializer CLI (`npm create @hedwigjs/registry`) that scaffolds an opinionated topic-registry package for TS-first greenfield projects. Optional — broker accepts topic types from any source (Zod, Protobuf, GraphQL, hand-written, mixed). | Ported (0.1.0, private) |
+| Directory          | npm name                    | Role                                                                                                                                                                                                                                       | Status                  |
+| ------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------- |
+| `create-registry/` | `@hedwigjs/create-registry` | Initializer CLI (`npm create @hedwigjs/registry`) that scaffolds an opinionated topic-registry package for TS-first greenfield projects. Optional — broker accepts topic types from any source (Zod, Protobuf, GraphQL, hand-written, mixed). | Ported (0.1.0, private) |
 
 See [`docs/content/guides/bring-your-own-contracts.md`](../docs/content/guides/bring-your-own-contracts.md)
 for alternatives.
+
+## Roadmap — separate adapter packages
+
+Today every transport ships inside `@hedwigjs/broker` and plugs into the
+core via the `BridgeTransport` interface (three methods: `send`,
+`onMessage`, `destroy`). That layout is deliberate for the pre-release —
+the interface is still stabilising and one `npm i @hedwigjs/broker`
+gets a user everything.
+
+Once the transport contract is stable, individual transports move into
+standalone `@hedwigjs/adapter-*` packages so users pull in only what they
+need and community authors can publish their own without forking core.
+Design lives in
+[`docs/content/rfcs/0001-transport-adapters.md`](../docs/content/rfcs/0001-transport-adapters.md).

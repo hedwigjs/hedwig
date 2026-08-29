@@ -262,8 +262,9 @@ async function main(): Promise<void> {
 Done! Next steps:
 
   cd ${answers.directory}
-  ${install ? "" : "npm install\n  "}npm run dev    # watch-сборка
-  npm run add    # scaffold нового события
+  ${install ? "" : "npm install\n  "}npm run dev    # watch codegen + tsc
+  # Add an event: create src/domains/<domain>/<action>.v1.ts
+  # (see the generated README for the file template)
 `);
 }
 

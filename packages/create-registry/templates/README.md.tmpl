@@ -76,9 +76,10 @@ import type { Topic, TopicPayloads } from "{{PACKAGE_NAME}}";
 initBroker<Topic, TopicPayloads>({...});
 ```
 
-```ts
-import { mountDevTools } from "@hedwigjs/devtools";
+```tsx
+import { getBroker } from "@hedwigjs/broker";
+import { MessageBrokerDevTools } from "@hedwigjs/devtools";
 import { registry } from "{{PACKAGE_NAME}}";
 
-mountDevTools({ broker, registry });
+<MessageBrokerDevTools broker={getBroker()} registry={registry} />
 ```
