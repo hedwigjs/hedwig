@@ -1,24 +1,58 @@
 import { ensureSlot } from './slots';
 import { setupAiDrawer } from './aiDrawer';
+import { getLang, setLang, t, type Lang } from '../../../shared/i18n/useLang';
 
-const HEADER_HTML = `
+const T = {
+  en: {
+    eyebrow: 'est. 2026',
+    meta: 'Reference stand · Hedwig',
+    metaAria: 'Reference stand for @hedwigjs 0.1.0',
+    openAi: 'Open AI concierge',
+    aiTitle: '-concierge',
+    close: 'Close',
+    langSwitch: 'Switch language',
+  },
+  ru: {
+    eyebrow: 'осн. 2026',
+    meta: 'Демо-стенд · Hedwig',
+    metaAria: 'Демо-стенд для @hedwigjs 0.1.0',
+    openAi: 'Открыть AI-консьерж',
+    aiTitle: '-консьерж',
+    close: 'Закрыть',
+    langSwitch: 'Сменить язык',
+  },
+} as const;
+
+function langToggleHtml(): string {
+  const current = getLang();
+  const items = (['en', 'ru'] as const)
+    .map(
+      (l) =>
+        `<button class="hdw-header__lang-item${l === current ? ' is-active' : ''}" data-lang="${l}" type="button">${l.toUpperCase()}</button>`,
+    )
+    .join('<span class="hdw-header__lang-sep" aria-hidden="true">·</span>');
+  return `<div class="hdw-header__lang" role="group" aria-label="${t(T, 'langSwitch')}">${items}</div>`;
+}
+
+const HEADER_HTML = () => `
   <header class="hdw-header">
     <div class="hdw-header__brand">
       <span class="hdw-header__wordmark">Hedwig <em>Café</em></span>
-      <span class="hdw-header__eyebrow">est. 2026</span>
+      <span class="hdw-header__eyebrow">${t(T, 'eyebrow')}</span>
     </div>
     <div class="hdw-header__actions">
       <div class="hdw-header__cart" data-slot-host="cart-header"></div>
-      <span class="hdw-header__meta" aria-label="Reference stand for @hedwigjs 0.1.0">
+      ${langToggleHtml()}
+      <span class="hdw-header__meta" aria-label="${t(T, 'metaAria')}">
         <span class="hdw-header__meta-dot" aria-hidden="true"></span>
-        <span class="hdw-header__meta-text">Демо-стенд · Hedwig <em>0.1.0</em></span>
+        <span class="hdw-header__meta-text">${t(T, 'meta')} <em>0.1.0</em></span>
       </span>
     </div>
   </header>
 `;
 
-const AI_FAB_HTML = `
-  <button class="hdw-ai-fab" type="button" aria-label="Открыть AI-консьерж" data-ai-fab>
+const AI_FAB_HTML = () => `
+  <button class="hdw-ai-fab" type="button" aria-label="${t(T, 'openAi')}" data-ai-fab>
     <span class="hdw-ai-fab__halo" aria-hidden="true"></span>
     <span class="hdw-ai-fab__ring" aria-hidden="true"></span>
     <svg class="hdw-ai-fab__icon" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
@@ -50,7 +84,7 @@ const AI_FAB_HTML = `
   </button>
 `;
 
-const AI_DRAWER_HTML = `
+const AI_DRAWER_HTML = () => `
   <div class="hdw-ai-drawer" data-ai-drawer aria-hidden="true">
     <div class="hdw-ai-drawer__scrim" data-ai-scrim></div>
     <aside class="hdw-ai-drawer__panel" role="dialog" aria-modal="true" aria-labelledby="hdw-ai-title">
@@ -65,10 +99,10 @@ const AI_DRAWER_HTML = `
             </svg>
           </span>
           <h2 id="hdw-ai-title" class="hdw-ai-drawer__title">
-            <em>AI</em>-консьерж
+            <em>AI</em>${t(T, 'aiTitle')}
           </h2>
         </div>
-        <button class="hdw-ai-drawer__close" type="button" aria-label="Закрыть" data-ai-close>
+        <button class="hdw-ai-drawer__close" type="button" aria-label="${t(T, 'close')}" data-ai-close>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
           </svg>
@@ -79,12 +113,21 @@ const AI_DRAWER_HTML = `
   </div>
 `;
 
+function wireLangToggle(): void {
+  document.querySelectorAll<HTMLButtonElement>('[data-lang]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const next = btn.dataset.lang as Lang | undefined;
+      if (next && (next === 'en' || next === 'ru')) setLang(next);
+    });
+  });
+}
+
 export function renderChrome(): void {
   const root = document.getElementById('root');
   if (!root) throw new Error('#root missing');
 
   root.innerHTML = `
-    ${HEADER_HTML}
+    ${HEADER_HTML()}
     <main class="hdw-main">
       <section class="hdw-main__left" data-slot-host="menu"></section>
       <aside class="hdw-main__right">
@@ -95,8 +138,8 @@ export function renderChrome(): void {
     </main>
     <div class="hdw-toasts" data-slot-host="notifications" aria-live="polite"></div>
     <div class="hdw-headless" data-slot-host="checkout" aria-hidden="true"></div>
-    ${AI_FAB_HTML}
-    ${AI_DRAWER_HTML}
+    ${AI_FAB_HTML()}
+    ${AI_DRAWER_HTML()}
   `;
 
   ensureSlot('menu');
@@ -108,4 +151,5 @@ export function renderChrome(): void {
   ensureSlot('checkout');
   ensureSlot('analytics');
   setupAiDrawer();
+  wireLangToggle();
 }

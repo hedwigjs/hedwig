@@ -82,6 +82,48 @@
   outline-offset: 2px;
 }
 
+/* Language toggle (EN · RU). Same eyebrow typography as the brand block. */
+
+.hdw-header__lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px;
+  font-family: var(--hdw-font-sans);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-weight: 500;
+  color: var(--hdw-ink-subtle);
+}
+
+.hdw-header__lang-item {
+  padding: 2px 4px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.hdw-header__lang-item:hover,
+.hdw-header__lang-item:focus-visible {
+  color: var(--hdw-ink);
+  outline: none;
+}
+
+.hdw-header__lang-item.is-active {
+  color: var(--hdw-ink);
+  font-weight: 600;
+}
+
+.hdw-header__lang-sep {
+  color: var(--hdw-line-strong);
+  user-select: none;
+}
+
 /* Right-side eyebrow — mirrors `.hdw-header__eyebrow` on the brand side.
    Pure label (not a button) — the site has no auth flow to expose here.
    The small dot echoes the DevTools `CONNECTED` indicator to hint that

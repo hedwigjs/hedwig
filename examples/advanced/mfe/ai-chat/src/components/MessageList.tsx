@@ -3,6 +3,8 @@ import React, { useEffect, useRef } from 'react';
 
 import type { ChatMessage } from '../hooks/useChat';
 
+import { getLang, t } from '../../../../shared/i18n/useLang';
+
 import styles from './MessageList.module.css';
 
 type Props = {
@@ -11,11 +13,37 @@ type Props = {
   disabled?: boolean;
 };
 
-const SUGGESTIONS = [
-  'Что порекомендуешь?',
-  'Что взять к пасте?',
-  'На двоих с бюджетом до 2000 ₽',
-];
+const T = {
+  en: {
+    emptyTitleA: 'How can I',
+    emptyTitleEm: 'help',
+    emptyTitleB: '?',
+    emptyText:
+      "I'll suggest what to order. Happy to help pick dishes that match your taste and budget.",
+    suggestionsLabel: 'Prompt ideas',
+  },
+  ru: {
+    emptyTitleA: 'Чем могу',
+    emptyTitleEm: 'помочь',
+    emptyTitleB: '?',
+    emptyText:
+      'Подскажу, что заказать. Помогу с подбором блюд под ваши предпочтения и бюджет.',
+    suggestionsLabel: 'Идеи запросов',
+  },
+} as const;
+
+const SUGGESTIONS: Record<'en' | 'ru', string[]> = {
+  en: [
+    'What would you recommend?',
+    'Something to pair with pasta?',
+    'For two, budget under $30',
+  ],
+  ru: [
+    'Что порекомендуешь?',
+    'Что взять к пасте?',
+    'На двоих с бюджетом до 2000 ₽',
+  ],
+};
 
 export const MessageList: FC<Props> = ({ messages, onSuggestionSelect, disabled }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -31,14 +59,12 @@ export const MessageList: FC<Props> = ({ messages, onSuggestionSelect, disabled 
     return (
       <div className={styles.empty}>
         <h3 className={styles.emptyTitle}>
-          Чем могу <em>помочь</em>?
+          {t(T, 'emptyTitleA')} <em>{t(T, 'emptyTitleEm')}</em>{t(T, 'emptyTitleB')}
         </h3>
-        <p className={styles.emptyText}>
-          Подскажу, что заказать. Помогу с подбором блюд под ваши предпочтения и бюджет.
-        </p>
-        <span className={styles.suggestionsLabel}>Идеи запросов</span>
+        <p className={styles.emptyText}>{t(T, 'emptyText')}</p>
+        <span className={styles.suggestionsLabel}>{t(T, 'suggestionsLabel')}</span>
         <div className={styles.suggestions}>
-          {SUGGESTIONS.map((s) => (
+          {SUGGESTIONS[getLang()].map((s) => (
             <button
               key={s}
               type="button"

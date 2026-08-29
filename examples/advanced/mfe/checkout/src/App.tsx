@@ -13,6 +13,8 @@ import type {
 import { bus } from './clients/bus';
 import { CheckoutModal } from './components/CheckoutModal';
 
+import { getLang } from '../../../shared/i18n/useLang';
+
 // Baked at build time by webpack's EnvironmentPlugin (see webpack.config.js).
 const IFRAME_ORIGIN = process.env.CHECKOUT_IFRAME_ORIGIN as string;
 
@@ -81,10 +83,15 @@ export const App: FC = () => {
     return bus.on('checkout.completed.v1', (msg) => {
       const payload = msg.data;
 
+      const en = getLang() === 'en';
       void bus.emit('notification.show.v1', {
         kind: 'success',
-        title: `Заказ ${payload.orderId} принят`,
-        body: 'Скоро появится статус в панели уведомлений.',
+        title: en
+          ? `Order ${payload.orderId} accepted`
+          : `Заказ ${payload.orderId} принят`,
+        body: en
+          ? 'Its status will land in the notifications panel shortly.'
+          : 'Скоро появится статус в панели уведомлений.',
       });
 
       // Clear the checked-out lines from the cart via targeted requests to

@@ -1,7 +1,22 @@
 import type { FC, FormEvent, KeyboardEvent } from 'react';
 import React, { useCallback, useRef, useState } from 'react';
 
+import { t } from '../../../../shared/i18n/useLang';
+
 import styles from './Composer.module.css';
+
+const T = {
+  en: {
+    placeholder: 'Ask the AI concierge…',
+    stop: 'Stop',
+    send: 'Send',
+  },
+  ru: {
+    placeholder: 'Спросить AI-консьержа…',
+    stop: 'Остановить',
+    send: 'Отправить',
+  },
+} as const;
 
 type Props = {
   onSend: (text: string) => void | Promise<void>;
@@ -48,7 +63,7 @@ export const Composer: FC<Props> = ({ onSend, onCancel, isStreaming }) => {
       <textarea
         ref={textareaRef}
         className={styles.input}
-        placeholder="Спросить AI-консьержа…"
+        placeholder={t(T, 'placeholder')}
         value={value}
         rows={1}
         onChange={(e) => {
@@ -64,7 +79,7 @@ export const Composer: FC<Props> = ({ onSend, onCancel, isStreaming }) => {
             ? `${styles.button} ${styles.buttonStop}`
             : styles.button
         }
-        aria-label={isStreaming ? 'Остановить' : 'Отправить'}
+        aria-label={isStreaming ? t(T, 'stop') : t(T, 'send')}
         disabled={!isStreaming && value.trim().length === 0}
       >
         {isStreaming ? (

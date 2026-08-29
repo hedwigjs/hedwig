@@ -3,6 +3,8 @@ import React, { useCallback, useState } from 'react';
 
 import type { MenuItem } from '@hedwig-demo/contracts';
 
+import { getLang, t } from '../../../shared/i18n/useLang';
+
 import { bus } from './clients/bus';
 import { MenuItemModal } from './components/MenuItemModal/MenuItemModal';
 import { MenuPosition } from './components/MenuPosition/MenuPosition';
@@ -10,6 +12,27 @@ import { useLocalCartQuantities } from './hooks/useLocalCartQuantities';
 import { useMenu } from './hooks/useMenu';
 
 import styles from './App.module.css';
+
+const T = {
+  en: {
+    eyebrow: 'Menu of the week · Season 03',
+    titleA: 'Homestyle',
+    titleEm: 'kitchen',
+    lead: 'Middle Eastern and Georgian motifs, quietly plated — pick up today or delivered within the hour.',
+    all: 'Full menu',
+    items: 'items',
+    loading: 'Loading…',
+  },
+  ru: {
+    eyebrow: 'Меню недели · Сезон 03',
+    titleA: 'Домашняя',
+    titleEm: 'кухня',
+    lead: 'Ближневосточные и грузинские мотивы в спокойной подаче — забираем сегодня или везём в течение часа.',
+    all: 'Всё меню',
+    items: 'позиций',
+    loading: 'Загрузка…',
+  },
+} as const;
 
 export const App: FC = () => {
   const { items, loading, error } = useMenu();
@@ -38,24 +61,21 @@ export const App: FC = () => {
   return (
     <div className={styles.wrapper}>
       <header className={styles.header}>
-        <span className={styles.eyebrow}>Меню недели · Сезон 03</span>
+        <span className={styles.eyebrow}>{t(T, 'eyebrow')}</span>
         <h1 className={styles.title}>
-          Домашняя <em>кухня</em>
+          {t(T, 'titleA')} <em>{t(T, 'titleEm')}</em>
         </h1>
-        <p className={styles.lead}>
-          Ближневосточные и грузинские мотивы в спокойной подаче — забираем сегодня
-          или везём в течение часа.
-        </p>
+        <p className={styles.lead}>{t(T, 'lead')}</p>
       </header>
 
       <div className={styles.divider}>
-        <span className={styles.sectionLabel}>Всё меню</span>
+        <span className={styles.sectionLabel}>{t(T, 'all')}</span>
         <span className={styles.itemCount}>
-          {items.length.toString().padStart(2, '0')} позиций
+          {items.length.toString().padStart(2, '0')} {t(T, 'items')}
         </span>
       </div>
 
-      {loading && <p className={styles.status}>Загрузка…</p>}
+      {loading && <p className={styles.status}>{t(T, 'loading')}</p>}
       {error && <p className={styles.error}>{error}</p>}
 
       {!loading && !error && (

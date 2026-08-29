@@ -3,9 +3,51 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { CheckoutStartResponse } from '@hedwig-demo/contracts';
 
+import { t } from '../../../shared/i18n/useLang';
+
 import { bus } from './clients/bus';
 
 import styles from './App.module.css';
+
+const T = {
+  en: {
+    title: 'Analytics',
+    badge: 'ACL demo',
+    allowed: 'Allowed subscriptions',
+    events: 'events',
+    demoTitle: 'ACL demo — try to break the rules',
+    peekTitle: 'Peek into the cart.',
+    peekBody:
+      "Analytics must not see the cart's contents. When subscribing to",
+    peekBody2:
+      "the onSubscribe hook rejects and bus.on() throws.",
+    checkoutTitle: 'Trigger checkout.',
+    checkoutBody:
+      'Analytics must not launch business flows. When sending',
+    checkoutBody2:
+      'the beforeSend hook returns NACK with reason HOOK_REJECTED — visible in DevTools.',
+    denied: '↯ denied',
+    passed: '✓ passed',
+    okPeek: 'Subscription went through — the ACL rule is missing!',
+  },
+  ru: {
+    title: 'Аналитика',
+    badge: 'ACL demo',
+    allowed: 'Разрешённые подписки',
+    events: 'событий',
+    demoTitle: 'ACL demo — попробовать нарушить',
+    peekTitle: 'Заглянуть в корзину.',
+    peekBody: 'Аналитика не должна видеть её содержимое. При подписке на',
+    peekBody2: 'onSubscribe-hook отклонит подписку и bus.on() бросит исключение.',
+    checkoutTitle: 'Инициировать checkout.',
+    checkoutBody: 'Аналитика не должна запускать бизнес-flow. При отправке',
+    checkoutBody2:
+      'beforeSend-hook вернёт NACK с причиной HOOK_REJECTED — блокировка видна и в DevTools.',
+    denied: '↯ отклонено',
+    passed: '✓ пропущено',
+    okPeek: 'Подписка прошла — правило ACL отсутствует!',
+  },
+} as const;
 
 /**
  * Topics analytics tries to observe. The shell-side ACL allows the first
@@ -58,10 +100,7 @@ export const App: FC = () => {
       // If we ever get here, the shell's ACL doesn't cover cart.snapshot for
       // analytics — that would be a bug. Unsubscribe immediately.
       off();
-      setPeekResult({
-        status: 'ok',
-        message: 'Подписка прошла — правило ACL отсутствует!',
-      });
+      setPeekResult({ status: 'ok', message: t(T, 'okPeek') });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setPeekResult({ status: 'denied', message });
@@ -81,7 +120,7 @@ export const App: FC = () => {
     if (result.status === 'ACK') {
       setCheckoutResult({
         status: 'ok',
-        message: `Checkout принял (сессия ${result.data?.sessionId ?? '?'}). ACL должен был заблокировать!`,
+        message: `checkout accepted (session ${result.data?.sessionId ?? '?'}). ACL should have blocked it!`,
       });
     } else {
       setCheckoutResult({
@@ -104,30 +143,28 @@ export const App: FC = () => {
   return (
     <div className={styles.card}>
       <div className={styles.header}>
-        <p className={styles.title}>Аналитика</p>
-        <span className={styles.badge}>ACL demo</span>
+        <p className={styles.title}>{t(T, 'title')}</p>
+        <span className={styles.badge}>{t(T, 'badge')}</span>
       </div>
 
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
-          <p className={styles.sectionTitle}>Разрешённые подписки</p>
+          <p className={styles.sectionTitle}>{t(T, 'allowed')}</p>
           <span className={styles.counter}>
             <span className={styles.counterNumber}>{counter}</span>
-            {' '}событий
+            {' '}{t(T, 'events')}
           </span>
         </div>
         <div className={styles.allowedList}>{allowedPills}</div>
       </div>
 
       <div className={styles.demoBox}>
-        <p className={styles.sectionTitle}>ACL demo — попробовать нарушить</p>
+        <p className={styles.sectionTitle}>{t(T, 'demoTitle')}</p>
 
         <div className={styles.attemptRow}>
           <p className={styles.attemptHint}>
-            <strong>Заглянуть в корзину.</strong> Аналитика не должна видеть её
-            содержимое. При подписке на <code>cart.snapshot.v1</code>{' '}
-            <code>onSubscribe</code>-hook отклонит подписку и{' '}
-            <code>bus.on()</code> бросит исключение.
+            <strong>{t(T, 'peekTitle')}</strong> {t(T, 'peekBody')}{' '}
+            <code>cart.snapshot.v1</code> {t(T, 'peekBody2')}
           </p>
           <button className={styles.btn} type="button" onClick={tryPeekCart}>
             bus.on(&apos;cart.snapshot.v1&apos;, …)
@@ -138,8 +175,8 @@ export const App: FC = () => {
             >
               <span className={styles.resultLabel}>
                 {peekResult.status === 'denied'
-                  ? '↯ отклонено'
-                  : '✓ пропущено'}
+                  ? t(T, 'denied')
+                  : t(T, 'passed')}
               </span>
               {peekResult.message}
             </div>
@@ -148,11 +185,8 @@ export const App: FC = () => {
 
         <div className={styles.attemptRow}>
           <p className={styles.attemptHint}>
-            <strong>Инициировать checkout.</strong> Аналитика не должна
-            запускать бизнес-flow. При отправке{' '}
-            <code>checkout.start.v1</code> <code>beforeSend</code>-hook вернёт
-            NACK с причиной <code>HOOK_REJECTED</code> — блокировка видна и в
-            DevTools.
+            <strong>{t(T, 'checkoutTitle')}</strong> {t(T, 'checkoutBody')}{' '}
+            <code>checkout.start.v1</code> {t(T, 'checkoutBody2')}
           </p>
           <button
             className={styles.btn}
@@ -167,8 +201,8 @@ export const App: FC = () => {
             >
               <span className={styles.resultLabel}>
                 {checkoutResult.status === 'denied'
-                  ? '↯ отклонено'
-                  : '✓ пропущено'}
+                  ? t(T, 'denied')
+                  : t(T, 'passed')}
               </span>
               {checkoutResult.message}
             </div>

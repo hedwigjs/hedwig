@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { getBroker, SSETransport } from '@hedwigjs/broker';
 import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
 
+import { getLang } from '../../../../shared/i18n/useLang';
+
 import { bus } from '../clients/bus';
 
 export type ChatRole = 'user' | 'assistant';
@@ -64,7 +66,13 @@ export function useChat() {
     void bus.emit('chat.reply-cancelled.v1', { replyId });
     setMessages((prev) =>
       prev.map((m) =>
-        m.id === replyId ? { ...m, streaming: false, text: partial || '(отменено)' } : m,
+        m.id === replyId
+          ? {
+              ...m,
+              streaming: false,
+              text: partial || (getLang() === 'en' ? '(cancelled)' : '(отменено)'),
+            }
+          : m,
       ),
     );
     teardownActive();

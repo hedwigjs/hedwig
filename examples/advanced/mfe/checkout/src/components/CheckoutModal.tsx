@@ -2,9 +2,29 @@ import type { FC } from 'react';
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
+import { getLang, t } from '../../../../shared/i18n/useLang';
+
 import styles from './CheckoutModal.module.css';
 
-const currency = new Intl.NumberFormat('ru-RU');
+const T = {
+  en: {
+    dialogLabel: 'Order payment',
+    eyebrow: 'Payment',
+    items: 'items',
+    close: 'Close',
+    frameTitle: 'Payment form',
+  },
+  ru: {
+    dialogLabel: 'Оплата заказа',
+    eyebrow: 'Оплата',
+    items: 'поз.',
+    close: 'Закрыть',
+    frameTitle: 'Форма оплаты',
+  },
+} as const;
+
+const currency = () =>
+  new Intl.NumberFormat(getLang() === 'en' ? 'en-US' : 'ru-RU');
 
 type Props = {
   iframeUrl: string;
@@ -45,19 +65,21 @@ export const CheckoutModal: FC<Props> = ({
         className={styles.dialog}
         role="dialog"
         aria-modal="true"
-        aria-label="Оплата заказа"
+        aria-label={t(T, 'dialogLabel')}
         onClick={(e) => e.stopPropagation()}
       >
         <div className={styles.head}>
           <div className={styles.summary}>
-            <span className={styles.eyebrow}>Оплата · {itemCount} поз.</span>
-            <span className={styles.total}>{currency.format(totalPrice)} ₽</span>
+            <span className={styles.eyebrow}>
+              {t(T, 'eyebrow')} · {itemCount} {t(T, 'items')}
+            </span>
+            <span className={styles.total}>{currency().format(totalPrice)} ₽</span>
           </div>
           <button
             type="button"
             className={styles.closeBtn}
             onClick={onClose}
-            aria-label="Закрыть"
+            aria-label={t(T, 'close')}
           >
             ×
           </button>
@@ -65,7 +87,7 @@ export const CheckoutModal: FC<Props> = ({
         <iframe
           className={styles.frame}
           src={iframeUrl}
-          title="Форма оплаты"
+          title={t(T, 'frameTitle')}
           onLoad={(e) => {
             const win = e.currentTarget.contentWindow;
             if (win) onIframeReady?.(win);

@@ -1,7 +1,20 @@
 import type { FC } from 'react';
 import React from 'react';
 
+import { t } from '../../../../shared/i18n/useLang';
+
 import styles from './CartEmpty.module.css';
+
+const T = {
+  en: {
+    title: 'Cart is empty',
+    subtitle: 'Pick something from the menu on the left.',
+  },
+  ru: {
+    title: 'Корзина пуста',
+    subtitle: 'Выберите что-нибудь из меню слева.',
+  },
+} as const;
 
 export const CartEmpty: FC = () => (
   <div className={styles.root}>
@@ -19,7 +32,7 @@ export const CartEmpty: FC = () => (
         <circle cx="33" cy="40" r="2.4" fill="currentColor" />
       </svg>
     </div>
-    <p className={styles.title}>Корзина пуста</p>
-    <p className={styles.subtitle}>Выберите что-нибудь из меню слева.</p>
+    <p className={styles.title}>{t(T, 'title')}</p>
+    <p className={styles.subtitle}>{t(T, 'subtitle')}</p>
   </div>
 );

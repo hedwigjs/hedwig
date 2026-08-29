@@ -3,7 +3,18 @@ import React from 'react';
 
 import type { CartItem } from '@hedwig-demo/contracts';
 
+import { t } from '../../../../shared/i18n/useLang';
+
 import styles from './CartList.module.css';
+
+const T = {
+  en: { dec: 'Decrease quantity', inc: 'Increase quantity', remove: 'Remove item' },
+  ru: {
+    dec: 'Уменьшить количество',
+    inc: 'Увеличить количество',
+    remove: 'Удалить позицию',
+  },
+} as const;
 
 type Props = {
   items: CartItem[];
@@ -55,7 +66,7 @@ export const CartList: FC<Props> = ({ items, onIncrement, onDecrement, onRemove 
             type="button"
             className={styles.qtyBtn}
             onClick={() => onDecrement(item.itemId)}
-            aria-label="Уменьшить количество"
+            aria-label={t(T, 'dec')}
           >
             <MinusIcon />
           </button>
@@ -64,7 +75,7 @@ export const CartList: FC<Props> = ({ items, onIncrement, onDecrement, onRemove 
             type="button"
             className={styles.qtyBtn}
             onClick={() => onIncrement(item.itemId)}
-            aria-label="Увеличить количество"
+            aria-label={t(T, 'inc')}
           >
             <PlusIcon />
           </button>
@@ -72,7 +83,7 @@ export const CartList: FC<Props> = ({ items, onIncrement, onDecrement, onRemove 
             type="button"
             className={`${styles.qtyBtn} ${styles.removeBtn}`}
             onClick={() => onRemove(item.itemId)}
-            aria-label="Удалить позицию"
+            aria-label={t(T, 'remove')}
           >
             <TrashIcon />
           </button>

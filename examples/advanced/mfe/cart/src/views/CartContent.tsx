@@ -3,12 +3,15 @@ import React from 'react';
 
 import type { CartItem } from '@hedwig-demo/contracts';
 
+import { getLang } from '../../../../shared/i18n/useLang';
+
 import { CartEmpty } from '../components/CartEmpty';
 import { CartFooter } from '../components/CartFooter';
 import { CartList } from '../components/CartList';
 import { cartActions } from '../state/actions';
 
-const currency = new Intl.NumberFormat('ru-RU');
+const currency = () =>
+  new Intl.NumberFormat(getLang() === 'en' ? 'en-US' : 'ru-RU');
 
 type Props = {
   items: CartItem[];
@@ -34,7 +37,7 @@ export const CartContent: FC<Props> = ({ items, totalPrice, onAfterCheckout }) =
         onRemove={cartActions.remove}
       />
       <CartFooter
-        totalPrice={`${currency.format(totalPrice)} ₽`}
+        totalPrice={`${currency().format(totalPrice)} ₽`}
         onCheckout={() => {
           cartActions.checkout({ items, totalPrice });
           onAfterCheckout?.();

@@ -4,7 +4,35 @@ import { createPortal } from 'react-dom';
 
 import type { MenuItem } from '@hedwig-demo/contracts';
 
+import { t } from '../../../../../shared/i18n/useLang';
+import { localizedName, localizedDescription } from '../../menuTranslations';
+
 import styles from './MenuItemModal.module.css';
+
+const T = {
+  en: {
+    close: 'Close',
+    kcal: 'Kcal',
+    protein: 'Protein',
+    fat: 'Fat',
+    carbs: 'Carbs',
+    unit: 'g',
+    addToCart: 'Add to cart',
+    dec: 'Decrease quantity',
+    inc: 'Increase quantity',
+  },
+  ru: {
+    close: 'Закрыть',
+    kcal: 'Ккал',
+    protein: 'Белки',
+    fat: 'Жиры',
+    carbs: 'Углеводы',
+    unit: 'г',
+    addToCart: 'Добавить в корзину',
+    dec: 'Уменьшить количество',
+    inc: 'Увеличить количество',
+  },
+} as const;
 
 type MenuItemModalProps = {
   item: MenuItem;
@@ -75,7 +103,7 @@ export const MenuItemModal: FC<MenuItemModalProps> = ({
           type="button"
           className={styles.closeBtn}
           onClick={onClose}
-          aria-label="Закрыть"
+          aria-label={t(T, 'close')}
         >
           ×
         </button>
@@ -87,34 +115,34 @@ export const MenuItemModal: FC<MenuItemModalProps> = ({
         <div className={styles.content}>
           <div className={styles.copy}>
             <h2 id="menu-item-modal-title" className={styles.title}>
-              {item.name}
+              {localizedName(item)}
             </h2>
-            <p className={styles.description}>{item.description}</p>
+            <p className={styles.description}>{localizedDescription(item)}</p>
 
             <div className={styles.nutrition}>
               <dl className={styles.nutritionGrid}>
                 <div className={styles.nutritionCell}>
-                  <dt className={styles.nutritionLabel}>Ккал</dt>
+                  <dt className={styles.nutritionLabel}>{t(T, 'kcal')}</dt>
                   <dd className={styles.nutritionValue}>
                     {item.nutrition.caloriesKcal}
                   </dd>
                 </div>
                 <div className={styles.nutritionCell}>
-                  <dt className={styles.nutritionLabel}>Белки</dt>
+                  <dt className={styles.nutritionLabel}>{t(T, 'protein')}</dt>
                   <dd className={styles.nutritionValue}>
-                    {item.nutrition.proteinG} г
+                    {item.nutrition.proteinG} {t(T, 'unit')}
                   </dd>
                 </div>
                 <div className={styles.nutritionCell}>
-                  <dt className={styles.nutritionLabel}>Жиры</dt>
+                  <dt className={styles.nutritionLabel}>{t(T, 'fat')}</dt>
                   <dd className={styles.nutritionValue}>
-                    {item.nutrition.fatG} г
+                    {item.nutrition.fatG} {t(T, 'unit')}
                   </dd>
                 </div>
                 <div className={styles.nutritionCell}>
-                  <dt className={styles.nutritionLabel}>Углеводы</dt>
+                  <dt className={styles.nutritionLabel}>{t(T, 'carbs')}</dt>
                   <dd className={styles.nutritionValue}>
-                    {item.nutrition.carbsG} г
+                    {item.nutrition.carbsG} {t(T, 'unit')}
                   </dd>
                 </div>
               </dl>
@@ -132,7 +160,7 @@ export const MenuItemModal: FC<MenuItemModalProps> = ({
                 <span className={styles.addBtnIcon} aria-hidden="true">
                   <PlusIcon />
                 </span>
-                Добавить в корзину
+                {t(T, 'addToCart')}
               </button>
             ) : (
               <div className={styles.pillCounter}>
@@ -140,7 +168,7 @@ export const MenuItemModal: FC<MenuItemModalProps> = ({
                   type="button"
                   className={styles.pillBtn}
                   onClick={onDecrement}
-                  aria-label="Уменьшить количество"
+                  aria-label={t(T, 'dec')}
                 >
                   <MinusIcon />
                 </button>
@@ -149,7 +177,7 @@ export const MenuItemModal: FC<MenuItemModalProps> = ({
                   type="button"
                   className={styles.pillBtn}
                   onClick={onIncrement}
-                  aria-label="Увеличить количество"
+                  aria-label={t(T, 'inc')}
                 >
                   <PlusIcon />
                 </button>

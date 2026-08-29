@@ -3,7 +3,23 @@ import React from 'react';
 
 import type { MenuItem } from '@hedwig-demo/contracts';
 
+import { t } from '../../../../../shared/i18n/useLang';
+import { localizedName } from '../../menuTranslations';
+
 import styles from './MenuPosition.module.css';
+
+const T = {
+  en: {
+    addToCart: 'Add to cart',
+    dec: 'Decrease quantity',
+    inc: 'Increase quantity',
+  },
+  ru: {
+    addToCart: 'Добавить в корзину',
+    dec: 'Уменьшить количество',
+    inc: 'Увеличить количество',
+  },
+} as const;
 
 const PlusIcon: FC = () => (
   <svg
@@ -83,7 +99,7 @@ export const MenuPosition: FC<MenuPositionProps> = ({
   return (
     <li className={styles.root} onClick={onOpenDetails}>
       <div className={styles.imageWrap}>
-        <img className={styles.preview} src={item.previewUrl} alt={item.name} />
+        <img className={styles.preview} src={item.previewUrl} alt={localizedName(item)} />
         {!inCart ? (
           <button
             type="button"
@@ -92,7 +108,7 @@ export const MenuPosition: FC<MenuPositionProps> = ({
               stopOpenModal(e);
               onAddToCart();
             }}
-            aria-label="Добавить в корзину"
+            aria-label={t(T, 'addToCart')}
           >
             <CartIcon />
           </button>
@@ -107,7 +123,7 @@ export const MenuPosition: FC<MenuPositionProps> = ({
               type="button"
               className={styles.pillBtn}
               onClick={onDecrement}
-              aria-label="Уменьшить количество"
+              aria-label={t(T, 'dec')}
             >
               <MinusIcon />
             </button>
@@ -116,7 +132,7 @@ export const MenuPosition: FC<MenuPositionProps> = ({
               type="button"
               className={styles.pillBtn}
               onClick={onIncrement}
-              aria-label="Увеличить количество"
+              aria-label={t(T, 'inc')}
             >
               <PlusIcon />
             </button>
@@ -125,7 +141,7 @@ export const MenuPosition: FC<MenuPositionProps> = ({
       </div>
       <div className={styles.body}>
         <div className={styles.price}>{item.price}</div>
-        <div className={styles.name}>{item.name}</div>
+        <div className={styles.name}>{localizedName(item)}</div>
       </div>
     </li>
   );
