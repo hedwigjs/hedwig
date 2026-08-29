@@ -16,23 +16,35 @@
   transform: translateX(-50%);
 }
 
+/*
+ * Right / left "docked" — the button hugs the viewport edge instead of
+ * floating inside the safe area. Reads as an infrastructure rail rather
+ * than a customer chat widget, and stays clear of typical bottom-right
+ * chat buttons on real MFE pages.
+ */
 .anchorRight {
-  right: 20px;
+  right: 0;
   top: 50%;
   transform: translateY(-50%);
 }
 
 .anchorLeft {
-  left: 20px;
+  left: 0;
   top: 50%;
   transform: translateY(-50%);
 }
 
+/*
+ * Fixed size so the icon stays put when the button widens on hover / teaser —
+ * `justify-content` on the button then pins the icon to the outward edge
+ * (right for anchor-right, left for anchor-left).
+ */
 .mascot {
-  width: 100%;
-  height: 100%;
+  width: 36px;
+  height: 36px;
   display: block;
   object-fit: contain;
+  flex-shrink: 0;
 }
 
 .btn {
@@ -42,23 +54,126 @@
   width: 56px;
   height: 56px;
   padding: 10px;
-  border: 1px solid #374151;
-  border-radius: 50%;
+  border: 1px solid #1f2937;
+  border-radius: 50%; /* default: full circle for centered anchors */
   background: #111827;
   color: #e5e7eb;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   position: relative;
-  transition: background 0.15s ease, transform 0.12s ease;
+  transition: background 0.15s ease, width 0.22s ease, filter 0.12s ease;
+}
+
+/*
+ * Edge-docked variants — a half-pill "tab" that hugs the viewport border.
+ * Only the outward corners round; the side flush against the edge stays flat
+ * and drops its border so the button reads as an infrastructure rail rather
+ * than a floating widget.
+ *
+ * Icon is pinned to the INWARD side (`flex-start` for right dock,
+ * `flex-end` for left dock) so that as the tab widens on hover / teaser, the
+ * icon rides along with the extending edge — like the owl peeks further out
+ * from behind the viewport border.
+ */
+.anchorRight .btn {
+  border-radius: 28px 0 0 28px;
+  border-right: none;
+  box-shadow: -6px 4px 18px rgba(0, 0, 0, 0.4);
+  justify-content: flex-start;
+}
+
+.anchorLeft .btn {
+  border-radius: 0 28px 28px 0;
+  border-left: none;
+  box-shadow: 6px 4px 18px rgba(0, 0, 0, 0.4);
+  justify-content: flex-end;
 }
 
 .btn:hover {
   background: #1f2937;
-  transform: scale(1.04);
+}
+
+/*
+ * Hover extend — the tab grows inward the same distance as the teaser peek
+ * so the "come here" gesture is muscle-memory when the user actually reaches
+ * for it. Icon stays pinned to the outward edge; visible growth happens on
+ * the inward side.
+ */
+.anchorRight .btn:hover,
+.anchorLeft .btn:hover {
+  width: 76px;
 }
 
 .btn:active {
-  transform: scale(0.98);
+  filter: brightness(0.9);
+}
+
+/*
+ * Startup teaser — the tab peeks inward three times right after mount so users
+ * notice a new UI affordance appearing on the page. Same width delta as hover
+ * so the gesture is consistent. Only for edge-docked anchors.
+ */
+@keyframes mbdt-fab-teaser {
+  0%,
+  100% {
+    width: 56px;
+  }
+  50% {
+    width: 76px;
+  }
+}
+
+/*
+ * Pulse "call for attention" when the inspector is idle. Uses outline so the
+ * ring follows the button's border-radius (circle vs half-pill) without
+ * fighting the base box-shadow. Stops as soon as DevTools attaches.
+ *
+ * Teaser + pulse are combined here because they target different tracks
+ * (transform vs outline) and don't fight. Without the combined declaration
+ * the more-specific pulse rule would override the teaser.
+ */
+/*
+ * Teaser plays only when the `.teased` marker is on the anchor. The React
+ * layer (see FloatingToggleButton.tsx) attaches that marker on the first
+ * mount per page load, so close-and-reopen cycles don't replay the peek.
+ * Scoped to edge-docked anchors — top/bottom float centered and don't peek.
+ */
+.teased.anchorRight .btn,
+.teased.anchorLeft .btn {
+  animation: mbdt-fab-teaser 0.55s ease-in-out 3;
+}
+
+/* Idle pulse — always on when statusOff, regardless of position or teaser. */
+.btn:has(.statusOff) {
+  animation: mbdt-fab-pulse 2.4s ease-in-out infinite;
+}
+
+/* When both teasing AND idle — combine (width vs outline don't fight). */
+.teased.anchorRight .btn:has(.statusOff),
+.teased.anchorLeft .btn:has(.statusOff) {
+  animation:
+    mbdt-fab-teaser 0.55s ease-in-out 3,
+    mbdt-fab-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes mbdt-fab-pulse {
+  0%,
+  100% {
+    outline: 0 solid rgba(251, 191, 36, 0.55);
+    outline-offset: 0;
+  }
+  50% {
+    outline: 12px solid rgba(251, 191, 36, 0);
+    outline-offset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .teased.anchorRight .btn,
+  .teased.anchorLeft .btn,
+  .btn:has(.statusOff) {
+    animation: none;
+  }
 }
 
 .status {
@@ -72,7 +187,7 @@
 }
 
 .statusOn {
-  background: #22c55e;
+  background: #16a34a;
 }
 
 .statusOff {

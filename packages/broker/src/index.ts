@@ -8,11 +8,11 @@
  *   - Each microfrontend creates a client: `createClient(id)`.
  *   - Debug tooling accesses the broker: `getBroker()`.
  *
- * Built-in bridge wiring (postMessage, BroadcastChannel, WebSocket) lives
- * inside this package but is **not** exported — React / Vue / etc. adapters
- * depend on this package and own how bridges are created. For custom
- * integrations, `addBridge` accepts any object that satisfies
- * {@link BridgeTransport}.
+ * Built-in transports (PostMessage, BroadcastChannel, WebSocket, SSE) are
+ * exported from this package for zero-config integrations. Framework
+ * adapters (`@hedwigjs/adapter-*`) may re-export or wrap them. Custom
+ * transports plug in via the {@link BridgeTransport} extension point —
+ * see the "Custom transports" section in the README.
  */
 
 // ── Entry points ────────────────────────────────────────────────────────

@@ -3,7 +3,11 @@ import { MBDT_TAB_DEFINITIONS } from "../../tabs/definitions";
 import { clampSizeMain, DEFAULT_SIZE_MAIN } from "./panelFrame";
 import type { DevToolsLayoutState, DevToolsPanelPosition, DevToolsPreFullscreen, DevToolsTabId } from "./panelTypes";
 
-const DEFAULT_KEY = "mbdt.layout.v1";
+// v3: FAB position was split from panel position — FAB anchors to the right
+// edge as a stable rail, panel defaults back to "bottom" (its natural home for
+// message flow inspection). Bumping the key so existing users whose v2 stored
+// "right" get the new panel default without a manual localStorage wipe.
+const DEFAULT_KEY = "mbdt.layout.v3";
 
 function readJson(storageKey: string): Partial<DevToolsLayoutState> | null {
   if (typeof localStorage === "undefined") {

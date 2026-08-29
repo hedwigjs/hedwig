@@ -11,6 +11,11 @@
   background: rgba(107, 114, 128, 0.03);
 }
 
+.row[data-verb="rejected"] {
+  border-left: 3px solid #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
 .main {
   display: flex;
   align-items: center;
@@ -41,8 +46,10 @@
 .facetClient,
 .facetSubscription,
 .facetBridge,
+.facetMessage,
 .verbAdded,
-.verbRemoved {
+.verbRemoved,
+.verbRejected {
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 3px;
@@ -66,6 +73,11 @@
   color: #86efac;
 }
 
+.facetMessage {
+  background: #422006;
+  color: #fdba74;
+}
+
 .verbAdded {
   background: #14532d;
   color: #86efac;
@@ -74,6 +86,11 @@
 .verbRemoved {
   background: #4b5563;
   color: #d1d5db;
+}
+
+.verbRejected {
+  background: #7f1d1d;
+  color: #fecaca;
 }
 
 .meta {

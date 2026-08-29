@@ -126,6 +126,8 @@ export type SystemEventName =
   | "client.unregistered"
   | "subscription.added"
   | "subscription.removed"
+  | "subscription.rejected"
+  | "message.rejected"
   | "bridge.added"
   | "bridge.removed";
 

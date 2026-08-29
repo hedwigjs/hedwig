@@ -31,6 +31,13 @@ export interface MessageBrokerDevToolsProps {
   maxEvents?: number;
   /** Default dock side for the panel (also the first value written to localStorage). */
   defaultPosition?: DevToolsPanelPosition;
+  /**
+   * Edge on which the floating toggle button lives. Independent from the
+   * panel's position: the FAB stays a stable anchor while the panel can dock
+   * anywhere. Defaults to `"right"` — a discreet edge-attached rail that
+   * doesn't collide with typical bottom-right chat widgets.
+   */
+  fabPosition?: DevToolsPanelPosition;
   /** localStorage key for position, active tab, and open state. */
   storageKey?: string;
   /** Whether the panel is open by default (when no saved state exists). */
@@ -55,6 +62,7 @@ export const MessageBrokerDevTools = ({
   enabled = process.env.NODE_ENV === "development",
   maxEvents = 100,
   defaultPosition = "bottom",
+  fabPosition = "right",
   storageKey,
   defaultOpen = false,
   toggleIcon,
@@ -97,7 +105,7 @@ export const MessageBrokerDevTools = ({
     <TopicsRegistryProvider registry={registry}>
       {!layout.isOpen && (
         <FloatingToggleButton
-          position={layout.position}
+          position={fabPosition}
           attached={attached}
           onOpen={() => setOpen(true)}
           icon={toggleIcon}

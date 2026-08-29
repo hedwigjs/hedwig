@@ -8,17 +8,19 @@ interface SystemEventRowProps {
   entry: SystemEventLogEntry;
 }
 
-type EventFacet = "client" | "subscription" | "bridge";
-type EventVerb = "added" | "removed";
+type EventFacet = "client" | "subscription" | "bridge" | "message";
+type EventVerb = "added" | "removed" | "rejected";
 
 function facetOf(name: SystemEventLogEntry["name"]): EventFacet {
   if (name.startsWith("client.")) return "client";
   if (name.startsWith("subscription.")) return "subscription";
+  if (name.startsWith("message.")) return "message";
   return "bridge";
 }
 
 function verbOf(name: SystemEventLogEntry["name"]): EventVerb {
   // client.registered / .unregistered map to added / removed for UI purposes.
+  if (name.endsWith("rejected")) return "rejected";
   if (name.endsWith("registered") && !name.endsWith("unregistered")) return "added";
   if (name.endsWith("added")) return "added";
   return "removed";
@@ -28,11 +30,15 @@ function summarize(entry: SystemEventLogEntry): string {
   const p = entry.payload as Record<string, unknown> | null;
   if (!p) return "";
   const clientId = typeof p.clientId === "string" ? p.clientId : undefined;
+  const source = typeof p.source === "string" ? p.source : undefined;
+  const target = typeof p.target === "string" ? p.target : undefined;
   const topic = typeof p.topic === "string" ? p.topic : undefined;
   const bridgeId = typeof p.bridgeId === "string" ? p.bridgeId : undefined;
+  const reason = typeof p.reason === "string" ? p.reason : undefined;
 
   if (bridgeId) return bridgeId;
-  if (clientId && topic) return `${clientId} · ${topic}`;
+  if (source && target && topic) return `${source} → ${target} · ${topic}${reason ? ` · ${reason}` : ""}`;
+  if (clientId && topic) return `${clientId} · ${topic}${reason ? ` · ${reason}` : ""}`;
   if (clientId) return clientId;
   return "";
 }
@@ -41,11 +47,13 @@ const FACET_CLASS: Record<EventFacet, string> = {
   client: styles.facetClient,
   subscription: styles.facetSubscription,
   bridge: styles.facetBridge,
+  message: styles.facetMessage,
 };
 
 const VERB_CLASS: Record<EventVerb, string> = {
   added: styles.verbAdded,
   removed: styles.verbRemoved,
+  rejected: styles.verbRejected,
 };
 
 export function SystemEventRow({ entry }: SystemEventRowProps): ReactNode {

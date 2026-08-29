@@ -88,6 +88,7 @@ describe('PostMessageTransport', () => {
 
   describe('onMessage (INBOUND) — security', () => {
     test('REJECTS messages whose source window is not the configured target', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
       const callback = jest.fn();
       const { fake } = makeFakeTargetWindow();
       const transport = new PostMessageTransport({ target: fake });
@@ -100,6 +101,7 @@ describe('PostMessageTransport', () => {
       expect(callback).not.toHaveBeenCalled();
 
       transport.destroy();
+      warn.mockRestore();
     });
 
     test('REJECTS messages whose origin does not match when configured origin is explicit', () => {
@@ -127,6 +129,7 @@ describe('PostMessageTransport', () => {
     });
 
     test("wildcard origin ('*') accepts messages from any origin (if source matches)", () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
       const callback = jest.fn();
       const { fake } = makeFakeTargetWindow();
       const transport = new PostMessageTransport({ target: fake, origin: '*' });
@@ -135,6 +138,132 @@ describe('PostMessageTransport', () => {
       fireMessage({ data: { ok: true }, source: fake, origin: 'https://whatever.dev' });
 
       expect(callback).toHaveBeenCalledWith({ ok: true });
+      transport.destroy();
+      warn.mockRestore();
+    });
+
+    test('wildcard origin without allowedOrigins warns on first onMessage', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const { fake } = makeFakeTargetWindow();
+
+      const transport = new PostMessageTransport({ target: fake, origin: '*' });
+      // Construction alone must not warn — send-only usage is not an inbound vector.
+      expect(warn).not.toHaveBeenCalled();
+
+      transport.onMessage(jest.fn());
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('wildcard origin'),
+      );
+
+      transport.destroy();
+      warn.mockRestore();
+    });
+
+    test('wildcard origin + explicit allowedOrigins does NOT warn on onMessage', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const { fake } = makeFakeTargetWindow();
+
+      const transport = new PostMessageTransport({
+        target: fake,
+        origin: '*',
+        allowedOrigins: ['https://trusted.example.com'],
+      });
+      transport.onMessage(jest.fn());
+
+      expect(warn).not.toHaveBeenCalled();
+
+      transport.destroy();
+      warn.mockRestore();
+    });
+
+    test('wildcard warning is emitted only once even across many onMessage calls', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const { fake } = makeFakeTargetWindow();
+
+      const transport = new PostMessageTransport({ target: fake, origin: '*' });
+      transport.onMessage(jest.fn());
+      transport.destroy();
+      transport.onMessage(jest.fn());
+      transport.destroy();
+      transport.onMessage(jest.fn());
+
+      const wildcardWarns = warn.mock.calls.filter((c) =>
+        String(c[0] ?? '').includes('wildcard origin'),
+      );
+      expect(wildcardWarns).toHaveLength(1);
+
+      transport.destroy();
+      warn.mockRestore();
+    });
+  });
+
+  describe('onMessage (INBOUND) — allowedOrigins', () => {
+    test('accepts messages whose origin is in allowedOrigins', () => {
+      const callback = jest.fn();
+      const { fake } = makeFakeTargetWindow();
+      const transport = new PostMessageTransport({
+        target: fake,
+        origin: '*',
+        allowedOrigins: ['https://a.example.com', 'https://b.example.com'],
+      });
+      transport.onMessage(callback);
+
+      fireMessage({ data: { from: 'a' }, source: fake, origin: 'https://a.example.com' });
+      fireMessage({ data: { from: 'b' }, source: fake, origin: 'https://b.example.com' });
+
+      expect(callback).toHaveBeenCalledTimes(2);
+      expect(callback).toHaveBeenNthCalledWith(1, { from: 'a' });
+      expect(callback).toHaveBeenNthCalledWith(2, { from: 'b' });
+      transport.destroy();
+    });
+
+    test('rejects messages whose origin is NOT in allowedOrigins', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const callback = jest.fn();
+      const { fake } = makeFakeTargetWindow();
+      const transport = new PostMessageTransport({
+        target: fake,
+        origin: '*',
+        allowedOrigins: ['https://trusted.example.com'],
+      });
+      transport.onMessage(callback);
+
+      fireMessage({
+        data: { stolen: 'cookies' },
+        source: fake,
+        origin: 'https://attacker.example.com',
+      });
+
+      expect(callback).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('unauthorized origin'),
+      );
+      warn.mockRestore();
+      transport.destroy();
+    });
+
+    test('allowedOrigins takes precedence over the fallback origin allowlist', () => {
+      // origin is 'https://x' (would normally act as single-item allowlist),
+      // but allowedOrigins is explicit — the fallback must not leak through.
+      const callback = jest.fn();
+      const { fake } = makeFakeTargetWindow();
+      const transport = new PostMessageTransport({
+        target: fake,
+        origin: 'https://x.example.com',
+        allowedOrigins: ['https://y.example.com'],
+      });
+      transport.onMessage(callback);
+
+      // From origin matching `origin` but not `allowedOrigins` — rejected.
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      fireMessage({ data: { leak: true }, source: fake, origin: 'https://x.example.com' });
+      expect(callback).not.toHaveBeenCalled();
+
+      // From origin matching `allowedOrigins` — accepted.
+      fireMessage({ data: { ok: true }, source: fake, origin: 'https://y.example.com' });
+      expect(callback).toHaveBeenCalledWith({ ok: true });
+
+      warn.mockRestore();
       transport.destroy();
     });
 
@@ -160,6 +289,17 @@ describe('PostMessageTransport', () => {
   });
 
   describe('destroy', () => {
+    // Wildcard-origin transports emit a single one-time security warning on
+    // first onMessage; silence it across the destroy suite so the noise
+    // doesn't obscure real test output.
+    let warnSpy: jest.SpyInstance;
+    beforeEach(() => {
+      warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
     test('removes the message listener — post-destroy events do not reach the callback', () => {
       const callback = jest.fn();
       const { fake } = makeFakeTargetWindow();

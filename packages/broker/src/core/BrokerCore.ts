@@ -162,6 +162,14 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
 
     const hookResult = this.#hooks.onSubscribe(topic, clientId);
     if (!hookResult.allowed) {
+      // Surface the denial on the system-events channel so observability
+      // tools (DevTools, audit loggers) see it. Then throw — throwing keeps
+      // the failure locally observable at the call site as well.
+      this.#systemEvents.emit('subscription.rejected', {
+        clientId,
+        topic,
+        reason: hookResult.message,
+      });
       throw new Error(hookResult.message);
     }
 
@@ -363,6 +371,15 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
         hookResult.message,
         recipient !== '*' ? recipient : undefined,
       );
+      // Publish the denial to system events too — same rationale as
+      // `subscription.rejected`: give observers a dedicated stream of
+      // security signals independent from the delivery-result channel.
+      this.#systemEvents.emit('message.rejected', {
+        source: sender,
+        target: recipient,
+        topic,
+        reason: hookResult.message,
+      });
       this.#hooks.afterSend(frozenMessage, result);
       return result;
     }

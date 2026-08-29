@@ -21,13 +21,69 @@ export type ExternalMessageInjector<
 /**
  * Pluggable wire used by {@link BridgeConfig} / {@link MessageBroker.addBridge}.
  *
- * Built-in implementations (postMessage, BroadcastChannel, WebSocket) live
- * inside this package but are not exported — framework adapters (`@message-broker/adapter-*`)
- * construct them or supply their own objects that satisfy this interface.
+ * This is the extension point for cross-context transports. Built-in
+ * implementations (`PostMessageTransport`, `BroadcastChannelTransport`,
+ * `WebSocketTransport`, `SSETransport`) are exported from `@hedwigjs/broker`;
+ * custom transports (WebRTC, Service Worker, Electron IPC, etc.) plug in by
+ * implementing this interface — no other broker internals need to be touched.
+ *
+ * ## Contract
+ *
+ * ### Outbound — `send(data)`
+ * Called by the {@link Bridge} whenever a local broker message matches the
+ * bridge's forward patterns. Implementation must serialize (if needed) and
+ * hand the payload to the underlying wire. Errors should be caught and
+ * logged, not thrown — a failing wire must not crash the broker pipeline.
+ *
+ * ### Inbound — `onMessage(callback)`
+ * Called once by the {@link Bridge} at construction time to subscribe to
+ * incoming messages. Implementation must invoke `callback` for every valid
+ * inbound payload after any transport-level validation (e.g. origin checks
+ * for postMessage, channel filtering for BroadcastChannel). Returns an
+ * unsubscribe function; the {@link Bridge} calls it in `destroy()`.
+ *
+ * ### Cleanup — `destroy()`
+ * Called when the bridge is removed or the broker is destroyed. Must release
+ * all resources (event listeners, sockets, channels). Must be idempotent.
+ *
+ * ## Security note
+ *
+ * Transports are the trust boundary between the broker and the outside
+ * world. If your wire crosses origins (postMessage, WebSocket, SSE),
+ * validate the source before invoking the inbound callback — the broker
+ * will otherwise route whatever it receives.
+ *
+ * @example Custom transport skeleton
+ * ```ts
+ * class MyTransport implements BridgeTransport {
+ *   #cb: ((data: unknown) => void) | null = null;
+ *
+ *   send(data: unknown): void {
+ *     try { myWire.publish(data); }
+ *     catch (e) { console.error('[MyTransport] send failed:', e); }
+ *   }
+ *
+ *   onMessage(cb: (data: unknown) => void): () => void {
+ *     this.#cb = cb;
+ *     const off = myWire.subscribe((payload) => {
+ *       if (!isTrusted(payload)) return;
+ *       this.#cb?.(payload);
+ *     });
+ *     return () => { off(); this.#cb = null; };
+ *   }
+ *
+ *   destroy(): void { this.#cb = null; myWire.close(); }
+ * }
+ * ```
  */
 export interface BridgeTransport {
+  /** Outbound: send a payload to the wire. See interface docs for contract. */
   send(data: unknown): void;
+
+  /** Inbound: subscribe to payloads from the wire. Returns unsubscribe. */
   onMessage(callback: (data: unknown) => void): () => void;
+
+  /** Release resources. Must be idempotent. */
   destroy(): void;
 }
 

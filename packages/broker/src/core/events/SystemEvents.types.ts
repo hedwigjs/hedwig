@@ -42,6 +42,32 @@ export interface SystemEventMap<T extends string, P extends Record<T, any>> {
     clientId: ClientID;
     topic: T;
   };
+  /**
+   * Fired when an `onSubscribe` hook denied a subscription attempt. The
+   * broker still throws on the caller so the subscription is NOT registered;
+   * this event exists so observability tools (DevTools, ACL audit) can pick
+   * up the denial without racing the exception.
+   */
+  'subscription.rejected': {
+    clientId: ClientID;
+    topic: T;
+    reason: string;
+  };
+
+  // ─── Send rejections (hook-driven) ────────────────────────────────────────
+
+  /**
+   * Fired when a `beforeSend` hook denied an outgoing message. The message
+   * also surfaces in the delivery result as `NACK HOOK_REJECTED`, but this
+   * event lets pure-observability consumers listen for security signals on a
+   * dedicated channel without inspecting every RoutingResult.
+   */
+  'message.rejected': {
+    source: ClientID;
+    target: ClientID | '*';
+    topic: T;
+    reason: string;
+  };
 
   // ─── Bridges (lifecycle only — message flow is visible via afterSend) ──────
 

@@ -81,6 +81,24 @@ export function attachInspector(
     store.refreshBridges(broker);
   });
 
+  // Security signals — hook-driven rejections. `subscription.rejected` fires
+  // when an `onSubscribe` hook denies a subscription (`client.on` throws too,
+  // but this event surfaces the denial on the observability channel).
+  // `message.rejected` fires when a `beforeSend` hook denies an outgoing
+  // message (also visible as NACK HOOK_REJECTED in the delivery log).
+  const unsubSubscriptionRejected = broker.$systemEvents.on(
+    "subscription.rejected",
+    (payload) => {
+      store.pushSystemEvent("subscription.rejected", payload);
+    },
+  );
+  const unsubMessageRejected = broker.$systemEvents.on(
+    "message.rejected",
+    (payload) => {
+      store.pushSystemEvent("message.rejected", payload);
+    },
+  );
+
   return () => {
     unsubBefore();
     unsubAfter();
@@ -90,6 +108,8 @@ export function attachInspector(
     unsubSubscriptionRemoved();
     unsubBridgeAdded();
     unsubBridgeRemoved();
+    unsubSubscriptionRejected();
+    unsubMessageRejected();
     store.setAttached(false);
   };
 }
