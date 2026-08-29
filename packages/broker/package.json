@@ -2,7 +2,9 @@
   "name": "@hedwigjs/broker",
   "version": "0.1.0",
   "description": "Runtime broker for the Hedwig messaging toolkit. One API over any transport.",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -19,7 +21,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hedwigjs/hedwig.git",
+    "url": "git+https://github.com/hedwigjs/hedwig.git",
     "directory": "packages/broker"
   },
   "bugs": {

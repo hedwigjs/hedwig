@@ -2,7 +2,9 @@
   "name": "@hedwigjs/devtools",
   "version": "0.1.0",
   "description": "DevTools panel for @hedwigjs/broker — message flow, clients, and observability inspector.",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "sideEffects": true,
@@ -17,7 +19,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hedwigjs/hedwig.git",
+    "url": "git+https://github.com/hedwigjs/hedwig.git",
     "directory": "packages/devtools"
   },
   "bugs": {
@@ -61,7 +63,9 @@
     "observability"
   ],
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=18.17.0"

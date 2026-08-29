@@ -2,7 +2,9 @@
   "name": "@hedwigjs/create-registry",
   "version": "0.1.0",
   "description": "Initializer for a Hedwig topics-registry package. Scaffolds a standalone TypeScript workspace with codegen, types, and helpers — no runtime dependency on @hedwigjs/*.",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "bin": {
     "create-registry": "./dist/index.js"
@@ -10,7 +12,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hedwigjs/hedwig.git",
+    "url": "git+https://github.com/hedwigjs/hedwig.git",
     "directory": "packages/create-registry"
   },
   "bugs": {
@@ -19,7 +21,9 @@
   "homepage": "https://github.com/hedwigjs/hedwig/tree/main/packages/create-registry#readme",
   "files": [
     "dist",
-    "templates"
+    "templates",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc",
