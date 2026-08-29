@@ -1,0 +1,196 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  background: var(--hdw-surface);
+  border: 1px solid var(--hdw-line);
+  border-radius: var(--hdw-r-lg);
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.25s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: hover) {
+  .root:hover {
+    border-color: var(--hdw-line-strong);
+    transform: translateY(-2px);
+    box-shadow: var(--hdw-shadow-soft);
+  }
+
+  .root:hover .preview {
+    transform: scale(1.04);
+  }
+}
+
+.root:focus-visible {
+  outline: 2px solid var(--hdw-ink);
+  outline-offset: 3px;
+}
+
+.imageWrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  background: var(--hdw-surface-alt);
+  overflow: hidden;
+}
+
+.preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.5s cubic-bezier(0.2, 0.6, 0.2, 1);
+}
+
+.fabPlus {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--hdw-ink);
+  color: var(--hdw-surface);
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgb(26 22 19 / 22%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+@media (hover: hover) {
+  .fabPlus:hover {
+    background: var(--hdw-accent);
+    transform: scale(1.05);
+    box-shadow: 0 6px 18px rgb(122 31 31 / 30%);
+  }
+}
+
+.fabPlus:focus-visible {
+  outline: 2px solid var(--hdw-ink);
+  outline-offset: 2px;
+}
+
+.pillCounter {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  height: 44px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  border-radius: var(--hdw-r-full);
+  background: var(--hdw-ink);
+  color: var(--hdw-surface);
+  box-shadow: 0 4px 14px rgb(26 22 19 / 22%);
+  animation: pillIn 0.22s ease;
+}
+
+@keyframes pillIn {
+  from {
+    opacity: 0.7;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.pillBtn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--hdw-surface);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background 0.15s ease;
+}
+
+.icon {
+  width: 55%;
+  height: 55%;
+  display: block;
+}
+
+@media (hover: hover) {
+  .pillBtn:hover {
+    background: rgb(255 255 255 / 12%);
+  }
+}
+
+.pillBtn:focus-visible {
+  outline: 2px solid var(--hdw-surface);
+  outline-offset: -2px;
+}
+
+.pillValue {
+  flex: 1;
+  text-align: center;
+  font-family: var(--hdw-font-serif);
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--hdw-surface);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px 20px;
+  flex: 1;
+}
+
+.price {
+  font-family: var(--hdw-font-serif);
+  font-weight: 500;
+  font-size: 1.25rem;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--hdw-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.name {
+  font-family: var(--hdw-font-serif);
+  font-weight: 400;
+  font-size: 0.98rem;
+  line-height: 1.3;
+  letter-spacing: -0.008em;
+  color: var(--hdw-ink-soft);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.6em;
+}
