@@ -124,47 +124,6 @@
   user-select: none;
 }
 
-/* Right-side eyebrow — mirrors `.hdw-header__eyebrow` on the brand side.
-   Pure label (not a button) — the site has no auth flow to expose here.
-   The small dot echoes the DevTools `CONNECTED` indicator to hint that
-   there's a live broker running on this page. */
-
-.hdw-header__meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 4px;
-  font-family: var(--hdw-font-sans);
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.22em;
-  color: var(--hdw-ink-subtle);
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.hdw-header__meta-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--hdw-accent);
-  box-shadow: 0 0 0 3px rgb(122 31 31 / 12%);
-  flex-shrink: 0;
-}
-
-.hdw-header__meta-text em {
-  font-style: normal;
-  font-variant-numeric: tabular-nums;
-  color: var(--hdw-ink);
-  letter-spacing: 0.16em;
-}
-
-@media (max-width: 640px) {
-  .hdw-header__meta {
-    display: none;
-  }
-}
-
 /* Header cart trigger (visible below 1200px, hidden above) ------------ */
 
 .hdw-header__cart {

@@ -5,8 +5,6 @@ import { getLang, setLang, t, type Lang } from '../../../shared/i18n/useLang';
 const T = {
   en: {
     eyebrow: 'est. 2026',
-    meta: 'Reference stand · Hedwig',
-    metaAria: 'Reference stand for @hedwigjs 0.1.0',
     openAi: 'Open AI concierge',
     aiTitle: '-concierge',
     close: 'Close',
@@ -14,8 +12,6 @@ const T = {
   },
   ru: {
     eyebrow: 'осн. 2026',
-    meta: 'Демо-стенд · Hedwig',
-    metaAria: 'Демо-стенд для @hedwigjs 0.1.0',
     openAi: 'Открыть AI-консьерж',
     aiTitle: '-консьерж',
     close: 'Закрыть',
@@ -43,10 +39,6 @@ const HEADER_HTML = () => `
     <div class="hdw-header__actions">
       <div class="hdw-header__cart" data-slot-host="cart-header"></div>
       ${langToggleHtml()}
-      <span class="hdw-header__meta" aria-label="${t(T, 'metaAria')}">
-        <span class="hdw-header__meta-dot" aria-hidden="true"></span>
-        <span class="hdw-header__meta-text">${t(T, 'meta')} <em>0.1.0</em></span>
-      </span>
     </div>
   </header>
 `;
