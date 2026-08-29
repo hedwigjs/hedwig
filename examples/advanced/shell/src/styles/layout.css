@@ -48,8 +48,7 @@
   gap: 6px;
 }
 
-.hdw-header__icon,
-.hdw-header__user {
+.hdw-header__icon {
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -73,39 +72,55 @@
 }
 
 @media (hover: hover) {
-  .hdw-header__icon:hover,
-  .hdw-header__user:hover {
+  .hdw-header__icon:hover {
     background: var(--hdw-surface-alt);
   }
 }
 
-.hdw-header__icon:focus-visible,
-.hdw-header__user:focus-visible {
+.hdw-header__icon:focus-visible {
   outline: 2px solid var(--hdw-ink);
   outline-offset: 2px;
 }
 
-.hdw-header__avatar {
+/* Right-side eyebrow — mirrors `.hdw-header__eyebrow` on the brand side.
+   Pure label (not a button) — the site has no auth flow to expose here.
+   The small dot echoes the DevTools `CONNECTED` indicator to hint that
+   there's a live broker running on this page. */
+
+.hdw-header__meta {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: transparent;
-  border: 1.5px solid var(--hdw-ink);
-  color: var(--hdw-ink);
-  font-family: var(--hdw-font-serif);
+  gap: 8px;
+  padding: 6px 4px;
+  font-family: var(--hdw-font-sans);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--hdw-ink-subtle);
   font-weight: 500;
-  font-size: 0.9rem;
-  letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
-.hdw-header__username {
-  font-size: 0.9rem;
-  font-weight: 500;
+.hdw-header__meta-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--hdw-accent);
+  box-shadow: 0 0 0 3px rgb(122 31 31 / 12%);
+  flex-shrink: 0;
+}
+
+.hdw-header__meta-text em {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
   color: var(--hdw-ink);
-  letter-spacing: -0.005em;
+  letter-spacing: 0.16em;
+}
+
+@media (max-width: 640px) {
+  .hdw-header__meta {
+    display: none;
+  }
 }
 
 /* Header cart trigger (visible below 1200px, hidden above) ------------ */
@@ -165,6 +180,23 @@
   padding: 24px 22px;
   min-height: 260px;
   box-shadow: var(--hdw-shadow-soft);
+}
+
+/* Replay-buffer demo — small card between cart and analytics. Same chrome
+   as the cart but tighter padding; the MFE controls its own header. */
+.hdw-main__late-mount {
+  background: var(--hdw-surface);
+  border: 1px solid var(--hdw-line);
+  border-radius: var(--hdw-r-xl);
+  padding: 18px 20px;
+  box-shadow: var(--hdw-shadow-soft);
+}
+
+/* Analytics slot lives below the cart in the right column. The analytics MFE
+   provides its own card chrome, so the shell container is a plain wrapper. */
+.hdw-main__analytics {
+  display: flex;
+  flex-direction: column;
 }
 
 /* Slot placeholders --------------------------------------------------- */

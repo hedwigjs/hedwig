@@ -9,7 +9,14 @@ export interface ReplayBufferTabProps {
   store: MessageInspectorStore;
 }
 
-/** Group entries by topic, preserving insertion order of first occurrence. */
+/**
+ * Group entries by topic, newest → oldest within each group. Groups themselves
+ * are ordered by their newest entry (descending), so the topic with the
+ * most-recent activity floats to the top of the tab.
+ *
+ * Broker's `inspect.getHistory()` returns entries in insertion order
+ * (oldest → newest); flipping here is a pure view-layer concern.
+ */
 function groupByTopic(entries: ReadonlyArray<HistoryEntry>): Map<string, HistoryEntry[]> {
   const map = new Map<string, HistoryEntry[]>();
   for (const entry of entries) {
@@ -21,7 +28,14 @@ function groupByTopic(entries: ReadonlyArray<HistoryEntry>): Map<string, History
     }
     group.push(entry);
   }
-  return map;
+  for (const group of map.values()) {
+    group.sort((a, b) => b.sequence - a.sequence);
+  }
+  const sortedGroups = Array.from(map.entries()).sort(
+    ([, aEntries], [, bEntries]) =>
+      (bEntries[0]?.sequence ?? 0) - (aEntries[0]?.sequence ?? 0),
+  );
+  return new Map(sortedGroups);
 }
 
 export function ReplayBufferTab({ store }: ReplayBufferTabProps): ReactNode {

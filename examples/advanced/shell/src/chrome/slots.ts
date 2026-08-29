@@ -1,10 +1,12 @@
 export type SlotName =
-  | 'storefront'
+  | 'menu'
   | 'cart-panel'
   | 'cart-header'
+  | 'late-mount'
   | 'ai-chat'
   | 'notifications'
-  | 'checkout';
+  | 'checkout'
+  | 'analytics';
 
 /**
  * Every MFE mounts into a slot. The slot host is a `<section>` created by

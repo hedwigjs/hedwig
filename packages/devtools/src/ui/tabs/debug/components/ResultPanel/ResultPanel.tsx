@@ -40,7 +40,7 @@ export function ResultPanel({ result, mode }: ResultPanelProps): ReactNode {
         </div>
       )}
 
-      {mode === "unicast" && result.recipientId && (
+      {mode === "unicast" && ok && result.recipientId && (
         <div className={styles.section}>
           <span className={styles.label}>Handled by</span>
           <code className={styles.chip}>{result.recipientId}</code>

@@ -214,9 +214,10 @@ export function DebugTab({ store, broker }: DebugTabProps): ReactNode {
                 placeholder="Client id"
               />
               <div className={styles.hint}>
-                Pick from registered clients or type any id. Sending to a
-                non-registered id returns{" "}
-                <code className={styles.code}>NACK NO_SUBSCRIBERS</code>.
+                Pick from registered clients or type any id. A recipient that
+                has no handler for the topic (including non-registered ids)
+                returns{" "}
+                <code className={styles.code}>NACK NOT_SUBSCRIBED</code>.
                 Handler's return value is captured in{" "}
                 <code className={styles.code}>result.data</code>.
               </div>

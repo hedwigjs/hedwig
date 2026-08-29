@@ -9,10 +9,10 @@ const HEADER_HTML = `
     </div>
     <div class="hdw-header__actions">
       <div class="hdw-header__cart" data-slot-host="cart-header"></div>
-      <button class="hdw-header__user" type="button">
-        <span class="hdw-header__avatar">И</span>
-        <span class="hdw-header__username">Иван</span>
-      </button>
+      <span class="hdw-header__meta" aria-label="Reference stand for @hedwigjs 0.1.0">
+        <span class="hdw-header__meta-dot" aria-hidden="true"></span>
+        <span class="hdw-header__meta-text">Демо-стенд · Hedwig <em>0.1.0</em></span>
+      </span>
     </div>
   </header>
 `;
@@ -86,9 +86,11 @@ export function renderChrome(): void {
   root.innerHTML = `
     ${HEADER_HTML}
     <main class="hdw-main">
-      <section class="hdw-main__left" data-slot-host="storefront"></section>
+      <section class="hdw-main__left" data-slot-host="menu"></section>
       <aside class="hdw-main__right">
         <section class="hdw-main__cart" data-slot-host="cart-panel"></section>
+        <section class="hdw-main__late-mount" data-slot-host="late-mount"></section>
+        <section class="hdw-main__analytics" data-slot-host="analytics"></section>
       </aside>
     </main>
     <div class="hdw-toasts" data-slot-host="notifications" aria-live="polite"></div>
@@ -97,11 +99,13 @@ export function renderChrome(): void {
     ${AI_DRAWER_HTML}
   `;
 
-  ensureSlot('storefront');
+  ensureSlot('menu');
   ensureSlot('cart-panel');
   ensureSlot('cart-header');
+  ensureSlot('late-mount');
   ensureSlot('ai-chat');
   ensureSlot('notifications');
   ensureSlot('checkout');
+  ensureSlot('analytics');
   setupAiDrawer();
 }

@@ -6,13 +6,19 @@
  * without ts-loader complaining about the virtual module URL.
  */
 
-declare module 'storefront/App' {
+declare module 'menu/App' {
   export const bootstrap: (props: unknown) => Promise<void>;
   export const mount: (props: unknown) => Promise<void>;
   export const unmount: (props: unknown) => Promise<void>;
 }
 
 declare module 'cart/App' {
+  export const bootstrap: (props: unknown) => Promise<void>;
+  export const mount: (props: unknown) => Promise<void>;
+  export const unmount: (props: unknown) => Promise<void>;
+}
+
+declare module 'cart/LateMount' {
   export const bootstrap: (props: unknown) => Promise<void>;
   export const mount: (props: unknown) => Promise<void>;
   export const unmount: (props: unknown) => Promise<void>;
@@ -25,6 +31,12 @@ declare module 'ai_chat/App' {
 }
 
 declare module 'notifications/App' {
+  export const bootstrap: (props: unknown) => Promise<void>;
+  export const mount: (props: unknown) => Promise<void>;
+  export const unmount: (props: unknown) => Promise<void>;
+}
+
+declare module 'analytics/App' {
   export const bootstrap: (props: unknown) => Promise<void>;
   export const mount: (props: unknown) => Promise<void>;
   export const unmount: (props: unknown) => Promise<void>;

@@ -18,19 +18,21 @@ type MfeModule = {
 const registry: Array<{
   name: string;
   slot:
-    | 'storefront'
+    | 'menu'
     | 'cart-panel'
     | 'cart-header'
+    | 'late-mount'
     | 'ai-chat'
     | 'notifications'
-    | 'checkout';
+    | 'checkout'
+    | 'analytics';
   loader: () => Promise<MfeModule>;
 }> = [
   {
-    name: 'storefront',
-    slot: 'storefront',
+    name: 'menu',
+    slot: 'menu',
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    loader: () => import('storefront/App' as any) as Promise<MfeModule>,
+    loader: () => import('menu/App' as any) as Promise<MfeModule>,
   },
   {
     // Оба cart-представления монтируются всегда — какое видно, решает CSS
@@ -48,6 +50,15 @@ const registry: Array<{
     loader: () => import('cart/HeaderTrigger' as any) as Promise<MfeModule>,
   },
   {
+    // Demo of the replay buffer. Own bundle chunk, own client id
+    // (`late-mount-demo`), subscribes to `cart.snapshot.v1` with
+    // `replay: { limit: 1 }` on demand — see mfe/cart/src/views/LateMountDemo.
+    name: 'late-mount',
+    slot: 'late-mount',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    loader: () => import('cart/LateMount' as any) as Promise<MfeModule>,
+  },
+  {
     name: 'ai-chat',
     slot: 'ai-chat',
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -60,12 +71,20 @@ const registry: Array<{
     loader: () => import('notifications/App' as any) as Promise<MfeModule>,
   },
   {
-    // Headless: слушает `cart.checkout-requested.v1`, показывает iframe в
-    // портале — сам slot остаётся пустым (aria-hidden).
+    // Headless: обрабатывает request `checkout.start.v1` от cart, показывает iframe
+    // в портале — сам slot остаётся пустым (aria-hidden).
     name: 'checkout',
     slot: 'checkout',
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     loader: () => import('checkout/App' as any) as Promise<MfeModule>,
+  },
+  {
+    // Semi-trusted read-only widget — demonstrates broker ACL hooks
+    // installed in `security/installAclHooks.ts`.
+    name: 'analytics',
+    slot: 'analytics',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    loader: () => import('analytics/App' as any) as Promise<MfeModule>,
   },
 ];
 

@@ -49,6 +49,7 @@ module.exports = {
       exposes: {
         './Panel': './src/bootstrap.panel.tsx',
         './HeaderTrigger': './src/bootstrap.headerTrigger.tsx',
+        './LateMount': './src/bootstrap.lateMount.tsx',
       },
       shared: {
         react: { singleton: true, requiredVersion: '19.1.1' },
