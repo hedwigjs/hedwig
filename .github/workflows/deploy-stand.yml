@@ -1,0 +1,136 @@
+name: Deploy reference stand
+
+# Rebuilds the "Hedwig Café" reference stand (shell + 6 MFEs + backend) and
+# rsyncs the artifacts to the production VM behind hedwigjs.com. Triggered
+# on pushes to main that touch stand-relevant paths, plus manual dispatch
+# for on-demand redeploys.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "examples/advanced/**"
+      - "packages/broker/**"
+      - "packages/devtools/**"
+      - ".github/workflows/deploy-stand.yml"
+  workflow_dispatch:
+
+concurrency:
+  # Cancel in-flight deploys if a newer commit lands — no point deploying stale.
+  group: deploy-stand
+  cancel-in-progress: true
+
+env:
+  DOMAIN: hedwigjs.com
+  NODE_VERSION: "22"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies (workspaces)
+        run: npm ci
+
+      - name: Build @hedwigjs/broker + devtools (workspace deps)
+        run: |
+          npm run build -w @hedwigjs/broker
+          npm run build -w @hedwigjs/devtools
+
+      - name: Build shell (with prod remotes + WS URL)
+        working-directory: examples/advanced/shell
+        env:
+          NOTIFICATIONS_WS_URL: wss://${{ env.DOMAIN }}/ws/notifications
+          MFE_REMOTES_BASE: /mfe
+        run: npm run build
+
+      - name: Build MFEs (parallel)
+        working-directory: examples/advanced
+        env:
+          AI_STREAM_URL: https://${{ env.DOMAIN }}/ai/stream
+          CHECKOUT_IFRAME_ORIGIN: https://${{ env.DOMAIN }}
+        run: |
+          set -e
+          for m in menu cart ai-chat notifications checkout analytics; do
+            (cd mfe/$m && npm run build 2>&1 | tail -1 | sed "s/^/$m: /") &
+          done
+          wait
+
+      - name: Assemble deploy tree
+        run: |
+          rm -rf deploy && mkdir -p deploy/mfe
+          cp -R examples/advanced/shell/dist deploy/shell
+          for m in menu cart ai-chat notifications checkout analytics; do
+            cp -R examples/advanced/mfe/$m/dist deploy/mfe/$m
+          done
+          mkdir -p deploy/backend
+          cp -R examples/advanced/backend/src deploy/backend/
+          cp examples/advanced/backend/package.json deploy/backend/
+          cp examples/advanced/backend/tsconfig.json deploy/backend/
+          cp tsconfig.base.json deploy/backend/
+          sed -i 's|../../../tsconfig.base.json|./tsconfig.base.json|' deploy/backend/tsconfig.json
+          echo "--- tree size ---"
+          du -sh deploy/*
+
+      - name: Prepare SSH key + known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "${{ secrets.HEDWIG_SSH_KEY }}" > ~/.ssh/hedwig_vm
+          chmod 600 ~/.ssh/hedwig_vm
+          ssh-keyscan -H "${{ secrets.HEDWIG_VM_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Detect if backend changed
+        id: backend
+        run: |
+          # Compare last-deployed backend fingerprint with current one.
+          # First deploy always restarts (no prior fingerprint).
+          FP=$(find examples/advanced/backend/src examples/advanced/backend/package.json -type f -print0 | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+          REMOTE_FP=$(ssh -i ~/.ssh/hedwig_vm -o StrictHostKeyChecking=no \
+            "${{ secrets.HEDWIG_VM_USER }}@${{ secrets.HEDWIG_VM_HOST }}" \
+            "cat /var/www/hedwig/.backend-fingerprint 2>/dev/null || echo none")
+          echo "changed=$([ "$FP" != "$REMOTE_FP" ] && echo yes || echo no)" >> $GITHUB_OUTPUT
+          echo "fp=$FP" >> $GITHUB_OUTPUT
+
+      - name: Rsync to VM
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/hedwig_vm -o StrictHostKeyChecking=no" \
+            deploy/ \
+            "${{ secrets.HEDWIG_VM_USER }}@${{ secrets.HEDWIG_VM_HOST }}:/var/www/hedwig/"
+          # Record the new backend fingerprint for future diffs.
+          ssh -i ~/.ssh/hedwig_vm -o StrictHostKeyChecking=no \
+            "${{ secrets.HEDWIG_VM_USER }}@${{ secrets.HEDWIG_VM_HOST }}" \
+            "echo '${{ steps.backend.outputs.fp }}' > /var/www/hedwig/.backend-fingerprint"
+
+      - name: Reinstall backend deps + restart (if backend changed)
+        if: steps.backend.outputs.changed == 'yes'
+        run: |
+          ssh -i ~/.ssh/hedwig_vm -o StrictHostKeyChecking=no \
+            "${{ secrets.HEDWIG_VM_USER }}@${{ secrets.HEDWIG_VM_HOST }}" \
+            'cd /var/www/hedwig/backend && npm install --silent && sudo systemctl restart hedwig-backend && sleep 2 && sudo systemctl is-active hedwig-backend'
+
+      - name: Smoke test
+        run: |
+          set -e
+          curl -sf -o /dev/null -w "shell=%{http_code}\n"    "https://${{ env.DOMAIN }}/"
+          curl -sf -o /dev/null -w "menu.js=%{http_code}\n"  "https://${{ env.DOMAIN }}/mfe/menu/remoteEntry.js"
+          curl -sf -o /dev/null -w "cart.js=%{http_code}\n"  "https://${{ env.DOMAIN }}/mfe/cart/remoteEntry.js"
+          curl -sf -o /dev/null -w "health=%{http_code}\n"   "https://${{ env.DOMAIN }}/health"
+
+      - name: Summary
+        run: |
+          echo "## 🚀 Deployed to https://${{ env.DOMAIN }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend restarted: **${{ steps.backend.outputs.changed }}**" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY

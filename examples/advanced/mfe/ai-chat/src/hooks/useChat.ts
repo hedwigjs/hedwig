@@ -14,9 +14,8 @@ export type ChatMessage = {
   streaming?: boolean;
 };
 
-const BACKEND_URL =
-  (typeof process !== 'undefined' && process.env?.AI_STREAM_URL) ||
-  'http://localhost:4000/ai/stream';
+// Baked at build time by webpack's EnvironmentPlugin (see webpack.config.js).
+const BACKEND_URL = process.env.AI_STREAM_URL as string;
 
 const BRIDGE_ID = 'ai-backend-stream';
 

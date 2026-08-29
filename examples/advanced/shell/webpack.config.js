@@ -2,6 +2,16 @@ const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { ModuleFederationPlugin } = require('webpack').container;
 
+// When deploying to a single-origin host (nginx serving shell + all MFEs
+// under one domain), pass MFE_REMOTES_BASE=/mfe to point every remote at
+// the shared origin instead of the per-MFE dev-server ports.
+const REMOTES_BASE = process.env.MFE_REMOTES_BASE ?? null;
+
+const remoteUrl = (name, devPort) =>
+  REMOTES_BASE
+    ? `${name}@${REMOTES_BASE}/${name.replace('_', '-')}/remoteEntry.js`
+    : `${name}@http://localhost:${devPort}/remoteEntry.js`;
+
 module.exports = {
   mode: 'development',
   entry: './src/index.ts',
@@ -50,14 +60,15 @@ module.exports = {
     new ModuleFederationPlugin({
       name: 'shell',
       remotes: {
-        // Add new MFEs here as they come online. Each remote is a separate
-        // dev-server on its own port.
-        menu: 'menu@http://localhost:3001/remoteEntry.js',
-        cart: 'cart@http://localhost:3002/remoteEntry.js',
-        ai_chat: 'ai_chat@http://localhost:3003/remoteEntry.js',
-        notifications: 'notifications@http://localhost:3004/remoteEntry.js',
-        checkout: 'checkout@http://localhost:3005/remoteEntry.js',
-        analytics: 'analytics@http://localhost:3006/remoteEntry.js',
+        // Dev: each MFE is its own dev-server on a distinct port.
+        // Prod: set MFE_REMOTES_BASE=/mfe (or an absolute URL) so remotes
+        // resolve against a single origin — see remoteUrl() above.
+        menu:          remoteUrl('menu',          3001),
+        cart:          remoteUrl('cart',          3002),
+        ai_chat:       remoteUrl('ai_chat',       3003),
+        notifications: remoteUrl('notifications', 3004),
+        checkout:      remoteUrl('checkout',      3005),
+        analytics:     remoteUrl('analytics',     3006),
       },
       shared: {
         react: { singleton: true, eager: true, requiredVersion: '19.1.1' },
@@ -73,6 +84,13 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: './public/index.html',
       favicon: './public/favicon.png',
+    }),
+    // Bake runtime env into the bundle. EnvironmentPlugin substitutes
+    // `process.env.KEY` with a literal string at build time; when the env
+    // var is absent it inlines the default here, so browser bundles never
+    // touch a missing `process` global at runtime.
+    new (require('webpack').EnvironmentPlugin)({
+      NOTIFICATIONS_WS_URL: 'ws://localhost:4000/ws/notifications',
     }),
   ],
   devServer: {

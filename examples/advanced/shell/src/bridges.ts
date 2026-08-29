@@ -5,9 +5,9 @@ import {
 } from '@hedwigjs/broker';
 import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
 
-const NOTIFICATIONS_WS_URL =
-  (typeof process !== 'undefined' && process.env?.NOTIFICATIONS_WS_URL) ||
-  'ws://localhost:4000/ws/notifications';
+// Baked at build time by webpack's EnvironmentPlugin (see webpack.config.js).
+// Falls back to the dev-server localhost URL when the env is absent.
+const NOTIFICATIONS_WS_URL = process.env.NOTIFICATIONS_WS_URL as string;
 
 const BRIDGE_ID = 'backend-notifications';
 const CROSS_TAB_BRIDGE_ID = 'cross-tab-cart';

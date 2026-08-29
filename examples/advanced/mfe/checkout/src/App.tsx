@@ -13,9 +13,8 @@ import type {
 import { bus } from './clients/bus';
 import { CheckoutModal } from './components/CheckoutModal';
 
-const IFRAME_ORIGIN =
-  (typeof process !== 'undefined' && process.env?.CHECKOUT_IFRAME_ORIGIN) ||
-  'http://localhost:4000';
+// Baked at build time by webpack's EnvironmentPlugin (see webpack.config.js).
+const IFRAME_ORIGIN = process.env.CHECKOUT_IFRAME_ORIGIN as string;
 
 const IFRAME_URL = `${IFRAME_ORIGIN}/checkout`;
 

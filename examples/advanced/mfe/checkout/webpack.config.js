@@ -62,8 +62,8 @@ module.exports = {
         CHECKOUT_ORIGIN,
       },
     }),
-    new (require('webpack').DefinePlugin)({
-      'process.env.CHECKOUT_IFRAME_ORIGIN': JSON.stringify(CHECKOUT_ORIGIN),
+    new (require('webpack').EnvironmentPlugin)({
+      CHECKOUT_IFRAME_ORIGIN: CHECKOUT_ORIGIN,
     }),
   ],
   devServer: {

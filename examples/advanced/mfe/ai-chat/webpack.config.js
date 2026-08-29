@@ -56,6 +56,11 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: './public/index.html',
     }),
+    // Bake AI stream URL into the bundle. EnvironmentPlugin inlines a
+    // string literal at build time — no runtime `process` access.
+    new (require('webpack').EnvironmentPlugin)({
+      AI_STREAM_URL: 'http://localhost:4000/ai/stream',
+    }),
   ],
   devServer: {
     port: 3003,
