@@ -2,6 +2,8 @@ import type { FC } from 'react';
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
+import { lockBodyScroll } from '../../../../shared/hooks/useBodyScrollLock';
+
 import { useCartSnapshot } from '../state/useCartSnapshot';
 import { CartContent } from './CartContent';
 
@@ -32,11 +34,10 @@ export const CartPopup: FC<Props> = ({ onClose }) => {
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKeyDown);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const unlock = lockBodyScroll();
     return () => {
       document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = prevOverflow;
+      unlock();
     };
   }, [onClose]);
 

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import type { MenuItem } from '@hedwig-demo/contracts';
 
 import { t } from '../../../../../shared/i18n/useLang';
+import { lockBodyScroll } from '../../../../../shared/hooks/useBodyScrollLock';
 import { localizedName, localizedDescription } from '../../menuTranslations';
 
 import styles from './MenuItemModal.module.css';
@@ -80,11 +81,10 @@ export const MenuItemModal: FC<MenuItemModalProps> = ({
       }
     };
     document.addEventListener('keydown', onKeyDown);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const unlock = lockBodyScroll();
     return () => {
       document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = prevOverflow;
+      unlock();
     };
   }, [onClose]);
 

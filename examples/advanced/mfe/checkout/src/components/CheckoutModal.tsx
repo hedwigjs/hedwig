@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 import { getLang, t } from '../../../../shared/i18n/useLang';
+import { lockBodyScroll } from '../../../../shared/hooks/useBodyScrollLock';
 
 import styles from './CheckoutModal.module.css';
 
@@ -51,11 +52,10 @@ export const CheckoutModal: FC<Props> = ({
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKeyDown);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const unlock = lockBodyScroll();
     return () => {
       document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = prevOverflow;
+      unlock();
     };
   }, [onClose]);
 
