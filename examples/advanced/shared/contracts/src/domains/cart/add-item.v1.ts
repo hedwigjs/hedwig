@@ -14,7 +14,7 @@ export type CartAddItemResponse = {
 export default {
   name: "cart.add-item.v1",
   description:
-    "Command: add product to cart. Handled by cart-runtime as a request — if the item is already there, its quantity is incremented. Returns the resulting line quantity and running subtotal.",
+    "Command: add product to cart. Handled by cart-store as a request — if the item is already there, its quantity is incremented. Returns the resulting line quantity and running subtotal.",
   payload: {} as { itemId: number; name: string; price: string },
   examples: {
     happy: { itemId: 8, name: "Хачапури по-аджарски", price: "890 ₽" },

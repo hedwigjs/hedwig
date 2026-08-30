@@ -10,7 +10,7 @@ import { uiBus } from '../clients/bus';
 
 /**
  * Cart UI actions — targeted commands sent from the cart panel/pop-up to
- * the cart-runtime and checkout MFE. Every call is a **request**: sender
+ * the cart-store and checkout MFE. Every call is a **request**: sender
  * awaits an acknowledgement (`RoutingResult.data`), so failures are
  * observable and can drive UI feedback later.
  *
@@ -25,21 +25,21 @@ export const cartActions = {
     // creating a new line; for an increment on an existing line the runtime
     // keeps its stored metadata, so empty strings are safe.
     void uiBus.request<'cart.add-item.v1', CartAddItemResponse>(
-      'cart-runtime',
+      'cart-store',
       'cart.add-item.v1',
       { itemId, name: '', price: '' },
     );
   },
   decrement(itemId: number): void {
     void uiBus.request<'cart.decrement.v1', CartDecrementResponse>(
-      'cart-runtime',
+      'cart-store',
       'cart.decrement.v1',
       { itemId },
     );
   },
   remove(itemId: number): void {
     void uiBus.request<'cart.remove-item.v1', CartRemoveItemResponse>(
-      'cart-runtime',
+      'cart-store',
       'cart.remove-item.v1',
       { itemId },
     );

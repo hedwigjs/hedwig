@@ -85,11 +85,11 @@ export function installBackendNotificationsBridge(): void {
  * Cross-tab cart sync via BroadcastChannel.
  *
  * With the CQRS refactor, mutations are addressed **requests** to a specific
- * cart-runtime instance and cannot be broadcast — a request needs its
+ * cart-store instance and cannot be broadcast — a request needs its
  * recipient to be locally subscribed on the receiving broker to get a
  * response. Instead we broadcast the **state** — `cart.snapshot.v1` — which
  * is exactly the retained payload late/other-tab subscribers already know
- * how to render. Each tab's cart-runtime is the source of truth for its own
+ * how to render. Each tab's cart-store is the source of truth for its own
  * mutations; when its snapshot lands in another tab via this bridge, the
  * remote tab's UI re-renders from that snapshot without touching its local
  * runtime.

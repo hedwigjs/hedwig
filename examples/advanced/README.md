@@ -22,7 +22,7 @@ Everything on the domain lives under `/demo/advanced/` — root `/`
 | --------------- | --------------------- | --------------------------------------------------------------------------------- |
 | `shell`         | (host)                | Single-spa host. Installs ACL hooks, wires bridges (WS/SSE/BroadcastChannel), mounts DevTools |
 | `menu`          | `menu`                | Dish grid. Sends `cart.add-item.v1` requests to the cart runtime                  |
-| `cart`          | `cart-runtime`, `cart-ui` | Cart runtime + UI. Owns the cart state, publishes `cart.snapshot.v1` with history |
+| `cart`          | `cart-store`, `cart-ui` | Cart runtime + UI. Owns the cart state, publishes `cart.snapshot.v1` with history |
 | `checkout`      | `checkout`            | Headless iframe controller. Handles `checkout.start.v1` request; PostMessage bridge to iframe |
 | `notifications` | `notifications-toast` | Toast panel. Subscribes to `notification.show.v1`                                  |
 | `ai-chat`       | `ai-chat`             | Streaming chat over SSE                                                            |
@@ -138,7 +138,7 @@ Let's Encrypt every ~60 days).
 
 ## What each part demonstrates
 
-- **`cart-runtime` + `cart-ui`** — CQRS-style split. Mutations are
+- **`cart-store` + `cart-ui`** — CQRS-style split. Mutations are
   targeted `request()`s to the runtime; UI reads state from
   `cart.snapshot.v1` via `emit({ history: true })`.
 - **`late-mount`** — separate MF-bundle chunk that subscribes on demand

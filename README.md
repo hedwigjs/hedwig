@@ -100,7 +100,7 @@ independently.
 semantic. Any event flagged with `{ history: true }` is recorded to the
 broker's ring buffer; any subscription with `{ replay: { limit: N } }`
 receives the matching historical entries on subscribe. Combined, they
-let modules like `cart-runtime` publish an event stream and give
+let modules like `cart-store` publish an event stream and give
 late-joining subscribers the current snapshot without a separate query
 round-trip. It's a pattern, not an API tier.
 
@@ -269,7 +269,7 @@ your local http://localhost:3000.
    bottom.
 2. Add a dish. In the *Messages* tab you see three messages in one
    flow: `cart.add-item.v1` (**request** — unicast, awaits response
-   from `cart-runtime`), `cart.snapshot.v1` (**event** with
+   from `cart-store`), `cart.snapshot.v1` (**event** with
    `{ history: true }` — retained so any late-joining module gets the
    current cart via `replay`), `notification.show.v1` (**event** —
    multicast, from a backend module through the WebSocket bridge).

@@ -5,7 +5,7 @@ import type {
   CartRemoveItemResponse,
 } from '@hedwig-demo/contracts';
 
-import { runtimeBus } from '../clients/bus';
+import { storeBus } from '../clients/bus';
 
 type CartState = Record<number, CartItem>;
 
@@ -52,7 +52,7 @@ function computeTotals(items: CartItem[]) {
 }
 
 /**
- * Идемпотентный старт. Первый вызов регистрирует cart-runtime как обработчик
+ * Идемпотентный старт. Первый вызов регистрирует cart-store как обработчик
  * request'ов на мутации корзины и как publisher `cart.snapshot.v1`. Все
  * последующие — no-op. Безопасно звать из любого bootstrap'а.
  *
@@ -76,14 +76,14 @@ export function startCartRuntime(): void {
     const { totalItems, totalPrice } = computeTotals(items);
     // `history: true` records this emit into the broker's replay buffer so
     // late subscribers with `replay: { limit: 1 }` receive it on subscribe.
-    void runtimeBus.emit(
+    void storeBus.emit(
       'cart.snapshot.v1',
       { items, totalItems, totalPrice },
       { history: true },
     );
   };
 
-  runtimeBus.on('cart.add-item.v1', (msg): CartAddItemResponse => {
+  storeBus.on('cart.add-item.v1', (msg): CartAddItemResponse => {
     const payload = msg.data;
     const existing = state[payload.itemId];
     const nextQuantity = existing ? existing.quantity + 1 : 1;
@@ -108,7 +108,7 @@ export function startCartRuntime(): void {
     };
   });
 
-  runtimeBus.on('cart.decrement.v1', (msg): CartDecrementResponse => {
+  storeBus.on('cart.decrement.v1', (msg): CartDecrementResponse => {
     const { itemId } = msg.data;
     const current = state[itemId];
     if (!current) {
@@ -133,7 +133,7 @@ export function startCartRuntime(): void {
     };
   });
 
-  runtimeBus.on('cart.remove-item.v1', (msg): CartRemoveItemResponse => {
+  storeBus.on('cart.remove-item.v1', (msg): CartRemoveItemResponse => {
     const { itemId } = msg.data;
     if (!state[itemId]) {
       return { itemId, removed: false, subtotal: computeSubtotal(Object.values(state)) };

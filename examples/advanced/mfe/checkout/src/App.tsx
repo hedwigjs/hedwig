@@ -99,12 +99,12 @@ export const App: FC = () => {
       });
 
       // Clear the checked-out lines from the cart via targeted requests to
-      // cart-runtime — checkout doesn't own cart state, it just asks the
+      // cart-store — checkout doesn't own cart state, it just asks the
       // runtime to drop each purchased line.
       const items = pendingRef.current?.items ?? [];
       for (const item of items) {
         void bus.request<'cart.remove-item.v1', CartRemoveItemResponse>(
-          'cart-runtime',
+          'cart-store',
           'cart.remove-item.v1',
           { itemId: item.itemId },
         );

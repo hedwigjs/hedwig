@@ -13,7 +13,7 @@ export type CartRemoveItemResponse = {
 export default {
   name: "cart.remove-item.v1",
   description:
-    "Command: fully remove a line from the cart regardless of quantity. Handled by cart-runtime as a request.",
+    "Command: fully remove a line from the cart regardless of quantity. Handled by cart-store as a request.",
   payload: {} as { itemId: number },
   examples: {
     happy: { itemId: 8 },

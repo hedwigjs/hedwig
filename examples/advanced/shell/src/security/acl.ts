@@ -34,7 +34,7 @@ export const ACL: AclRules = {
     subscribe: ['*'],
     send: '*',
   },
-  'cart-runtime': {
+  'cart-store': {
     subscribe: ['*'],
     send: '*',
   },

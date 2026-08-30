@@ -16,7 +16,7 @@ import { bus } from '../clients/bus';
  *   1. Subscribes to snapshots — that's the ONLY channel it needs to render
  *      per-item quantities on dish cards. No item-added/removed events
  *      are listened to — full state is delivered on every mutation.
- *   2. Sends **requests** to the cart-runtime for mutations. `add-item`
+ *   2. Sends **requests** to the cart-store for mutations. `add-item`
  *      handles both first-add and increment (runtime returns updated qty).
  *
  * `replay: { limit: 1 }` guards the late-joiner case — if cart already has
@@ -46,7 +46,7 @@ export function useLocalCartQuantities() {
     // Same request whether the item is new or already there — cart runtime
     // treats "already present" as an increment.
     void bus.request<'cart.add-item.v1', CartAddItemResponse>(
-      'cart-runtime',
+      'cart-store',
       'cart.add-item.v1',
       { itemId: item.id, name: item.name, price: item.price },
     );
@@ -54,7 +54,7 @@ export function useLocalCartQuantities() {
 
   const decrement = useCallback((id: number) => {
     void bus.request<'cart.decrement.v1', CartDecrementResponse>(
-      'cart-runtime',
+      'cart-store',
       'cart.decrement.v1',
       { itemId: id },
     );
@@ -71,7 +71,7 @@ export function useLocalCartQuantities() {
       // up from React state; if it's somehow gone, no-op.
       const price = ''; // metadata not needed for existing lines — runtime ignores name/price when line exists
       void bus.request<'cart.add-item.v1', CartAddItemResponse>(
-        'cart-runtime',
+        'cart-store',
         'cart.add-item.v1',
         { itemId: id, name: '', price },
       );

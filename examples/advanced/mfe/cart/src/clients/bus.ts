@@ -4,7 +4,7 @@ import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
 /**
  * Cart MFE speaks the shared bus with two identities:
  *
- * - `runtimeBus` — the SoT. Subscribes to `cart.item-*` commands and emits
+ * - `storeBus` — the SoT. Subscribes to `cart.item-*` commands and emits
  *   `cart.snapshot.v1`. Kept separate so runtime is excluded from its own
  *   snapshot emissions and CAN hear commands emitted by the UI side
  *   (broker excludes sender from its own multicast).
@@ -15,5 +15,5 @@ import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
  *   handlers per (client, topic), the views no longer need distinct
  *   client identities.
  */
-export const runtimeBus = createClient<Topic, TopicPayloads>('cart-runtime');
+export const storeBus = createClient<Topic, TopicPayloads>('cart-store');
 export const uiBus = createClient<Topic, TopicPayloads>('cart-ui');

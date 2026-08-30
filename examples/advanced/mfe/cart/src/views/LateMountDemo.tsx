@@ -53,7 +53,7 @@ function currency(): Intl.NumberFormat {
  * recorded `cart.snapshot.v1` from the replay buffer via
  * `on(..., { replay: { limit: 1 } })`.
  *
- * `cart-runtime` records every snapshot with `{ history: true }` (see
+ * `cart-store` records every snapshot with `{ history: true }` (see
  * `cartStore.ts`) so this component receives the latest state the moment
  * it subscribes — no live emit required.
  */
