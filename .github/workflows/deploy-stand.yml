@@ -105,7 +105,11 @@ jobs:
 
       - name: Rsync to VM
         run: |
-          rsync -az --delete \
+          # --exclude=node_modules: the backend's node_modules live only on the
+          # VM (installed by the conditional step below). Without this exclude,
+          # --delete would wipe them on every deploy that didn't touch the
+          # backend, leaving systemd unable to exec tsx (status=203/EXEC).
+          rsync -az --delete --exclude='backend/node_modules' \
             -e "ssh -i ~/.ssh/hedwig_vm -o StrictHostKeyChecking=no" \
             deploy/ \
             "${{ secrets.HEDWIG_VM_USER }}@${{ secrets.HEDWIG_VM_HOST }}:/var/www/hedwig/"
