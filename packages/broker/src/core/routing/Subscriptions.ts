@@ -247,6 +247,17 @@ export class Subscriptions<T extends string> {
   }
 
   /**
+   * Whether a subscription id still refers to a live handler. O(1).
+   *
+   * Used by the Router to honour unsubscribes that happen *during* a
+   * dispatch: the recipient plan is snapshotted up front, and each entry
+   * is re-checked right before its handler is invoked.
+   */
+  isActive(id: SubscriptionId): boolean {
+    return this.#entryLocations.has(id);
+  }
+
+  /**
    * All handler entries a client has on a topic, in registration order.
    */
   getEntries(clientId: ClientID, topic: T): readonly SubscriptionEntry[] {

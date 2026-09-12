@@ -1,5 +1,5 @@
 import type { Message, ClientID, MessageHandler } from '../types';
-import type { Subscriptions } from './Subscriptions';
+import type { Subscriptions, SubscriptionEntry } from './Subscriptions';
 import type { BrokerLogger } from '../logger/BrokerLogger.types';
 import { RoutingResult, RoutingReason } from './RoutingResult';
 
@@ -74,21 +74,38 @@ export class Router<T extends string, P extends Record<T, any>> {
    * subscriber-centric mental model.
    *
    * Handlers run fire-and-forget — ACK means dispatch completed, not that
-   * every subscriber finished processing the message.
+   * every subscriber finished processing the message. Handlers are invoked
+   * synchronously, in registration order, on the caller's stack. A handler
+   * that emits another message therefore runs that nested dispatch inline:
+   * other subscribers see the nested message *before* they see the outer
+   * one. This is documented behaviour, not a bug — keep handlers short or
+   * defer follow-up emits if ordering matters.
+   *
+   * ## Mutation during dispatch
+   *
+   * The recipient plan is snapshotted before any handler runs, so a
+   * handler that subscribes or unsubscribes cannot corrupt the iteration
+   * (a spliced live array would silently skip the next element). The
+   * observable rules match DOM `EventTarget`:
+   *
+   *  - a handler unsubscribed mid-dispatch — by itself or by another
+   *    handler — is NOT invoked if it hasn't run yet; `off()` is immediate;
+   *  - a handler subscribed mid-dispatch does NOT receive the in-flight
+   *    message; it starts with the next one.
    */
   async multicast<K extends T>(message: Message<K, P[K]>, sender: ClientID): Promise<RoutingResult> {
-    const subscribers = this.#subscriptions.getSubscribers(message.topic);
+    const plan = this.#planMulticast(message.topic, sender);
 
     const dispatched: ClientID[] = [];
-    for (const clientId of subscribers) {
-      if (clientId === sender) continue;
-      const entries = this.#subscriptions.getEntries(clientId, message.topic);
-      if (entries.length === 0) continue;
-
+    for (const { clientId, entries } of plan) {
+      let invoked = false;
       for (const entry of entries) {
+        // Re-check liveness: an earlier handler may have unsubscribed this one.
+        if (!this.#subscriptions.isActive(entry.id)) continue;
         this.#executeHandlerFireAndForget(message, entry.handler, clientId);
+        invoked = true;
       }
-      dispatched.push(clientId);
+      if (invoked) dispatched.push(clientId);
     }
 
     if (dispatched.length === 0) {
@@ -108,6 +125,25 @@ export class Router<T extends string, P extends Record<T, any>> {
   // ========================================
   // PRIVATE HELPER METHODS
   // ========================================
+
+  /**
+   * Snapshot every recipient (except the sender) together with a copy of
+   * its handler list, before any handler is invoked.
+   * @private
+   */
+  #planMulticast(
+    topic: T,
+    sender: ClientID,
+  ): Array<{ clientId: ClientID; entries: readonly SubscriptionEntry[] }> {
+    const plan: Array<{ clientId: ClientID; entries: readonly SubscriptionEntry[] }> = [];
+    for (const clientId of this.#subscriptions.getSubscribers(topic)) {
+      if (clientId === sender) continue;
+      const entries = this.#subscriptions.getEntries(clientId, topic);
+      if (entries.length === 0) continue;
+      plan.push({ clientId, entries: entries.slice() });
+    }
+    return plan;
+  }
 
   /**
    * Execute a handler with error handling and response capture

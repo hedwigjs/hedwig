@@ -88,7 +88,12 @@ export class HooksRegistry<T extends string, P extends Record<T, any>> {
    * Executed for ALL messages (local and external).
    */
   afterSend(message: Readonly<Message<T, P[T]>>, messageResult: RoutingResult): void {
-    for (const hook of this.#afterSendHooks) {
+    // Iterate a snapshot: a hook that removes itself (or another hook) via
+    // the cleanup function splices the live array and would skip the next
+    // hook. Same rule as Router: removal takes effect from the next message.
+    const hooks = this.#afterSendHooks;
+    if (hooks.length === 0) return;
+    for (const hook of hooks.slice()) {
       try {
         hook(message, messageResult);
       } catch (error) {
@@ -134,13 +139,17 @@ export class HooksRegistry<T extends string, P extends Record<T, any>> {
    * Run a list of guard-style hooks: each returns HookResult, execution stops
    * at the first `{ allowed: false }`. Errors are caught and logged (fail-open):
    * a throwing hook does not block the pipeline.
+   *
+   * Iterates a snapshot of the list so a hook that removes itself mid-run
+   * cannot cause the next hook to be skipped.
    */
   #runGuard<H extends (...args: any[]) => HookResult>(
     hooks: H[],
     kind: string,
     invoke: (hook: H) => HookResult,
   ): HookResult {
-    for (const hook of hooks) {
+    if (hooks.length === 0) return { allowed: true };
+    for (const hook of hooks.slice()) {
       try {
         const result = invoke(hook);
         if (!result.allowed) return result;

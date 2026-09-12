@@ -322,4 +322,159 @@ describe('BrokerCore fault isolation', () => {
       core.destroy();
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 4. Subscribing / unsubscribing while a dispatch is in progress
+  // ─────────────────────────────────────────────────────────────────────────
+
+  describe('mutation during dispatch', () => {
+    test('a handler that unsubscribes its sibling does not cause the NEXT sibling to be skipped', async () => {
+      const core = new BrokerCore<Topics, Payloads>();
+      const sender = new BrokerClient('sender', core);
+      const receiver = new BrokerClient('receiver', core);
+      const calls: string[] = [];
+
+      let offH2: () => void = () => {};
+      receiver.on('a.v1', () => {
+        calls.push('h1');
+        offH2();
+      });
+      offH2 = receiver.on('a.v1', () => calls.push('h2'));
+      receiver.on('a.v1', () => calls.push('h3'));
+
+      await sender.emit('a.v1', { n: 1 });
+
+      // h2 was unsubscribed before its turn → not invoked; h3 must NOT be skipped.
+      expect(calls).toEqual(['h1', 'h3']);
+      core.destroy();
+    });
+
+    test('a handler that unsubscribes ANOTHER client mid-dispatch: that client is skipped, later clients still run', async () => {
+      const core = new BrokerCore<Topics, Payloads>();
+      const sender = new BrokerClient('sender', core);
+      const a = new BrokerClient('a', core);
+      const b = new BrokerClient('b', core);
+      const c = new BrokerClient('c', core);
+      const calls: string[] = [];
+
+      a.on('a.v1', () => {
+        calls.push('a');
+        b.off('a.v1');
+      });
+      b.on('a.v1', () => calls.push('b'));
+      c.on('a.v1', () => calls.push('c'));
+
+      const result = await sender.emit('a.v1', { n: 1 });
+
+      expect(calls).toEqual(['a', 'c']);
+      expect(result.recipientIds).toEqual(['a', 'c']);
+      core.destroy();
+    });
+
+    test('a client subscribed during dispatch does not receive the in-flight message, but does receive the next one', async () => {
+      const core = new BrokerCore<Topics, Payloads>();
+      const sender = new BrokerClient('sender', core);
+      const a = new BrokerClient('a', core);
+      const late = new BrokerClient('late', core);
+      const lateCalls: number[] = [];
+
+      a.on('a.v1', () => {
+        if (lateCalls.length === 0 && !core.inspect.getSubscribedClientIds().includes('late')) {
+          late.on('a.v1', (msg) => lateCalls.push(msg.data.n));
+        }
+      });
+
+      const first = await sender.emit('a.v1', { n: 1 });
+      expect(lateCalls).toEqual([]);
+      expect(first.recipientIds).toEqual(['a']);
+
+      const second = await sender.emit('a.v1', { n: 2 });
+      expect(lateCalls).toEqual([2]);
+      expect(second.recipientIds).toEqual(expect.arrayContaining(['a', 'late']));
+      core.destroy();
+    });
+
+    test('a handler that unsubscribes itself ("once") runs exactly once and siblings still run', async () => {
+      const core = new BrokerCore<Topics, Payloads>();
+      const sender = new BrokerClient('sender', core);
+      const receiver = new BrokerClient('receiver', core);
+      const calls: string[] = [];
+
+      const offOnce = receiver.on('a.v1', () => {
+        calls.push('once');
+        offOnce();
+      });
+      receiver.on('a.v1', () => calls.push('always'));
+
+      await sender.emit('a.v1', { n: 1 });
+      await sender.emit('a.v1', { n: 2 });
+
+      expect(calls).toEqual(['once', 'always', 'always']);
+      core.destroy();
+    });
+
+    test('re-entrant emit is delivered inline: other subscribers see the nested message before the outer one', async () => {
+      const core = new BrokerCore<Topics, Payloads>();
+      const sender = new BrokerClient('sender', core);
+      const a = new BrokerClient('a', core);
+      const b = new BrokerClient('b', core);
+      const seenByB: string[] = [];
+
+      a.on('a.v1', (msg) => {
+        if (msg.data.n === 1) void a.emit('a.v1', { n: 2 });
+      });
+      b.on('a.v1', (msg) => seenByB.push(msg.data.n === 1 ? 'outer' : 'inner'));
+
+      await sender.emit('a.v1', { n: 1 });
+
+      // Documented behaviour (see Router.multicast JSDoc): nested dispatch
+      // runs on a's stack, so b receives the inner message first.
+      expect(seenByB).toEqual(['inner', 'outer']);
+      core.destroy();
+    });
+
+    test('an afterSend hook that removes itself does not cause the next afterSend hook to be skipped', async () => {
+      const core = new BrokerCore<Topics, Payloads>();
+      const sender = new BrokerClient('sender', core);
+      const receiver = new BrokerClient('receiver', core);
+      receiver.on('a.v1', () => {});
+      const calls: string[] = [];
+
+      const offFirst = core.useAfterSendHook(() => {
+        calls.push('first');
+        offFirst();
+      });
+      core.useAfterSendHook(() => calls.push('second'));
+
+      await sender.emit('a.v1', { n: 1 });
+      await sender.emit('a.v1', { n: 2 });
+
+      expect(calls).toEqual(['first', 'second', 'second']);
+      core.destroy();
+    });
+
+    test('a beforeSend hook that removes itself does not cause the next guard to be skipped', async () => {
+      const core = new BrokerCore<Topics, Payloads>();
+      const sender = new BrokerClient('sender', core);
+      const receiver = new BrokerClient('receiver', core);
+      receiver.on('a.v1', () => {});
+      const calls: string[] = [];
+
+      const offFirst = core.useBeforeSendHook(() => {
+        calls.push('first');
+        offFirst();
+        return { allowed: true };
+      });
+      core.useBeforeSendHook(() => {
+        calls.push('second');
+        return { allowed: false, message: 'blocked by second' };
+      });
+
+      const result = await sender.emit('a.v1', { n: 1 });
+
+      expect(calls).toEqual(['first', 'second']);
+      expect(result.reason).toBe(RoutingReason.HOOK_REJECTED);
+      core.destroy();
+    });
+  });
 });
