@@ -156,6 +156,35 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* Shown instead of the composer when the broker was booted without
+   `debug: true` — explains the state and the one-line fix. */
+.disabledNotice {
+  margin: 12px;
+  padding: 12px 14px;
+  border: 1px solid #713f12;
+  border-radius: 6px;
+  background: #1c1917;
+  color: #d6d3d1;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.disabledNotice strong {
+  color: #fef08a;
+}
+
+.disabledSnippet {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre;
+  overflow-x: auto;
+}
+
 .actions {
   display: flex;
   gap: 8px;

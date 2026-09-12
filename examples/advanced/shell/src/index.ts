@@ -18,6 +18,10 @@ import { installAclHooks } from './security/installAclHooks';
 // singleton` ensures the module is not duplicated across remotes).
 initBroker<Topic, TopicPayloads>({
   history: { enabled: true, maxSize: 50 },
+  // Arms `broker.$debug.send` for the DevTools Debug tab. Off by default
+  // in the broker so a production bundle cannot inject spoofed traffic;
+  // the reference stand is a demo, so it stays on.
+  debug: true,
 });
 
 async function main() {

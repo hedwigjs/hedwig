@@ -9,6 +9,8 @@ export const RoutingReason = {
   NOT_SUBSCRIBED: 'NOT_SUBSCRIBED',
   HANDLER_FAILED: 'HANDLER_FAILED',
   BROKER_DESTROYED: 'BROKER_DESTROYED',
+  /** `$debug.send` called on a broker booted without `debug: true`. */
+  DEBUG_DISABLED: 'DEBUG_DISABLED',
 } as const;
 
 export type RoutingReasonType = (typeof RoutingReason)[keyof typeof RoutingReason];

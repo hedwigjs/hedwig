@@ -32,6 +32,11 @@ export interface MessageBrokerForDevTools {
   $systemEvents: SystemEventsEmitter<string, Record<string, any>>;
   inspect: Inspector<string, Record<string, any>>;
   $debug: {
+    /**
+     * `initBroker({ debug: true })` was set. Optional so the panel can
+     * attach to cores that predate the gate (treated as enabled).
+     */
+    readonly enabled?: boolean;
     send(
       source: string,
       topic: string,

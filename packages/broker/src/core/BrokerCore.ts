@@ -79,6 +79,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   readonly protocolVersion: number = PROTOCOL_VERSION;
   #duplicateCopies = 0;
   #otherProtocolVersions: number[] = [];
+  #debugEnabled: boolean;
 
   /**
    * Infrastructure logger configured via {@link BrokerConfig.logger}.
@@ -92,6 +93,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
 
   constructor(config?: BrokerConfig) {
     this.logger = createSafeLogger(config?.logger ?? defaultLogger);
+    this.#debugEnabled = config?.debug === true;
 
     this.#hooks = new HooksRegistry(this.logger);
     this.#systemEvents = new SystemEvents(this.logger);
@@ -355,8 +357,14 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
    *
    * The `$` prefix marks this as a broker-internal API — for DevTools
    * and integration tests, not for business code.
+   *
+   * Gated by `BrokerConfig.debug`. When the broker was booted without
+   * `debug: true`, `send()` resolves `NACK DEBUG_DISABLED` without
+   * touching the pipeline and logs `debug.disabled`; `enabled` tells
+   * tooling which state it is in so it can explain instead of failing.
    */
   get $debug(): {
+    readonly enabled: boolean;
     send<K extends T, R = unknown>(
       source: ClientID,
       topic: K,
@@ -366,6 +374,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     ): Promise<RoutingResult<R>>;
   } {
     return {
+      enabled: this.#debugEnabled,
       send: <K extends T, R = unknown>(
         source: ClientID,
         topic: K,
@@ -373,6 +382,17 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
         data: P[K],
         options?: MessageOptions,
       ): Promise<RoutingResult<R>> => {
+        if (!this.#debugEnabled) {
+          this.logger.warn('debug.disabled', { source, topic, target });
+          return Promise.resolve(
+            RoutingResult.create<R>(
+              'NACK',
+              RoutingReason.DEBUG_DISABLED,
+              'Debug channel is disabled. Boot the broker with initBroker({ debug: true }).',
+              target !== '*' ? target : undefined,
+            ),
+          );
+        }
         return this.#runPipeline<K, R>(topic, source, target, data, options, false, true);
       },
     };

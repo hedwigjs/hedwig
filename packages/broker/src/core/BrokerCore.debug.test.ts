@@ -14,11 +14,51 @@ type Payloads = {
   'ping.v1': { echo: string };
 };
 
+describe('BrokerCore.$debug gate', () => {
+  test('is disabled by default: send() resolves NACK DEBUG_DISABLED, logs, and never reaches handlers', async () => {
+    const warns: Array<[string, unknown]> = [];
+    const core = new BrokerCore<Topics, Payloads>({
+      logger: { warn: (e, m) => warns.push([e, m]), error: () => {} },
+    });
+    const a = new BrokerClient<Topics, Payloads>('a', core);
+    const handler = jest.fn();
+    a.on('x.v1', handler);
+
+    expect(core.$debug.enabled).toBe(false);
+
+    const result = await core.$debug.send('spoof', 'x.v1', '*', { value: 1 });
+
+    expect(result.status).toBe('NACK');
+    expect(result.reason).toBe('DEBUG_DISABLED');
+    expect(handler).not.toHaveBeenCalled();
+    expect(warns).toContainEqual([
+      'debug.disabled',
+      expect.objectContaining({ source: 'spoof', topic: 'x.v1', target: '*' }),
+    ]);
+    core.destroy();
+  });
+
+  test('unicast while disabled carries the intended recipient in the NACK', async () => {
+    const core = new BrokerCore<Topics, Payloads>({ logger: { warn() {}, error() {} } });
+    const result = await core.$debug.send('spoof', 'ping.v1', 'b', { echo: 'hi' });
+
+    expect(result.reason).toBe('DEBUG_DISABLED');
+    expect(result.recipientId).toBe('b');
+    core.destroy();
+  });
+
+  test('debug: true arms the channel', () => {
+    const core = new BrokerCore<Topics, Payloads>({ debug: true });
+    expect(core.$debug.enabled).toBe(true);
+    core.destroy();
+  });
+});
+
 describe('BrokerCore.$debug.send', () => {
   let core: BrokerCore<Topics, Payloads>;
 
   beforeEach(() => {
-    core = new BrokerCore<Topics, Payloads>();
+    core = new BrokerCore<Topics, Payloads>({ debug: true });
   });
 
   afterEach(() => {
@@ -132,6 +172,7 @@ describe('BrokerCore.$debug.send', () => {
   test('records to history when options.history is true, like real emits', async () => {
     const withHistory = new BrokerCore<Topics, Payloads>({
       history: { enabled: true, maxSize: 10 },
+      debug: true,
     });
 
     await withHistory.$debug.send(

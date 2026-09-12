@@ -14,6 +14,8 @@ export type BrokerLogEvent =
   | 'broker.client.register.after_destroy'
   | 'broker.replay.history_disabled'
   | 'facade.createClient.reset'
+  // Debug channel
+  | 'debug.disabled'
   // Message routing
   | 'handler.failed'
   // Hooks

@@ -14,6 +14,13 @@ import type { RoutingResult } from './routing/RoutingResult';
  */
 export interface DebugChannel<T extends string, P extends Record<T, any>> {
   /**
+   * Whether the channel is armed — `initBroker({ debug: true })`.
+   * Tooling reads this to show "debug disabled" instead of sending into
+   * a wall of `NACK DEBUG_DISABLED`.
+   */
+  readonly enabled: boolean;
+
+  /**
    * Inject a message into the pipeline with an arbitrary `source`.
    *
    * Runs full routing/hooks/history/bridge-forward like a normal emit;
@@ -21,6 +28,9 @@ export interface DebugChannel<T extends string, P extends Record<T, any>> {
    * validated against the client registry. Multicast when `target === '*'`,
    * unicast otherwise (return value from the handler is captured in
    * `RoutingResult.data`).
+   *
+   * Requires `BrokerConfig.debug: true`; otherwise resolves
+   * `NACK DEBUG_DISABLED` without entering the pipeline.
    */
   send<K extends T, R = unknown>(
     source: ClientID,

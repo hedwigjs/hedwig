@@ -131,6 +131,35 @@ export function DebugTab({ store, broker }: DebugTabProps): ReactNode {
 
   const disabled = sending || !topic.trim();
 
+  // Cores that predate the gate expose no `enabled` flag — treat as armed.
+  const channelEnabled = broker.$debug.enabled !== false;
+
+  if (!channelEnabled) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.header}>
+          <span className={styles.headerLabel}>Send test event</span>
+          <span className={styles.headerHint}>
+            Delegated to{" "}
+            <code className={styles.code}>broker.$debug.send()</code>.
+          </span>
+        </div>
+        <div className={styles.disabledNotice} data-mbdt-debug-disabled>
+          <strong>Debug channel is off.</strong> The broker was booted without{" "}
+          <code className={styles.code}>debug: true</code>, so synthetic
+          messages are refused with{" "}
+          <code className={styles.code}>NACK DEBUG_DISABLED</code>. Enable it
+          in the host where the broker starts:
+          <pre className={styles.disabledSnippet}>
+            {"initBroker({ debug: process.env.NODE_ENV !== 'production' })"}
+          </pre>
+          Off by default so a production bundle cannot inject spoofed
+          traffic by accident.
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>

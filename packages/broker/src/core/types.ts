@@ -181,4 +181,20 @@ export interface BrokerConfig {
    * Defaults to `console.warn` / `console.error` when not provided.
    */
   logger?: BrokerLogger;
+
+  /**
+   * Enable the broker-internal debug channel (`broker.$debug.send`).
+   *
+   * The channel injects messages with an arbitrary `source`, bypassing
+   * client identity — it exists for the DevTools Debug tab and integration
+   * tests. Off by default so a production bundle cannot inject spoofed
+   * traffic by accident; when off, `$debug.send` resolves
+   * `NACK DEBUG_DISABLED` and logs `debug.disabled`.
+   *
+   * This is accident prevention, not a security boundary: any code in the
+   * same realm can reach the broker regardless. See the threat-model doc.
+   *
+   * @default false
+   */
+  debug?: boolean;
 }
