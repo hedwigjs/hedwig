@@ -142,6 +142,11 @@ import {
 }
 ```
 
+`initBroker()` works in non-secure contexts too (plain `http://`
+staging and intranet hosts): message ids are built from
+`crypto.randomUUID` where available and from `crypto.getRandomValues`
+otherwise, so the broker never depends on an `https:` origin.
+
 ### Client
 
 Returned by `createClient(id)`.
@@ -160,6 +165,21 @@ Handlers receive the full immutable `Message<T, P[T]>` — the payload
 lives on `msg.data`. A handler's return value is captured on
 `RoutingResult.data` for `request()` callers. Sync and async handlers
 are both supported.
+
+**Dispatch semantics.** Handlers run synchronously on the emitter's
+stack, in registration order. The rules that follow from that:
+
+- A handler that calls `emit()` runs the nested dispatch inline — other
+  subscribers see the nested message *before* the outer one. Defer
+  follow-up emits if ordering matters.
+- Subscribing or unsubscribing from inside a handler is safe and
+  behaves like DOM `EventTarget`: a handler unsubscribed mid-dispatch
+  (by itself or by another handler) is not invoked if it hasn't run
+  yet; a handler subscribed mid-dispatch starts with the *next*
+  message.
+- A throwing handler is logged (`handler.failed`) and isolated — the
+  other subscribers still receive the message, and `emit()` resolves
+  `ACK`. For `request()` the caller gets `NACK HANDLER_FAILED`.
 
 ### Broker extension surface
 
@@ -199,8 +219,18 @@ interface Message<T extends string, P> {
 }
 ```
 
-Messages are `Object.freeze()`d before entering the pipeline. Do not
-mutate `msg.data`; treat handlers as pure observers.
+Messages are deep-frozen before entering the pipeline, so one handler
+cannot change what the next one sees. Two consequences worth knowing:
+
+- **Freezing happens in place.** The object you pass as `data` is the
+  object that gets frozen — there is no copy. If you emit a live store
+  object, it is frozen afterwards; pass a snapshot when you need to
+  keep mutating the original.
+- **Binary data is exempt.** `ArrayBuffer`, `SharedArrayBuffer` and
+  every typed array / `DataView` over them are skipped (they cannot be
+  frozen) and stay mutable. Everything around them is still frozen.
+
+Do not mutate `msg.data` in handlers; treat them as pure observers.
 
 ---
 
@@ -302,8 +332,13 @@ class MyTransport implements BridgeTransport {
 
 Contract summary:
 
-- **`send(data)`** must not throw — catch wire errors and log. A failing
-  wire must not break the broker pipeline.
+- **`send(data)`** should catch wire errors and log them. If it does
+  throw, the broker isolates the failure: the message has already been
+  delivered locally, the caller's promise resolves normally, other
+  bridges still receive the message, and `bridge.send.failed` fires on
+  the logger and on `$systemEvents` with `{ bridgeId, topic, messageId,
+  error }`. Catching inside the transport is still preferred — it gives
+  you the chance to retry or queue.
 - **`onMessage(cb)`** is called once at bridge construction. Validate
   every inbound payload (origin, signature, schema) before invoking
   `cb`. Return an unsubscribe function.
@@ -409,6 +444,20 @@ Replayed messages carry `replayed: true` — handlers can tell historical
 traffic apart from live traffic. Replay is best-effort against a
 bounded buffer; do not rely on it as durable storage.
 
+**Ordering.** Replay is synchronous: matching entries are delivered to
+the handler *before* `on()` returns, oldest first. Two guarantees
+follow:
+
+- **Old before new.** Any live message emitted after `on()` returns
+  arrives after every replayed entry. A late-mounted view never paints a
+  stale snapshot over a fresh one.
+- **No duplicates.** The history snapshot is taken on the subscriber's
+  stack, so a message emitted after `on()` cannot be delivered both
+  live and replayed.
+
+Handlers are invoked in order but not awaited; an async handler that
+rejects during replay is logged as `replay.handler.failed`.
+
 **When to use.** Late-joining modules (an MFE that mounts after the
 initial burst), UI resurrection (a modal that re-opens should see the
 latest `state.v1` message), reconnection recovery.
@@ -475,6 +524,7 @@ user messages — infrastructure telemetry.
 | `message.rejected`       | `{ source, target, topic, reason }`                        | A `beforeSend` hook denied a message. Emit also resolves `NACK HOOK_REJECTED`. |
 | `bridge.added`           | `{ bridgeId }`                                             | `broker.addBridge(id, …)`.                                                  |
 | `bridge.removed`         | `{ bridgeId }`                                             | Bridge remover called, or broker teardown.                                  |
+| `bridge.send.failed`     | `{ bridgeId, topic, messageId, error }`                    | A transport threw from `send()`. The message was delivered locally and the caller got a normal result — this is the only trace that the wire dropped it. |
 
 ```ts
 const off = getBroker().$systemEvents.on('message.rejected', (evt) => {
@@ -611,8 +661,14 @@ initBroker({
 ```
 
 `BrokerLogEvent` is a closed union of stable string codes
-(`'handler.failed'`, `'hook.failed'`, …) — safe to use as filter keys
-in Sentry / Datadog / Grafana.
+(`'handler.failed'`, `'hook.failed'`, `'bridge.send.failed'`, …) —
+safe to use as filter keys in Sentry / Datadog / Grafana.
+
+The logger is isolated from the pipeline: if your `warn` / `error`
+implementation throws (sink offline, serializer choked on `meta`), the
+broker reports it once to `console.error` as `logger.failed` and
+carries on. A broken observability sink never turns into a broken
+message bus.
 
 ---
 

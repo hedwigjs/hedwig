@@ -71,7 +71,7 @@ Six tabs, each backed by one channel of broker observability.
 | **Clients**       | `inspect.getClients()` + `subscription.*` and `client.*` system events                             | Tree of every registered client and its subscriptions, with per-subscription last-received timestamp.       |
 | **Bridges**       | `inspect.getBridges()` + `bridge.*` system events                                                  | Every registered bridge — forward patterns, transport kind, approximate send / receive counters.            |
 | **Replay Buffer** | `inspect.getHistory()`                                                                             | Contents of the broker's history ring. Only populated when `initBroker({ history: { enabled: true } })`.    |
-| **System Events** | `$systemEvents.onAny`                                                                              | Unified log of lifecycle signals: `client.*`, `subscription.*`, `bridge.*`, plus `*.rejected` security signals. |
+| **System Events** | `$systemEvents.onAny`                                                                              | Unified log of lifecycle signals: `client.*`, `subscription.*`, `bridge.*`, plus `*.rejected` security signals and `bridge.send.failed` wire failures. |
 | **Debug**         | `broker.$debug.send`                                                                               | Compose and send a synthetic message through the full pipeline. Impersonate any source; multicast or unicast. |
 
 Rejections from hooks surface in three places at once:
@@ -79,6 +79,10 @@ Rejections from hooks surface in three places at once:
 - `subscription.rejected` → System Events tab (the security channel).
 - `message.rejected` → System Events tab, **and** the corresponding
   emit shows as `NACK HOOK_REJECTED` in Messages.
+- `bridge.send.failed` → System Events tab with an amber `failed` badge
+  (distinct from the red `rejected`, which is a policy decision). The
+  sender's message still shows as delivered in Messages — the local
+  delivery succeeded; only the wire dropped it.
 - Replayed and synthetic (DevTools-injected) messages are visually
   marked so you can distinguish them from live user traffic.
 
@@ -317,7 +321,8 @@ that wires up two channels:
   `$systemEvents.on('subscription.*')`, and `$systemEvents.on('bridge.*')`
   drive the Clients and Bridges tabs and populate the System Events log.
   `subscription.rejected` and `message.rejected` are surfaced separately
-  as security signals.
+  as security signals; `bridge.send.failed` is logged without touching
+  the bridge list, since the bridge is still registered.
 - **Snapshots (initial hydration)** — `inspect.getClients()`,
   `inspect.getHistory()`, and `inspect.getBridges()` prime state on
   attach and refresh on each system event, so the tabs are correct

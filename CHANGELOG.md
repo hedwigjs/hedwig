@@ -12,6 +12,31 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ## [Unreleased]
 
+### Broker — fault isolation
+
+Six fixes to the delivery pipeline so that one failing consumer can no
+longer take the bus down for everyone else. Each landed as its own
+commit with a changeset; per-package notes will appear in
+`packages/broker/CHANGELOG.md` on the next version bump.
+
+- A throwing custom `logger` is isolated (`logger.failed` to console);
+  `emit()` / `request()` no longer reject because a sink is down.
+- A transport that throws from `send()` no longer rejects the caller
+  after local delivery or starves later bridges. New
+  `bridge.send.failed` event on the logger and `$systemEvents`;
+  DevTools shows it with a `failed` badge.
+- Binary payloads (`Uint8Array`, `DataView`, `ArrayBuffer`, …) travel
+  through the pipeline instead of throwing in `deepFreeze`. Documented
+  that freezing happens in place on the emitter's object.
+- Subscribing or unsubscribing during a dispatch is deterministic (DOM
+  `EventTarget` semantics); a self-removing hook no longer skips the
+  next hook. Re-entrant `emit()` documented as inline delivery.
+- Replay is synchronous and ordered: history entries reach the handler
+  before `on()` returns, live messages always come after, nothing is
+  delivered twice. Async handler rejections during replay are logged.
+- `initBroker()` works outside secure contexts (plain `http://` hosts):
+  session ids fall back to `crypto.getRandomValues`.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification
