@@ -10,6 +10,7 @@ import { SubscriptionReplay } from './history/SubscriptionReplay';
 import { SystemEvents } from './events/SystemEvents';
 import { Inspector } from './observability/inspect/Inspector';
 import { deepFreeze } from './utils/deepFreeze';
+import { generateUUID } from './utils/uuid';
 import { defaultLogger } from './logger/BrokerLogger.types';
 import { createSafeLogger } from './logger/safeLogger';
 
@@ -54,7 +55,10 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   implements MessageBroker<T, P>
 {
   #isDestroyed = false;
-  #sessionId = crypto.randomUUID();
+  // Session label baked into every message id. `generateUUID` works outside
+  // secure contexts too — `crypto.randomUUID` alone would throw on plain-http
+  // intranet hosts and take `initBroker()` down with it.
+  #sessionId = generateUUID();
   #eventCounter = 0;
   #subscriptions = new Subscriptions<T>();
   #router: Router<T, P>;
