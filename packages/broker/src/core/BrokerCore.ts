@@ -11,6 +11,7 @@ import { SystemEvents } from './events/SystemEvents';
 import { Inspector } from './observability/inspect/Inspector';
 import { deepFreeze } from './utils/deepFreeze';
 import { defaultLogger } from './logger/BrokerLogger.types';
+import { createSafeLogger } from './logger/safeLogger';
 
 import type {
   Message,
@@ -69,12 +70,15 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   /**
    * Infrastructure logger configured via {@link BrokerConfig.logger}.
    *
+   * Always wrapped by {@link createSafeLogger}: a throwing user logger is
+   * reported to `console.error` and never propagates into the pipeline.
+   *
    * @internal Used by the facade layer.
    */
   readonly logger: BrokerLogger;
 
   constructor(config?: BrokerConfig) {
-    this.logger = config?.logger ?? defaultLogger;
+    this.logger = createSafeLogger(config?.logger ?? defaultLogger);
 
     this.#hooks = new HooksRegistry(this.logger);
     this.#systemEvents = new SystemEvents(this.logger);
