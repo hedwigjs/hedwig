@@ -60,6 +60,16 @@ export interface DebugChannel<T extends string, P extends Record<T, any>> {
  */
 export interface MessageBroker<T extends string, P extends Record<T, any>> {
   /**
+   * Version of the internal client ↔ core protocol this instance speaks
+   * (see `PROTOCOL_VERSION`). One broker per realm per protocol version:
+   * copies of the library with the same version share the instance,
+   * copies with a different version get a separate broker and a
+   * `broker.protocol_mismatch` warning. Tooling compares this with the
+   * version it was built against.
+   */
+  readonly protocolVersion: number;
+
+  /**
    * Broker-internal system event channel (push model).
    *
    * The `$` prefix marks this as a broker-internal API. Intended for

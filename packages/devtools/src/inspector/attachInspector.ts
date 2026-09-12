@@ -20,10 +20,36 @@ export function attachInspector(
 ): () => void {
   store.setAttached(true);
 
+  // Protocol handshake: a panel built against one PROTOCOL_VERSION attached
+  // to a core of another would otherwise fail somewhere deep in a renderer.
+  store.setProtocol(broker.protocolVersion);
+
   // Initial snapshots before any hooks/events fire
   store.refreshClients(broker);
   store.refreshHistory(broker);
   store.refreshBridges(broker);
+
+  // Realm-singleton diagnostics happen at app bootstrap, long before this
+  // panel mounts, so the live events were never observed. Reconstruct them
+  // from the inspect snapshot, same idea as the hydrated `bridge.added`
+  // below. Optional chaining: cores that predate `getProtocolInfo`.
+  const protocolInfo = broker.inspect.getProtocolInfo?.();
+  if (protocolInfo) {
+    if (protocolInfo.duplicateCopies > 0) {
+      store.pushSystemEvent("broker.duplicate_copy", {
+        protocolVersion: protocolInfo.protocolVersion,
+        copies: protocolInfo.duplicateCopies,
+        hydrated: true,
+      });
+    }
+    if (protocolInfo.otherProtocolVersions.length > 0) {
+      store.pushSystemEvent("broker.protocol_mismatch", {
+        protocolVersion: protocolInfo.protocolVersion,
+        otherVersions: protocolInfo.otherProtocolVersions,
+        hydrated: true,
+      });
+    }
+  }
 
   // Synthesize `bridge.added` for bridges that were registered BEFORE the
   // inspector attached. Otherwise the System Events log would miss any
@@ -87,6 +113,15 @@ export function attachInspector(
   const unsubBridgeSendFailed = broker.$systemEvents.on("bridge.send.failed", (payload) => {
     store.pushSystemEvent("bridge.send.failed", payload);
   });
+  // Live counterparts of the hydrated realm-singleton events above — fire
+  // when a lazily loaded remote brings its own copy of the library after
+  // the panel is already attached.
+  const unsubDuplicateCopy = broker.$systemEvents.on("broker.duplicate_copy", (payload) => {
+    store.pushSystemEvent("broker.duplicate_copy", payload);
+  });
+  const unsubProtocolMismatch = broker.$systemEvents.on("broker.protocol_mismatch", (payload) => {
+    store.pushSystemEvent("broker.protocol_mismatch", payload);
+  });
 
   // Security signals — hook-driven rejections. `subscription.rejected` fires
   // when an `onSubscribe` hook denies a subscription (`client.on` throws too,
@@ -116,6 +151,8 @@ export function attachInspector(
     unsubBridgeAdded();
     unsubBridgeRemoved();
     unsubBridgeSendFailed();
+    unsubDuplicateCopy();
+    unsubProtocolMismatch();
     unsubSubscriptionRejected();
     unsubMessageRejected();
     store.setAttached(false);

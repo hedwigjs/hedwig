@@ -11,6 +11,7 @@ import { SystemEvents } from './events/SystemEvents';
 import { Inspector } from './observability/inspect/Inspector';
 import { deepFreeze } from './utils/deepFreeze';
 import { generateUUID } from './utils/uuid';
+import { PROTOCOL_VERSION } from './protocol';
 import { defaultLogger } from './logger/BrokerLogger.types';
 import { createSafeLogger } from './logger/safeLogger';
 
@@ -72,6 +73,14 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   #inspect: Inspector<T, P>;
 
   /**
+   * Version of the internal client ↔ core protocol this instance speaks.
+   * Tooling (DevTools) compares it with the version it was built against.
+   */
+  readonly protocolVersion: number = PROTOCOL_VERSION;
+  #duplicateCopies = 0;
+  #otherProtocolVersions: number[] = [];
+
+  /**
    * Infrastructure logger configured via {@link BrokerConfig.logger}.
    *
    * Always wrapped by {@link createSafeLogger}: a throwing user logger is
@@ -101,7 +110,52 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       this.#subscriptions,
       this.#bridges,
       () => this.#history,
+      () => ({
+        protocolVersion: this.protocolVersion,
+        duplicateCopies: this.#duplicateCopies,
+        otherProtocolVersions: [...this.#otherProtocolVersions],
+      }),
     );
+  }
+
+  // ========================================
+  // REALM SINGLETON DIAGNOSTICS
+  // ========================================
+
+  /**
+   * Record that another copy of the library adopted this instance through
+   * the realm registry. Logged and published so tooling can show that the
+   * page bundles `@hedwigjs/broker` more than once.
+   *
+   * @internal Called by the facade.
+   */
+  noteDuplicateCopy(): void {
+    this.#duplicateCopies += 1;
+    const payload = {
+      protocolVersion: this.protocolVersion,
+      copies: this.#duplicateCopies,
+      at: Date.now(),
+    };
+    this.logger.warn('broker.duplicate_copy', payload);
+    this.#systemEvents.emit('broker.duplicate_copy', payload);
+  }
+
+  /**
+   * Record that brokers speaking OTHER protocol versions already exist in
+   * this realm. Those copies cannot share this instance; modules bundled
+   * with them run on a separate bus.
+   *
+   * @internal Called by the facade.
+   */
+  noteProtocolMismatch(otherVersions: number[]): void {
+    this.#otherProtocolVersions = [...otherVersions];
+    const payload = {
+      protocolVersion: this.protocolVersion,
+      otherVersions: [...otherVersions],
+      at: Date.now(),
+    };
+    this.logger.warn('broker.protocol_mismatch', payload);
+    this.#systemEvents.emit('broker.protocol_mismatch', payload);
   }
 
   // ========================================

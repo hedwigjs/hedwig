@@ -47,10 +47,12 @@
 .facetSubscription,
 .facetBridge,
 .facetMessage,
+.facetBroker,
 .verbAdded,
 .verbRemoved,
 .verbRejected,
-.verbFailed {
+.verbFailed,
+.verbWarning {
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 3px;
@@ -79,6 +81,12 @@
   color: #fdba74;
 }
 
+/* Realm-singleton diagnostics (broker.duplicate_copy, broker.protocol_mismatch). */
+.facetBroker {
+  background: #1e293b;
+  color: #cbd5e1;
+}
+
 .verbAdded {
   background: #14532d;
   color: #86efac;
@@ -99,6 +107,13 @@
 .verbFailed {
   background: #78350f;
   color: #fde68a;
+}
+
+/* Nothing broke, but the page is not what the author assumed. Same amber
+   family as "failed", lighter, so the eye still stops on it. */
+.verbWarning {
+  background: #713f12;
+  color: #fef08a;
 }
 
 .meta {

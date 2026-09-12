@@ -6,6 +6,8 @@
  */
 export type BrokerLogEvent =
   // Broker lifecycle
+  | 'broker.duplicate_copy'
+  | 'broker.protocol_mismatch'
   | 'broker.subscribe.after_destroy'
   | 'broker.bridge.add.after_destroy'
   | 'broker.bridge.replaced'

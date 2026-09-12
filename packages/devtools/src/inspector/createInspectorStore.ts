@@ -1,3 +1,4 @@
+import { PROTOCOL_VERSION } from "@hedwigjs/broker";
 import type { Message, RoutingResult, HistoryEntry } from "@hedwigjs/broker";
 import type {
   InspectorSnapshot,
@@ -9,6 +10,7 @@ import type {
   SystemEventLogEntry,
   SystemEventName,
   BridgeEntry,
+  ProtocolStatus,
 } from "./types";
 import { serializeDataPreview, snapshotFrom, EMPTY_MESSAGES_FILTER } from "./types";
 import { createMessageRingBuffer, createRingBuffer } from "./ringLog";
@@ -86,6 +88,11 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
   const listeners = new Set<() => void>();
   let totalSeen = 0;
   let attached = false;
+  let protocol: ProtocolStatus = {
+    expected: PROTOCOL_VERSION,
+    actual: undefined,
+    mismatch: false,
+  };
   let clientsBase: ClientBase[] = [];
   let messagesFilter: MessagesFilter = { ...EMPTY_MESSAGES_FILTER };
   let historyEntries: ReadonlyArray<HistoryEntry> = [];
@@ -94,6 +101,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
     [],
     totalSeen,
     attached,
+    protocol,
     [],
     messagesFilter,
     [],
@@ -136,6 +144,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
       entries,
       totalSeen,
       attached,
+      protocol,
       clients,
       messagesFilter,
       historyEntries,
@@ -156,6 +165,19 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
 
   function setAttached(value: boolean) {
     attached = value;
+    emit();
+  }
+
+  /**
+   * Record the attached core's protocol version. `undefined` (core predates
+   * the field) is NOT treated as a mismatch — only a known, different value.
+   */
+  function setProtocol(actual: number | undefined) {
+    protocol = {
+      expected: PROTOCOL_VERSION,
+      actual,
+      mismatch: actual !== undefined && actual !== PROTOCOL_VERSION,
+    };
     emit();
   }
 
@@ -295,6 +317,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
     subscribe,
     getSnapshot,
     setAttached,
+    setProtocol,
     onBeforeSend,
     onAfterSend,
     clearLog,

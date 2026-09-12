@@ -20,6 +20,13 @@ import type {
  *   bridges). Used for initial hydration without races.
  */
 export interface MessageBrokerForDevTools {
+  /**
+   * Protocol version the core speaks. Compared on attach with the
+   * `PROTOCOL_VERSION` this panel was built against; a mismatch is shown
+   * as a header badge instead of failing silently in the renderers.
+   * Optional so panels can still attach to cores that predate the field.
+   */
+  readonly protocolVersion?: number;
   useBeforeSendHook(hook: (message: Readonly<Message>) => { allowed: true } | { allowed: false; message: string }): () => void;
   useAfterSendHook(hook: (message: Readonly<Message>, result: RoutingResult) => void): () => void;
   $systemEvents: SystemEventsEmitter<string, Record<string, any>>;
@@ -122,6 +129,8 @@ export const DEFAULT_MESSAGES_ROLLUP: MessagesRollupConfig = {
  * they don't drown out (or get drowned by) the user-message feed.
  */
 export type SystemEventName =
+  | "broker.duplicate_copy"
+  | "broker.protocol_mismatch"
   | "client.registered"
   | "client.unregistered"
   | "subscription.added"
@@ -190,6 +199,20 @@ export interface BridgeEntry {
   receivedFromCount: number;
 }
 
+// ─── Protocol handshake ───────────────────────────────────────────────────────
+
+/**
+ * Result of comparing the attached core's `protocolVersion` with the
+ * `PROTOCOL_VERSION` this panel was built against. `actual` is `undefined`
+ * before attach or when the core predates the field.
+ */
+export interface ProtocolStatus {
+  expected: number;
+  actual: number | undefined;
+  /** True only when both sides are known and differ. */
+  mismatch: boolean;
+}
+
 // ─── Inspector snapshot ───────────────────────────────────────────────────────
 
 export interface InspectorSnapshot {
@@ -197,6 +220,7 @@ export interface InspectorSnapshot {
   entries: ReadonlyArray<MessageLogEntry>;
   totalSeen: number;
   attached: boolean;
+  protocol: ProtocolStatus;
   clients: ReadonlyArray<ClientEntry>;
   messagesFilter: MessagesFilter;
   /** Current contents of the broker's replay buffer (oldest → newest). */
@@ -223,6 +247,7 @@ function snapshotFrom(
   list: MessageLogEntry[],
   totalSeen: number,
   attached: boolean,
+  protocol: ProtocolStatus,
   clients: ClientEntry[],
   messagesFilter: MessagesFilter,
   historyEntries: ReadonlyArray<HistoryEntry>,
@@ -233,6 +258,7 @@ function snapshotFrom(
     entries: list,
     totalSeen,
     attached,
+    protocol,
     clients,
     messagesFilter,
     historyEntries,

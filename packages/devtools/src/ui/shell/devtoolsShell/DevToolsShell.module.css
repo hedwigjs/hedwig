@@ -81,6 +81,14 @@
   color: #d6d3d1;
 }
 
+/* Protocol handshake failed: panel and core were built against different
+   PROTOCOL_VERSIONs. Amber, non-blocking — the panel still attaches. */
+.badgeWarn {
+  background: #713f12;
+  color: #fef08a;
+  cursor: help;
+}
+
 .meta {
   opacity: 0.75;
   font-size: 11px;

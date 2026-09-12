@@ -8,13 +8,14 @@ interface SystemEventRowProps {
   entry: SystemEventLogEntry;
 }
 
-type EventFacet = "client" | "subscription" | "bridge" | "message";
-type EventVerb = "added" | "removed" | "rejected" | "failed";
+type EventFacet = "client" | "subscription" | "bridge" | "message" | "broker";
+type EventVerb = "added" | "removed" | "rejected" | "failed" | "warning";
 
 function facetOf(name: SystemEventLogEntry["name"]): EventFacet {
   if (name.startsWith("client.")) return "client";
   if (name.startsWith("subscription.")) return "subscription";
   if (name.startsWith("message.")) return "message";
+  if (name.startsWith("broker.")) return "broker";
   return "bridge";
 }
 
@@ -22,6 +23,9 @@ function verbOf(name: SystemEventLogEntry["name"]): EventVerb {
   // client.registered / .unregistered map to added / removed for UI purposes.
   if (name.endsWith("rejected")) return "rejected";
   if (name.endsWith("failed")) return "failed";
+  // Realm-singleton diagnostics: nothing broke, but the page is not what
+  // the author assumed (library bundled twice / two protocol versions).
+  if (name.startsWith("broker.")) return "warning";
   if (name.endsWith("registered") && !name.endsWith("unregistered")) return "added";
   if (name.endsWith("added")) return "added";
   return "removed";
@@ -37,6 +41,17 @@ function summarize(entry: SystemEventLogEntry): string {
   const bridgeId = typeof p.bridgeId === "string" ? p.bridgeId : undefined;
   const reason = typeof p.reason === "string" ? p.reason : undefined;
   const messageId = typeof p.messageId === "string" ? p.messageId : undefined;
+  const protocolVersion = typeof p.protocolVersion === "number" ? p.protocolVersion : undefined;
+  const copies = typeof p.copies === "number" ? p.copies : undefined;
+  const otherVersions = Array.isArray(p.otherVersions) ? (p.otherVersions as unknown[]) : undefined;
+
+  // Realm-singleton diagnostics.
+  if (protocolVersion !== undefined && copies !== undefined) {
+    return `protocol v${protocolVersion} · ${copies} extra ${copies === 1 ? "copy" : "copies"} of @hedwigjs/broker on this page`;
+  }
+  if (protocolVersion !== undefined && otherVersions) {
+    return `protocol v${protocolVersion} · other brokers in this realm: v${otherVersions.join(", v")}`;
+  }
 
   // bridge.send.failed carries topic + messageId; lifecycle events only bridgeId.
   if (bridgeId && topic) return `${bridgeId} · ${topic}${messageId ? ` · ${messageId}` : ""}`;
@@ -52,6 +67,7 @@ const FACET_CLASS: Record<EventFacet, string> = {
   subscription: styles.facetSubscription,
   bridge: styles.facetBridge,
   message: styles.facetMessage,
+  broker: styles.facetBroker,
 };
 
 const VERB_CLASS: Record<EventVerb, string> = {
@@ -59,6 +75,7 @@ const VERB_CLASS: Record<EventVerb, string> = {
   removed: styles.verbRemoved,
   rejected: styles.verbRejected,
   failed: styles.verbFailed,
+  warning: styles.verbWarning,
 };
 
 export function SystemEventRow({ entry }: SystemEventRowProps): ReactNode {
