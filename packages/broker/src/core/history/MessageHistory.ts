@@ -57,9 +57,24 @@ export class MessageHistory<T extends string, P extends Record<T, any>> {
   }
 
   /**
-   * Query messages from history
+   * Query messages from history.
+   *
+   * Thin async wrapper over {@link querySync}, kept for API compatibility.
    */
   async query(filter?: HistoryFilter<T>): Promise<HistoryEntry<T, P[T]>[]> {
+    return this.querySync(filter);
+  }
+
+  /**
+   * Query messages from history, synchronously.
+   *
+   * Replay uses this so the snapshot is taken on the subscriber's own
+   * stack — before `on()` returns and before any live message emitted
+   * afterwards can land in the buffer. The returned array is a copy;
+   * entries recorded later (including by handlers invoked during replay)
+   * are not part of it.
+   */
+  querySync(filter?: HistoryFilter<T>): HistoryEntry<T, P[T]>[] {
     let results = [...this.#entries];
 
     // Filter by time range (since, until)

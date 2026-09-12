@@ -121,7 +121,11 @@ export interface SubscriptionOptions {
    * Replay historical messages when subscribing
    *
    * Allows late subscribers to catch up on missed messages.
-   * Messages are replayed asynchronously after subscription is established.
+   *
+   * Replay is synchronous: matching entries are delivered to the handler
+   * before `on()` returns, oldest first. Any live message emitted after
+   * `on()` returns therefore arrives after the replayed ones, and a message
+   * is never delivered twice (once live, once replayed).
    */
   replay?: ReplayOptions;
 }

@@ -25,6 +25,11 @@ export interface Client<T extends string, P extends Record<T, any>> {
   /**
    * Subscribe to a topic.
    *
+   * With `options.replay`, matching history entries are delivered to the
+   * handler synchronously — before this call returns — oldest first, each
+   * flagged `replayed: true`. Live messages emitted afterwards always
+   * arrive after the replayed ones and are never duplicated.
+   *
    * @param topic - Topic name (e.g. `'user.login.v1'`).
    * @param handler - Handler invoked for every matching message.
    * @param options - Subscription options (backpressure strategy, replay).

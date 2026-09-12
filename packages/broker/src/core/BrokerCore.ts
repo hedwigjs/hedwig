@@ -195,6 +195,9 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       if (!this.#replay) {
         this.logger.warn('broker.replay.history_disabled', { clientId, topic });
       } else {
+        // Synchronous: the handler sees every matching history entry before
+        // `on()` returns, so nothing emitted afterwards can overtake or
+        // duplicate them. See SubscriptionReplay for the reasoning.
         this.#replay.start(clientId, topic, wrappedHandler, options.replay);
       }
     }

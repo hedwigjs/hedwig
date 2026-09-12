@@ -16,7 +16,9 @@ const createBrokerWithHistory = (maxSize = 100, ttl?: number) => {
 // Helper for sleep
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Helper to wait for microtasks (replay happens in queueMicrotask)
+// Helper to yield to the event loop. Replay itself is synchronous now (see
+// "Replay ordering" below); this remains for tests that also involve timers
+// or async handlers.
 const flushMicrotasks = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('BrokerCore - Message History & Replay', () => {
@@ -286,6 +288,157 @@ describe('BrokerCore - Message History & Replay', () => {
       expect(handler).toHaveBeenCalledTimes(2);
       expect(handler).toHaveBeenNthCalledWith(1, expect.objectContaining({ data: { id: 3 } }));
       expect(handler).toHaveBeenNthCalledWith(2, expect.objectContaining({ data: { id: 4 } }));
+    });
+  });
+
+  describe('Replay ordering', () => {
+    test('replayed entries are delivered before on() returns', async () => {
+      const broker = createBrokerWithHistory();
+      const client1 = new BrokerClient('client1', broker);
+      const client2 = new BrokerClient('client2', broker);
+
+      await client1.emit('event.v1', { id: 1 }, { history: true });
+      await client1.emit('event.v1', { id: 2 }, { history: true });
+
+      const handler = jest.fn();
+      client2.on('event.v1', handler, { replay: { limit: 2 } });
+
+      // No await, no flush — already delivered.
+      expect(handler).toHaveBeenCalledTimes(2);
+      expect(handler.mock.calls.map(([m]) => (m as Message).data.id)).toEqual([1, 2]);
+      expect(handler.mock.calls.every(([m]) => (m as Message).replayed === true)).toBe(true);
+    });
+
+    test('a live message emitted right after on() arrives AFTER the replayed entries and is not duplicated', async () => {
+      const broker = createBrokerWithHistory();
+      const client1 = new BrokerClient('client1', broker);
+      const client2 = new BrokerClient('client2', broker);
+
+      await client1.emit('event.v1', { id: 1 }, { history: true });
+      await client1.emit('event.v1', { id: 2 }, { history: true });
+      await client1.emit('event.v1', { id: 3 }, { history: true });
+
+      const seen: Array<{ id: number; replayed: boolean }> = [];
+      client2.on(
+        'event.v1',
+        (m) => {
+          seen.push({ id: m.data.id, replayed: m.replayed === true });
+        },
+        { replay: { limit: 3 } },
+      );
+      // Same tick as the subscription — this used to overtake the replay.
+      const live = client1.emit('event.v1', { id: 4 }, { history: true });
+      await live;
+      await flushMicrotasks();
+
+      expect(seen).toEqual([
+        { id: 1, replayed: true },
+        { id: 2, replayed: true },
+        { id: 3, replayed: true },
+        { id: 4, replayed: false },
+      ]);
+    });
+
+    test('late-mount pattern: replay { limit: 1 } yields the latest snapshot exactly once even when a live update races', async () => {
+      const broker = createBrokerWithHistory();
+      const store = new BrokerClient('store', broker);
+      const lateView = new BrokerClient('late-view', broker);
+
+      await store.emit('event.v1', { id: 1 }, { history: true });
+      await store.emit('event.v1', { id: 2 }, { history: true });
+
+      const seen: Array<{ id: number; replayed: boolean }> = [];
+      lateView.on(
+        'event.v1',
+        (m) => {
+          seen.push({ id: m.data.id, replayed: m.replayed === true });
+        },
+        { replay: { limit: 1 } },
+      );
+      await store.emit('event.v1', { id: 3 }, { history: true });
+      await flushMicrotasks();
+
+      expect(seen).toEqual([
+        { id: 2, replayed: true },
+        { id: 3, replayed: false },
+      ]);
+    });
+
+    test('a message emitted by a handler DURING replay is not itself replayed to that handler', async () => {
+      const broker = createBrokerWithHistory();
+      const client1 = new BrokerClient('client1', broker);
+      const client2 = new BrokerClient('client2', broker);
+      const client3 = new BrokerClient('client3', broker);
+
+      await client1.emit('event.v1', { id: 1 }, { history: true });
+
+      const seenBy2: number[] = [];
+      const seenBy3: number[] = [];
+      client3.on('event.v1', (m) => seenBy3.push(m.data.id));
+      client2.on(
+        'event.v1',
+        (m) => {
+          seenBy2.push(m.data.id);
+          // Re-entrant emit while replay is in progress.
+          if (m.replayed) void client2.emit('event.v1', { id: 100 }, { history: true });
+        },
+        { replay: { limit: 10 } },
+      );
+      await flushMicrotasks();
+
+      expect(seenBy2).toEqual([1]); // sender exclusion: client2 does not hear its own emit
+      expect(seenBy3).toEqual([100]); // and the snapshot never grew to include id 100
+    });
+
+    test('an async handler that rejects during replay is logged, not left as an unhandled rejection', async () => {
+      const logged: Array<Record<string, unknown> | undefined> = [];
+      const broker = new BrokerCore({
+        history: { enabled: true },
+        logger: {
+          warn: () => {},
+          error: (event, meta) => {
+            if (event === 'replay.handler.failed') logged.push(meta);
+          },
+        },
+      });
+      const client1 = new BrokerClient('client1', broker);
+      const client2 = new BrokerClient('client2', broker);
+
+      await client1.emit('event.v1', { id: 1 }, { history: true });
+
+      client2.on('event.v1', async () => {
+        throw new Error('async boom');
+      }, { replay: { limit: 1 } });
+      await flushMicrotasks();
+
+      expect(logged).toHaveLength(1);
+      expect(logged[0]).toEqual(
+        expect.objectContaining({
+          clientId: 'client2',
+          topic: 'event.v1',
+          messageId: expect.any(String),
+          error: expect.any(Error),
+        }),
+      );
+      broker.destroy();
+    });
+
+    test('afterSend observers see REPLAY_DELIVERED entries before the live one that follows', async () => {
+      const broker = createBrokerWithHistory();
+      const client1 = new BrokerClient('client1', broker);
+      const client2 = new BrokerClient('client2', broker);
+
+      await client1.emit('event.v1', { id: 1 }, { history: true });
+
+      const feed: string[] = [];
+      broker.useAfterSendHook((m, result) => {
+        feed.push(`${m.data.id}:${result.reason}`);
+      });
+
+      client2.on('event.v1', () => {}, { replay: { limit: 1 } });
+      await client1.emit('event.v1', { id: 2 });
+
+      expect(feed).toEqual(['1:REPLAY_DELIVERED', '2:DISPATCHED']);
     });
   });
 

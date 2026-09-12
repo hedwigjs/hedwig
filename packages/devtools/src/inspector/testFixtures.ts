@@ -22,6 +22,16 @@ export function makeAck(): RoutingResult {
   } as RoutingResult;
 }
 
+export function makeReplayAck(recipientId = "client-b"): RoutingResult {
+  return {
+    status: "ACK",
+    reason: RoutingReason.REPLAY_DELIVERED,
+    message: `Replayed to '${recipientId}'`,
+    timestamp: 0,
+    recipientId,
+  } as RoutingResult;
+}
+
 export function makeNack(): RoutingResult {
   return {
     status: "NACK",
