@@ -30,7 +30,8 @@ async function main() {
   installAclHooks();
 
   renderChrome();
-  mountDevTools();
+  // Lazy chunk — does not block the rest of the boot sequence.
+  void mountDevTools();
   installBackendNotificationsBridge();
   installCrossTabCartBridge();
   await registerMicrofrontends();

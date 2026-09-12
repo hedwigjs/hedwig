@@ -97,6 +97,8 @@ lights up every subscriber and emitter that has drifted.
 - **Broker** — the singleton runtime returned by `initBroker(config)`.
   Owns the routing plane, the hook chain, the history buffer, and the
   bridges. In-process by default; bridges extend it across contexts.
+  One instance per realm, even if the library is bundled more than once
+  on the page — see [One broker per realm](#one-broker-per-realm).
 - **Bridge** — a lane that forwards matching topics to a `BridgeTransport`
   (postMessage, WebSocket, BroadcastChannel, …) and injects inbound
   traffic back into the same pipeline as `fromExternal: true`.
@@ -139,6 +141,7 @@ import {
     ttl?: number;     // ms, undefined = no expiration
   };
   logger?: BrokerLogger; // see "Logger" below
+  debug?: boolean;       // arms broker.$debug.send — default false
 }
 ```
 
@@ -146,6 +149,50 @@ import {
 staging and intranet hosts): message ids are built from
 `crypto.randomUUID` where available and from `crypto.getRandomValues`
 otherwise, so the broker never depends on an `https:` origin.
+
+### One broker per realm
+
+"One broker" is guaranteed per **realm** — one window or worker — not
+per copy of the library. The instance lives in a non-enumerable
+registry on `globalThis` (`Symbol.for('@hedwigjs/broker')`) keyed by
+the exported `PROTOCOL_VERSION`, so every copy of `@hedwigjs/broker`
+that ends up on the page resolves to the same core:
+
+- Module Federation remotes bundled without `singleton: true`;
+- two applications built by different bundlers on one page;
+- the ESM + CJS dual-package hazard (`import` in one module, `require`
+  in another).
+
+The first time a copy adopts an instance it did not create, the broker
+logs `broker.duplicate_copy` and emits the same-named system event, so
+the duplication is visible in DevTools instead of silent. Everything
+still talks on one bus.
+
+`PROTOCOL_VERSION` is the version of the internal client ↔ core
+protocol, decoupled from the npm version. A copy that speaks a
+different protocol gets its **own** broker and a
+`broker.protocol_mismatch` warning listing the other versions — never a
+crash inside foreign code. Compatibility rule: a client bundle built
+against protocol `N` works with any core of protocol `N`. Pin it in
+Module Federation so a mismatch fails at load time, not at runtime:
+
+```js
+shared: {
+  '@hedwigjs/broker': { singleton: true, strictVersion: true, requiredVersion: '^0.2.0' },
+}
+```
+
+Iframes and Workers are separate realms. They run their own
+`initBroker()` and talk through a bridge (`PostMessageTransport`, …);
+do not reach for `parent.globalThis` to share an instance — a frame's
+subscriptions would outlive the frame, and cross-realm objects break
+`instanceof`.
+
+`broker.protocolVersion` and `broker.inspect.getProtocolInfo()` expose
+the diagnostics (version, duplicate copies adopted, other versions in
+the realm). This registry is hygiene, not a security boundary: any
+script in the realm could already reach the broker through the module
+graph.
 
 ### Client
 
@@ -189,7 +236,8 @@ Returned by `initBroker()` / `getBroker()`.
 | ------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------ |
 | `$systemEvents`                                   | push channel  | Subscribe to broker lifecycle events (clients, subscriptions, bridges, rejections).              |
 | `inspect`                                         | pull snapshot | Read-only view over clients, subscriptions, bridges, history.                                    |
-| `$debug.send(source, topic, target, data)`        | internal      | Inject a synthetic message through the full pipeline. Marked `synthetic: true`. For DevTools & tests. |
+| `$debug.send(source, topic, target, data)`        | internal      | Inject a synthetic message through the full pipeline. Marked `synthetic: true`. For DevTools & tests. Requires `initBroker({ debug: true })`, otherwise resolves `NACK DEBUG_DISABLED`; `$debug.enabled` reports the state. |
+| `protocolVersion`                                 | readonly      | Internal client ↔ core protocol version (`PROTOCOL_VERSION`). See [One broker per realm](#one-broker-per-realm). |
 | `addBridge(id, { transport, forward })`           | wiring        | Register a bridge. Idempotent — an existing id is destroyed and replaced. Returns a remover.     |
 | `useBeforeSendHook(fn)`                           | extension     | Gate outgoing messages. Return `{ allowed: false, message }` to reject.                          |
 | `useAfterSendHook(fn)`                            | extension     | Observe delivery outcomes. Receives the frozen message + `RoutingResult`.                        |
@@ -262,6 +310,7 @@ Every `emit` / `request` resolves with a `RoutingResult`:
 | `NOT_SUBSCRIBED`    | Unicast — target exists but has no handler for this topic.     |
 | `HANDLER_FAILED`    | The handler threw; the error is logged and the promise resolves NACK. |
 | `BROKER_DESTROYED`  | Emit called on a destroyed broker.                             |
+| `DEBUG_DISABLED`    | `$debug.send` called on a broker booted without `debug: true`. |
 
 The full enum is exported as `RoutingReason` for exhaustive `switch`
 statements.
@@ -516,6 +565,8 @@ user messages — infrastructure telemetry.
 
 | Event                    | Payload                                                    | Fired when                                                                 |
 | ------------------------ | ---------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `broker.duplicate_copy`  | `{ protocolVersion, copies, at }`                          | Another copy of the library adopted this instance through the realm registry. Still one bus. |
+| `broker.protocol_mismatch` | `{ protocolVersion, otherVersions, at }`                 | A broker of a different `PROTOCOL_VERSION` already existed in this realm; the two cannot share an instance. |
 | `client.registered`      | `{ clientId, at }`                                         | `createClient(id)` registers a new id.                                      |
 | `client.unregistered`    | `{ clientId, at }`                                         | `client.destroy()` or broker teardown.                                      |
 | `subscription.added`     | `{ clientId, topic, options? }`                            | `client.on(topic, …)` succeeds.                                             |
@@ -661,8 +712,9 @@ initBroker({
 ```
 
 `BrokerLogEvent` is a closed union of stable string codes
-(`'handler.failed'`, `'hook.failed'`, `'bridge.send.failed'`, …) —
-safe to use as filter keys in Sentry / Datadog / Grafana.
+(`'handler.failed'`, `'hook.failed'`, `'bridge.send.failed'`,
+`'broker.duplicate_copy'`, `'debug.disabled'`, …) — safe to use as
+filter keys in Sentry / Datadog / Grafana.
 
 The logger is isolated from the pipeline: if your `warn` / `error`
 implementation throws (sink offline, serializer choked on `meta`), the

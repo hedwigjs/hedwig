@@ -42,13 +42,18 @@ pass the broker instance in.
 import { initBroker, getBroker } from '@hedwigjs/broker';
 import { MessageBrokerDevTools } from '@hedwigjs/devtools';
 
-initBroker({ history: { enabled: true, maxSize: 200 } });
+const isDev = process.env.NODE_ENV !== 'production';
+
+initBroker({
+  history: { enabled: true, maxSize: 200 },
+  debug: isDev, // arms the Debug tab's broker.$debug.send
+});
 
 function App() {
   return (
     <>
       <YourAppRoot />
-      <MessageBrokerDevTools broker={getBroker()} />
+      <MessageBrokerDevTools broker={getBroker()} enabled={isDev} />
     </>
   );
 }
@@ -57,7 +62,25 @@ function App() {
 That's the whole integration. The panel attaches to `broker.$systemEvents`
 and the extension hooks (`useBeforeSendHook` / `useAfterSendHook`) on mount,
 detaches on unmount, and renders itself as a floating rail with a toggle
-button. Enabled by default only when `process.env.NODE_ENV === 'development'`.
+button.
+
+**`enabled` is `false` by default** — pass it explicitly. The panel
+cannot read your app's `NODE_ENV`: that expression would be evaluated
+when this library is built, not when yours is. Keeping the code out of
+production bundles is your build's job; load it lazily so it is
+tree-shaken from prod chunks:
+
+```ts
+if (process.env.NODE_ENV !== 'production') {
+  const { MessageBrokerDevTools } = await import('@hedwigjs/devtools');
+  // … mount it
+}
+```
+
+On attach the panel compares the core's `protocolVersion` with the
+`PROTOCOL_VERSION` it was built against and shows a `protocol vX ≠ vY`
+badge in the header when they differ — align `@hedwigjs/broker` and
+`@hedwigjs/devtools` versions in that case.
 
 ---
 
@@ -72,7 +95,7 @@ Six tabs, each backed by one channel of broker observability.
 | **Bridges**       | `inspect.getBridges()` + `bridge.*` system events                                                  | Every registered bridge — forward patterns, transport kind, approximate send / receive counters.            |
 | **Replay Buffer** | `inspect.getHistory()`                                                                             | Contents of the broker's history ring. Only populated when `initBroker({ history: { enabled: true } })`.    |
 | **System Events** | `$systemEvents.onAny`                                                                              | Unified log of lifecycle signals: `client.*`, `subscription.*`, `bridge.*`, plus `*.rejected` security signals and `bridge.send.failed` wire failures. |
-| **Debug**         | `broker.$debug.send`                                                                               | Compose and send a synthetic message through the full pipeline. Impersonate any source; multicast or unicast. |
+| **Debug**         | `broker.$debug.send`                                                                               | Compose and send a synthetic message through the full pipeline. Impersonate any source; multicast or unicast. Requires `initBroker({ debug: true })`; otherwise the tab explains how to arm the channel. |
 
 Rejections from hooks surface in three places at once:
 
@@ -100,7 +123,7 @@ import type {
 | Prop              | Type                                                       | Default                                     | Purpose                                                                                          |
 | ----------------- | ---------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `broker`          | `MessageBroker` (from `@hedwigjs/broker`)                  | —                                           | Required. The broker to attach to.                                                                |
-| `enabled`         | `boolean`                                                  | `process.env.NODE_ENV === 'development'`    | Master switch. When `false`, the component renders `null` and never attaches.                     |
+| `enabled`         | `boolean`                                                  | `false`                                     | Master switch. When `false`, the component renders `null` and never attaches. Pass it explicitly — the library cannot see your `NODE_ENV`. |
 | `registry`        | `TopicsRegistry`                                           | `undefined`                                 | Optional topic catalog for autocomplete and payload prefill in the Debug tab. See below.          |
 | `maxEvents`       | `number`                                                   | `100`                                       | Ring-buffer capacity for the Messages log and System Events log.                                  |
 | `defaultPosition` | `DevToolsPanelPosition` — `"top" \| "bottom" \| "left" \| "right"` | `"bottom"`                          | Initial dock side. Persisted per user in `localStorage`.                                          |
@@ -196,6 +219,12 @@ through the **full pipeline**: hooks run, subscribers receive it, the
 history buffer records it, bridges forward it. The only difference
 from a normal `emit` is `synthetic: true` in the message envelope, so
 DevTools can visually flag spoofed traffic.
+
+The channel is **off unless the broker was booted with
+`initBroker({ debug: true })`**. On a broker without it, the tab shows
+a notice with the one-line fix instead of the composer, and any call
+would resolve `NACK DEBUG_DISABLED`. Keep it tied to your dev flag so a
+production bundle cannot inject spoofed traffic by accident.
 
 Controls:
 
@@ -323,6 +352,10 @@ that wires up two channels:
   `subscription.rejected` and `message.rejected` are surfaced separately
   as security signals; `bridge.send.failed` is logged without touching
   the bridge list, since the bridge is still registered.
+  `broker.duplicate_copy` and `broker.protocol_mismatch` (the library
+  bundled twice / two protocol versions in one realm) are hydrated from
+  `inspect.getProtocolInfo()` on attach, because they fire at app
+  bootstrap before any panel exists.
 - **Snapshots (initial hydration)** — `inspect.getClients()`,
   `inspect.getHistory()`, and `inspect.getBridges()` prime state on
   attach and refresh on each system event, so the tabs are correct

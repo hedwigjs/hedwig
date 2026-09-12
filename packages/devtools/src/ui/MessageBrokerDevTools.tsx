@@ -25,7 +25,13 @@ export interface MessageBrokerDevToolsProps {
    * не зависит от конкретного registry-пакета.
    */
   registry?: TopicsRegistry;
-  /** Defaults to true only in development (requires DefinePlugin in the build). */
+  /**
+   * Master switch. `false` by default — pass it explicitly. The library
+   * cannot observe the host app's `NODE_ENV` (any such expression here is
+   * evaluated when the library itself is built), so the safe default is
+   * "off"; keeping the panel out of production bundles is the host build's
+   * job (lazy `import()`).
+   */
   enabled?: boolean;
   /** Maximum number of recent events to keep in the log. */
   maxEvents?: number;
@@ -59,7 +65,7 @@ export interface MessageBrokerDevToolsProps {
 export const MessageBrokerDevTools = ({
   broker,
   registry,
-  enabled = process.env.NODE_ENV === "development",
+  enabled = false,
   maxEvents = 100,
   defaultPosition = "bottom",
   fabPosition = "right",

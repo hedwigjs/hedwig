@@ -37,6 +37,27 @@ commit with a changeset; per-package notes will appear in
 - `initBroker()` works outside secure contexts (plain `http://` hosts):
   session ids fall back to `crypto.getRandomValues`.
 
+### Broker — one instance per realm, protocol version, debug gate
+
+- The broker now lives in a non-enumerable registry on `globalThis`
+  keyed by the new exported `PROTOCOL_VERSION`, so copies of the
+  library that reach the page twice (Module Federation without
+  `singleton: true`, two bundlers, ESM + CJS) share one instance. A
+  second copy is reported as `broker.duplicate_copy`; a copy speaking
+  another protocol version gets its own broker and
+  `broker.protocol_mismatch`. `broker.protocolVersion` and
+  `inspect.getProtocolInfo()` expose the diagnostics. Scope is one
+  realm: iframes and Workers keep their own broker plus a bridge.
+- `broker.$debug.send` requires `initBroker({ debug: true })`;
+  otherwise `NACK DEBUG_DISABLED`. Off by default so production bundles
+  cannot inject spoofed traffic by accident.
+- DevTools: protocol handshake with a header badge on mismatch, the two
+  new events in System Events, a "channel is off" notice in the Debug
+  tab. `enabled` prop documented and coded as `false` by default (the
+  previous `NODE_ENV` expression was evaluated at library build time).
+- Reference stand loads DevTools through a dynamic `import()` in its
+  own chunk and arms the debug channel explicitly.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

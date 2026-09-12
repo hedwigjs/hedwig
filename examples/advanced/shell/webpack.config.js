@@ -75,10 +75,10 @@ module.exports = {
         'react-dom': { singleton: true, eager: true, requiredVersion: '19.1.1' },
         'single-spa': { singleton: true, eager: true, requiredVersion: '^6.0.3' },
         '@hedwigjs/broker': { singleton: true, eager: true, requiredVersion: '^0.1.0' },
-        // DevTools is host-only (mounted from the shell) — no MFE consumes
-        // it, but sharing keeps a single React tree in scope if anyone
-        // does later.
-        '@hedwigjs/devtools': { singleton: true, eager: true, requiredVersion: '^0.1.0' },
+        // `@hedwigjs/devtools` is deliberately NOT shared: it is host-only
+        // and loaded via dynamic import() in src/devtools.tsx, so it lives
+        // in its own lazy chunk. Listing it here with `eager: true` would
+        // drag it back into the initial bundle.
       },
     }),
     new HtmlWebpackPlugin({
