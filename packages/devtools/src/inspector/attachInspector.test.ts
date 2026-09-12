@@ -93,7 +93,7 @@ describe("attachInspector", () => {
     expect(store.getSnapshot().attached).toBe(false);
   });
 
-  it("subscribes to all client/subscription lifecycle system events", () => {
+  it("subscribes to every lifecycle, security and failure system event", () => {
     const { broker } = createMockBroker();
     const store = createInspectorStore({ maxEvents: 20 });
     const on = broker.$systemEvents.on as jest.Mock;
@@ -107,7 +107,35 @@ describe("attachInspector", () => {
         "client.unregistered",
         "subscription.added",
         "subscription.removed",
+        "subscription.rejected",
+        "message.rejected",
+        "bridge.added",
+        "bridge.removed",
+        "bridge.send.failed",
       ]),
     );
+  });
+
+  it("logs bridge.send.failed into the System Events ring without touching the bridge list", () => {
+    const { broker } = createMockBroker();
+    const store = createInspectorStore({ maxEvents: 20 });
+    const on = broker.$systemEvents.on as jest.Mock;
+    const refreshBridges = broker.inspect.getBridges as jest.Mock;
+
+    attachInspector(broker, store);
+    const callsBefore = refreshBridges.mock.calls.length;
+
+    const listener = on.mock.calls.find(([event]) => event === "bridge.send.failed")?.[1];
+    expect(listener).toBeDefined();
+    listener({ bridgeId: "ws", topic: "a.v1", messageId: "m-1", error: new Error("wire down") });
+
+    const { systemEvents } = store.getSnapshot();
+    expect(systemEvents.at(-1)).toEqual(
+      expect.objectContaining({
+        name: "bridge.send.failed",
+        payload: expect.objectContaining({ bridgeId: "ws", topic: "a.v1", messageId: "m-1" }),
+      }),
+    );
+    expect(refreshBridges.mock.calls.length).toBe(callsBefore);
   });
 });

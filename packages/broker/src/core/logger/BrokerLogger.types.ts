@@ -19,6 +19,7 @@ export type BrokerLogEvent =
   | 'hook.failed'
   // Bridge
   | 'bridge.message.parse_failed'
+  | 'bridge.send.failed'
   // Backpressure
   | 'backpressure.handler.failed'
   | 'backpressure.on_drop.failed'

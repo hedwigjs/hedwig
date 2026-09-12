@@ -129,7 +129,8 @@ export type SystemEventName =
   | "subscription.rejected"
   | "message.rejected"
   | "bridge.added"
-  | "bridge.removed";
+  | "bridge.removed"
+  | "bridge.send.failed";
 
 export interface SystemEventLogEntry {
   /** Monotonic local id, assigned by the store on ingestion. */

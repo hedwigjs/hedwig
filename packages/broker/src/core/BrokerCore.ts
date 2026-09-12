@@ -562,13 +562,35 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   // ========================================
 
   /**
-   * Forward message to all bridges that match the topic
+   * Forward message to all bridges that match the topic.
+   *
+   * Each bridge is isolated: a transport that throws on `send()` is
+   * reported (`bridge.send.failed` on both the logger and `$systemEvents`)
+   * and skipped, so the remaining bridges still receive the message and
+   * the caller's `emit()` / `request()` promise resolves normally. Local
+   * delivery has already happened by the time this runs — a throwing wire
+   * must not retroactively turn that into a rejection.
+   *
    * @private
    */
   #forwardToBridges(message: Message<T, P[T]>): void {
-    for (const bridge of this.#bridges.values()) {
-      if (bridge.shouldForward(message.topic)) {
+    for (const [bridgeId, bridge] of this.#bridges) {
+      if (!bridge.shouldForward(message.topic)) continue;
+      try {
         bridge.send(message);
+      } catch (error) {
+        this.logger.error('bridge.send.failed', {
+          bridgeId,
+          topic: message.topic,
+          messageId: message.id,
+          error,
+        });
+        this.#systemEvents.emit('bridge.send.failed', {
+          bridgeId,
+          topic: message.topic,
+          messageId: message.id,
+          error,
+        });
       }
     }
   }

@@ -69,10 +69,22 @@ export interface SystemEventMap<T extends string, P extends Record<T, any>> {
     reason: string;
   };
 
-  // ─── Bridges (lifecycle only — message flow is visible via afterSend) ──────
+  // ─── Bridges (lifecycle + outbound failures; message flow is visible via afterSend)
 
   'bridge.added': { bridgeId: string };
   'bridge.removed': { bridgeId: string };
+  /**
+   * Fired when a bridge's transport threw from `send()` while forwarding a
+   * local message. The message was already delivered locally and the
+   * caller's promise resolves normally — this event is the only signal that
+   * the wire dropped it. Other bridges are unaffected.
+   */
+  'bridge.send.failed': {
+    bridgeId: string;
+    topic: T;
+    messageId: string;
+    error: unknown;
+  };
 }
 
 export type SystemEventName<T extends string, P extends Record<T, any>> = keyof SystemEventMap<

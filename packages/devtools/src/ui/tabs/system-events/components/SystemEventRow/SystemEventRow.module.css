@@ -49,7 +49,8 @@
 .facetMessage,
 .verbAdded,
 .verbRemoved,
-.verbRejected {
+.verbRejected,
+.verbFailed {
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 3px;
@@ -91,6 +92,13 @@
 .verbRejected {
   background: #7f1d1d;
   color: #fecaca;
+}
+
+/* Infrastructure failure (e.g. bridge.send.failed): amber, distinct from the
+   red "rejected" which is a deliberate policy decision, not a malfunction. */
+.verbFailed {
+  background: #78350f;
+  color: #fde68a;
 }
 
 .meta {

@@ -80,6 +80,13 @@ export function attachInspector(
     store.pushSystemEvent("bridge.removed", payload);
     store.refreshBridges(broker);
   });
+  // Outbound wire failure. The message was delivered locally and the sender
+  // got a normal ACK — this event is the only trace that a transport threw
+  // on `send()` and the frame never left the page. Log-only: bridge
+  // registry is unchanged.
+  const unsubBridgeSendFailed = broker.$systemEvents.on("bridge.send.failed", (payload) => {
+    store.pushSystemEvent("bridge.send.failed", payload);
+  });
 
   // Security signals — hook-driven rejections. `subscription.rejected` fires
   // when an `onSubscribe` hook denies a subscription (`client.on` throws too,
@@ -108,6 +115,7 @@ export function attachInspector(
     unsubSubscriptionRemoved();
     unsubBridgeAdded();
     unsubBridgeRemoved();
+    unsubBridgeSendFailed();
     unsubSubscriptionRejected();
     unsubMessageRejected();
     store.setAttached(false);

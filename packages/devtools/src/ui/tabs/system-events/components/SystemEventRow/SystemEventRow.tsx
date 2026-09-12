@@ -9,7 +9,7 @@ interface SystemEventRowProps {
 }
 
 type EventFacet = "client" | "subscription" | "bridge" | "message";
-type EventVerb = "added" | "removed" | "rejected";
+type EventVerb = "added" | "removed" | "rejected" | "failed";
 
 function facetOf(name: SystemEventLogEntry["name"]): EventFacet {
   if (name.startsWith("client.")) return "client";
@@ -21,6 +21,7 @@ function facetOf(name: SystemEventLogEntry["name"]): EventFacet {
 function verbOf(name: SystemEventLogEntry["name"]): EventVerb {
   // client.registered / .unregistered map to added / removed for UI purposes.
   if (name.endsWith("rejected")) return "rejected";
+  if (name.endsWith("failed")) return "failed";
   if (name.endsWith("registered") && !name.endsWith("unregistered")) return "added";
   if (name.endsWith("added")) return "added";
   return "removed";
@@ -35,7 +36,10 @@ function summarize(entry: SystemEventLogEntry): string {
   const topic = typeof p.topic === "string" ? p.topic : undefined;
   const bridgeId = typeof p.bridgeId === "string" ? p.bridgeId : undefined;
   const reason = typeof p.reason === "string" ? p.reason : undefined;
+  const messageId = typeof p.messageId === "string" ? p.messageId : undefined;
 
+  // bridge.send.failed carries topic + messageId; lifecycle events only bridgeId.
+  if (bridgeId && topic) return `${bridgeId} · ${topic}${messageId ? ` · ${messageId}` : ""}`;
   if (bridgeId) return bridgeId;
   if (source && target && topic) return `${source} → ${target} · ${topic}${reason ? ` · ${reason}` : ""}`;
   if (clientId && topic) return `${clientId} · ${topic}${reason ? ` · ${reason}` : ""}`;
@@ -54,6 +58,7 @@ const VERB_CLASS: Record<EventVerb, string> = {
   added: styles.verbAdded,
   removed: styles.verbRemoved,
   rejected: styles.verbRejected,
+  failed: styles.verbFailed,
 };
 
 export function SystemEventRow({ entry }: SystemEventRowProps): ReactNode {
