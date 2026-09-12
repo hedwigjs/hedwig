@@ -13,8 +13,12 @@ import type { BridgeTransport } from './bridge/Bridge.types';
  * guarantee with the concrete failure that used to break it.
  */
 
-type Topics = 'a.v1' | 'b.v1';
-type Payloads = { 'a.v1': { n: number }; 'b.v1': { n: number } };
+type Topics = 'a.v1' | 'b.v1' | 'blob.v1';
+type Payloads = {
+  'a.v1': { n: number };
+  'b.v1': { n: number };
+  'blob.v1': { bytes: Uint8Array; meta: { len: number } };
+};
 
 function throwingLogger(): BrokerLogger {
   return {
@@ -241,6 +245,80 @@ describe('BrokerCore fault isolation', () => {
 
       expect(bad.send).not.toHaveBeenCalled();
       expect(seen).not.toHaveBeenCalled();
+      core.destroy();
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 3. Binary payloads must not break the immutability step
+  // ─────────────────────────────────────────────────────────────────────────
+
+  describe('binary payloads', () => {
+    test('emit() with a Uint8Array payload resolves ACK and delivers the same bytes', async () => {
+      const core = new BrokerCore<Topics, Payloads>({ logger: recordingLogger() });
+      const sender = new BrokerClient('sender', core);
+      const receiver = new BrokerClient('receiver', core);
+      const received: Array<Payloads['blob.v1']> = [];
+      receiver.on('blob.v1', (msg) => {
+        received.push(msg.data);
+      });
+
+      const bytes = new Uint8Array([1, 2, 3]);
+      const result = await sender.emit('blob.v1', { bytes, meta: { len: 3 } });
+
+      expect(result.status).toBe('ACK');
+      expect(received).toHaveLength(1);
+      expect(received[0]!.bytes).toBe(bytes);
+      expect(Array.from(received[0]!.bytes)).toEqual([1, 2, 3]);
+      // The envelope and non-binary parts of the payload are still frozen.
+      expect(Object.isFrozen(received[0])).toBe(true);
+      expect(Object.isFrozen(received[0]!.meta)).toBe(true);
+      core.destroy();
+    });
+
+    test('request() with a binary payload round-trips the handler response', async () => {
+      const core = new BrokerCore<Topics, Payloads>({ logger: recordingLogger() });
+      const sender = new BrokerClient('sender', core);
+      const receiver = new BrokerClient('receiver', core);
+      receiver.on('blob.v1', (msg) => ({ sum: msg.data.bytes.reduce((a, b) => a + b, 0) }));
+
+      const result = await sender.request<'blob.v1', { sum: number }>('receiver', 'blob.v1', {
+        bytes: new Uint8Array([4, 5]),
+        meta: { len: 2 },
+      });
+
+      expect(result.status).toBe('ACK');
+      expect(result.data).toEqual({ sum: 9 });
+      core.destroy();
+    });
+
+    test('a binary payload arriving through a bridge (structured clone) is routed, not dropped', async () => {
+      const core = new BrokerCore<Topics, Payloads>({ logger: recordingLogger() });
+      const receiver = new BrokerClient('receiver', core);
+      const handler = jest.fn();
+      receiver.on('blob.v1', handler);
+
+      let inbound: ((data: unknown) => void) | null = null;
+      const transport = fakeTransport({
+        onMessage: jest.fn((cb) => {
+          inbound = cb;
+          return () => {};
+        }),
+      });
+      core.addBridge('iframe', { transport, forward: ['blob.*'] });
+
+      inbound!({
+        id: 'remote-1',
+        topic: 'blob.v1',
+        source: 'remote',
+        target: '*',
+        data: { bytes: new Uint8Array([7]), meta: { len: 1 } },
+        timestamp: Date.now(),
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(Array.from(handler.mock.calls[0]![0].data.bytes)).toEqual([7]);
       core.destroy();
     });
   });
