@@ -63,7 +63,7 @@ jobs:
 
       - name: Changesets — create Version PR or publish
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
           # Applied when a Version Packages PR is merged — this is the
           # actual publish step. When there are still pending changesets,
