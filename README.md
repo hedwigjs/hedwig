@@ -78,6 +78,44 @@ const result = await cartClient.request('checkout-mfe', 'checkout.submit.v1', ca
 if (result.status === 'ACK') showOrder(result.data.orderId);
 ```
 
+The same module in React or Vue — the adapters bind these calls to the
+component lifecycle, so there is no `useEffect` / unsubscribe to write:
+
+<details>
+<summary>React — <code>@hedwigjs/react</code></summary>
+
+```tsx
+// clients/bus.ts — hooks bound to the module's client, once
+export const bus = createClient<Topic, TopicPayloads, TopicContracts>('cart-mfe');
+export const { useStateTopic, useRequest } = bindHooks(bus);
+
+// a component
+const cart = useStateTopic('cart.snapshot.v1');                 // retained value already on the first paint
+const checkout = useRequest('checkout-mfe', 'checkout.submit.v1'); // send() + pending + typed result
+<button disabled={checkout.pending} onClick={() => void checkout.send(cart)}>Check out</button>
+```
+
+Full docs: [`packages/react/README.md`](./packages/react/README.md).
+</details>
+
+<details>
+<summary>Vue 3 — <code>@hedwigjs/vue</code></summary>
+
+```vue
+<script setup lang="ts">
+import { useStateTopic, useRequest } from '../clients/bus';        // bindComposables(bus), same idea
+const cart = useStateTopic('cart.snapshot.v1');                     // shallowRef
+const checkout = useRequest('checkout-mfe', 'checkout.submit.v1');
+</script>
+
+<template>
+  <button :disabled="checkout.pending.value" @click="checkout.send(cart)">Check out</button>
+</template>
+```
+
+Full docs: [`packages/vue/README.md`](./packages/vue/README.md).
+</details>
+
 Built-in transports are named by descriptor (`{ kind: 'websocket' }`,
 `postmessage`, `message-port`, `sse`, `broadcast-channel`); custom ones
 implement the `Transport` interface (`send`, `onMessage`, `destroy`, plus
@@ -179,43 +217,49 @@ each other without any of them knowing about the others.
 
 ## Quickstart
 
-```ts
-// 1. Boot the runtime once, from the host / shell
-import { initBroker } from '@hedwigjs/broker';
-import { TOPIC_KINDS } from '@my-org/topics';
-import type { Topic, TopicPayloads } from '@my-org/topics';
-
-initBroker<Topic, TopicPayloads>({ topics: TOPIC_KINDS });
-
-// 2. Every module creates its own client — from the SDK, not the runtime
-import { createClient } from '@hedwigjs/client';
-import type { TopicContracts } from '@my-org/topics';
-
-const cartClient = createClient<Topic, TopicPayloads, TopicContracts>('cart-mfe');
-
-cartClient.on('cart.snapshot.v1', (msg) => renderCart(msg.data));
-cartClient.emit('user.viewed-menu.v1', { at: Date.now() });
-
-// 3. Mount DevTools during development
-import { MessageBrokerDevTools } from '@hedwigjs/devtools';
-import { getBroker } from '@hedwigjs/broker';
-
-createRoot(devHost).render(
-  <MessageBrokerDevTools
-    broker={getBroker()}
-    enabled={process.env.NODE_ENV === 'development'}
-  />,
-);
+```bash
+npm i @hedwigjs/broker          # the host
+npm i @hedwigjs/client          # every module (+ @hedwigjs/react or @hedwigjs/vue)
 ```
 
-Boot order does not matter: a module that calls `createClient` before
-`initBroker()` gets a lazy client that flushes in order once the runtime
-appears. Modules never import `@hedwigjs/broker` — the SDK finds the
-runtime through a per-realm handle, so Module Federation does not have
-to share it. `@hedwigjs/react` / `@hedwigjs/vue` bind the same calls to
-the component lifecycle. For cross-tab or iframe traffic, register a
-remote client (`createRemoteClient(id, { transport: { kind: 'broadcast-channel', name } })`)
-— same three methods on the sender side, no code change to the receiver.
+```ts
+// Host — once
+import { initBroker } from '@hedwigjs/broker';
+initBroker({ topics: TOPIC_KINDS });   // kinds and retention, from your contracts registry
+```
+
+```ts
+// Module — its own client, no dependency on the runtime
+import { createClient } from '@hedwigjs/client';
+const cart = createClient<Topic, TopicPayloads, TopicContracts>('cart-mfe'); // types from the registry
+
+cart.on('cart.snapshot.v1', (msg) => render(msg.data));
+cart.emit('user.viewed-menu.v1', { at: Date.now() });
+const answer = await cart.request('checkout-mfe', 'checkout.submit.v1', snapshot);
+```
+
+```tsx
+// The same module in React — hooks bound to that client
+import { bindHooks } from '@hedwigjs/react';
+export const { useStateTopic, useRequest } = bindHooks(cart);
+
+function Checkout() {
+  const snapshot = useStateTopic('cart.snapshot.v1');          // retained value on the first paint, live after
+  const submit = useRequest('checkout-mfe', 'checkout.submit.v1'); // send() + pending + typed answer
+  return <button disabled={submit.pending} onClick={() => void submit.send(snapshot)}>Check out</button>;
+}
+```
+
+- Boot order does not matter: a client created before `initBroker()`
+  queues its calls and flushes them when the runtime appears. Modules
+  never import `@hedwigjs/broker`.
+- Hooks and composables: [`packages/react/README.md`](./packages/react/README.md),
+  [`packages/vue/README.md`](./packages/vue/README.md) (Vue: `bindComposables`).
+- Contracts registry: `npm create @hedwigjs/registry` gives you `Topic`,
+  `TopicPayloads`, `TopicContracts` and `TOPIC_KINDS` —
+  [`packages/create-registry/README.md`](./packages/create-registry/README.md).
+- DevTools: `<MessageBrokerDevTools broker={getBroker()} enabled />` in the
+  host — [`packages/devtools/README.md`](./packages/devtools/README.md).
 
 ## Reference stand
 
