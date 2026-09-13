@@ -16,5 +16,6 @@ We don't write an RFC for internal refactors, bugfixes, or reversible tweaks.
 
 | # | Title | Status |
 | --- | --- | --- |
-| [0001](./0001-transport-adapters.md) | Transport adapters | Draft |
+| [0001](./0001-transport-adapters.md) | Transport adapters | Superseded by 0003 |
 | [0002](./0002-demo-audit-2026-08.md) | Audit note — `examples/advanced/` (2026-08) | Informational |
+| [0003](./0003-participants-runtime-sdk.md) | Participants, runtime/SDK split, links and the wire | Draft |

@@ -1,9 +1,14 @@
 # RFC 0001 — Transport adapters
 
-- **Status:** Draft
+- **Status:** Superseded by [RFC 0003](./0003-participants-runtime-sdk.md)
 - **Created:** 2026-08-23
 - **Owners:** —
 - **Supersedes:** —
+
+> Kept for history. The `Adapter.connect(bus)` contract and the
+> `@hedwigjs/adapter-*` packages described below were never built; the
+> current design keeps transports inside the runtime and models remote
+> participants as clients. See RFC 0003.
 
 ## Summary
 
