@@ -76,6 +76,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # setup-node's `registry-url` points npm at $RUNNER_TEMP/.npmrc,
+          # whose auth line reads NODE_AUTH_TOKEN — the ~/.npmrc that
+          # changesets/action writes from NPM_TOKEN is never consulted.
+          # Without this line every publish went out unauthenticated and
+          # npm answered E404 on PUT.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
 
       - name: Summary
