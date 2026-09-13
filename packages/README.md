@@ -10,8 +10,8 @@ Hedwig.
 
 | Directory   | npm name             | Role                                                                                                | Status                  |
 | ----------- | -------------------- | --------------------------------------------------------------------------------------------------- | ----------------------- |
-| `broker/`   | `@hedwigjs/broker`   | Runtime broker + observability primitives. Ships the built-in bridges for postMessage / BroadcastChannel / WebSocket / SSE. | Published |
-| `devtools/` | `@hedwigjs/devtools` | React panel: message timeline, clients, bridges, replay buffer, system events.                       | Published |
+| `broker/`   | `@hedwigjs/broker`   | Runtime broker + observability primitives. Remote clients over built-in transports for postMessage / MessagePort / BroadcastChannel / WebSocket / SSE. | Published |
+| `devtools/` | `@hedwigjs/devtools` | React panel: message timeline, clients (local and remote), replay buffer, system events.                       | Published |
 
 ## Starter kits (optional)
 
@@ -27,8 +27,8 @@ for alternatives.
 ## Roadmap — separate adapter packages
 
 Today every transport ships inside `@hedwigjs/broker` and plugs into the
-core via the `BridgeTransport` interface (three methods: `send`,
-`onMessage`, `destroy`). That layout is deliberate for the pre-release —
+core via the `Transport` interface (three methods: `send`, `onMessage`,
+`destroy`, plus optional capability flags). That layout is deliberate for the pre-release —
 the interface is still stabilising and one `npm i @hedwigjs/broker`
 gets a user everything.
 

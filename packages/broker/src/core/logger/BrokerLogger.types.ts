@@ -9,8 +9,6 @@ export type BrokerLogEvent =
   | 'broker.duplicate_copy'
   | 'broker.version_incompatible'
   | 'broker.subscribe.after_destroy'
-  | 'broker.bridge.add.after_destroy'
-  | 'broker.bridge.replaced'
   | 'broker.client.register.after_destroy'
   | 'broker.replay.history_disabled'
   | 'facade.createClient.reset'
@@ -23,10 +21,6 @@ export type BrokerLogEvent =
   // Hooks
   | 'hook.after_send.failed'
   | 'hook.failed'
-  // Bridge
-  | 'bridge.message.parse_failed'
-  | 'bridge.message.invalid'
-  | 'bridge.send.failed'
   // Remote clients
   | 'remote.frame.rejected'
   | 'remote.send.failed'

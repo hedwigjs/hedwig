@@ -4,7 +4,7 @@ import { BrokerClient } from './client/BrokerClient';
 /**
  * Tests for `broker.$debug.send()` — the injection channel used by
  * DevTools' Debug tab and integration tests. Runs the full pipeline
- * (routing / hooks / bridges) with an arbitrary `source` and no client
+ * (routing / hooks / remote clients) with an arbitrary `source` and no client
  * registry side effects; messages are tagged `synthetic: true`.
  */
 

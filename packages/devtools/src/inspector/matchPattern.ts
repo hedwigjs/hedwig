@@ -1,6 +1,6 @@
 /**
  * Glob-style topic matcher. Mirrors the broker-internal `matchPattern`
- * so DevTools can attribute messages to bridge forward-patterns without
+ * so DevTools can attribute messages to remote clients' forward patterns without
  * a private import.
  *
  * Supported patterns:

@@ -9,7 +9,6 @@ import type {
   MessageBrokerForDevTools,
   SystemEventLogEntry,
   SystemEventName,
-  BridgeEntry,
   VersionStatus,
 } from "./types";
 import { serializeDataPreview, snapshotFrom, EMPTY_MESSAGES_FILTER } from "./types";
@@ -23,8 +22,6 @@ export interface CreateInspectorStoreOptions {
 type ClientBase = Pick<ClientEntry, "id" | "connectedAt" | "remote"> & {
   subscriptions: Array<Pick<ClientSubscriptionEntry, "topic" | "options">>;
 };
-
-type BridgeBase = Pick<BridgeEntry, "id" | "forwardPatterns" | "transportKind">;
 
 function computeLastReceivedAt(
   clientId: string,
@@ -131,7 +128,6 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
   let clientsBase: ClientBase[] = [];
   let messagesFilter: MessagesFilter = { ...EMPTY_MESSAGES_FILTER };
   let historyEntries: ReadonlyArray<HistoryEntry> = [];
-  let bridgesBase: BridgeBase[] = [];
   let snapshotCache: InspectorSnapshot = snapshotFrom(
     [],
     totalSeen,
@@ -139,7 +135,6 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
     version,
     [],
     messagesFilter,
-    [],
     [],
     [],
   );
@@ -168,23 +163,6 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
         })),
       };
     });
-    const bridges: BridgeEntry[] = bridgesBase.map((base) => {
-      let sentThroughCount = 0;
-      let receivedFromCount = 0;
-      for (const e of entries) {
-        if (!matchesAnyPattern(e.topic, base.forwardPatterns)) continue;
-        if (e.fromExternal) receivedFromCount++;
-        else sentThroughCount++;
-      }
-      return {
-        id: base.id,
-        forwardPatterns: base.forwardPatterns,
-        transportKind: base.transportKind,
-        sentThroughCount,
-        receivedFromCount,
-      };
-    });
-
     snapshotCache = snapshotFrom(
       entries,
       totalSeen,
@@ -194,7 +172,6 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
       messagesFilter,
       historyEntries,
       systemEventsRing.toArray(),
-      bridges,
     );
     listeners.forEach((l) => l());
   }
@@ -283,15 +260,6 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
         topic: sub.topic,
         options: sub.options,
       })),
-    }));
-    emit();
-  }
-
-  function refreshBridges(broker: MessageBrokerForDevTools) {
-    bridgesBase = broker.inspect.getBridges().map((info) => ({
-      id: info.id,
-      forwardPatterns: info.forwardPatterns,
-      transportKind: info.transportKind,
     }));
     emit();
   }
@@ -385,7 +353,6 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
     clearMessagesFilter,
     refreshClients,
     refreshHistory,
-    refreshBridges,
     pushSystemEvent,
     clearSystemEvents,
   };

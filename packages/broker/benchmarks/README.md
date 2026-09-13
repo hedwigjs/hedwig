@@ -31,7 +31,7 @@ so the memory bench can trigger `global.gc()` for reliable deltas.
 | 08 | `multi-topic-isolation` | Dispatch stays O(1) across 10 → 10,000 unrelated topics |
 | 09 | `history-append` | `emit({ history: true })` at buffer sizes 100 / 1,000 / 10,000 |
 | 10 | `replay-cost` | `on({ replay: { limit: N } })` at 10 / 100 / 1,000 historical messages |
-| 11 | `bridge-roundtrip` | Bridge send + loopback inject overhead (proxy for cross-tab) |
+| 11 | `remote-roundtrip` | Remote client forward + loopback inject overhead (proxy for cross-tab) |
 | 12 | `memory-footprint` | Heap Δ per subscription at 1k / 10k / 50k |
 | 13 | `devtools-attach` | Overhead of the observer shape DevTools installs |
 | 14 | `contention-jitter` | p99 jitter of 1,000-emit bursts (10 concurrent senders) |

@@ -4,7 +4,7 @@ import type { ClientID, SubscriptionOptions } from '../types';
  * System events - internal signals about broker state transitions.
  *
  * These are NOT user messages. System events expose infrastructure-level
- * state changes (client/subscription/bridge lifecycle) that are not
+ * state changes (client/subscription/remote-client lifecycle) that are not
  * observable through the hook pipeline.
  *
  * Intended consumers:
@@ -102,35 +102,6 @@ export interface SystemEventMap<T extends string, P extends Record<T, any>> {
     target: ClientID | '*';
     topic: T;
     reason: string;
-  };
-
-  // ─── Bridges (lifecycle + outbound failures; message flow is visible via afterSend)
-
-  'bridge.added': { bridgeId: string };
-  'bridge.removed': { bridgeId: string };
-  /**
-   * Fired when a bridge's transport threw from `send()` while forwarding a
-   * local message. The message was already delivered locally and the
-   * caller's promise resolves normally — this event is the only signal that
-   * the wire dropped it. Other bridges are unaffected.
-   */
-  'bridge.send.failed': {
-    bridgeId: string;
-    topic: T;
-    messageId: string;
-    error: unknown;
-  };
-  /**
-   * An inbound frame was dropped at the bridge before reaching any hook:
-   * malformed (`MALFORMED`) or from a `source` outside the bridge's
-   * `allowedSources` (`SOURCE_NOT_ALLOWED`). `source` / `topic` are the
-   * values the frame claimed, when they were strings at all.
-   */
-  'bridge.message.invalid': {
-    bridgeId: string;
-    reason: 'MALFORMED' | 'SOURCE_NOT_ALLOWED';
-    source?: ClientID;
-    topic?: string;
   };
 
   // ─── Remote clients ───────────────────────────────────────────────────────

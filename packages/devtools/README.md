@@ -1,7 +1,7 @@
 # @hedwigjs/devtools
 
 React DevTools panel for `@hedwigjs/broker`. Watch every message,
-inspect clients and bridges, replay the history buffer, catch
+inspect local and remote clients, replay the history buffer, catch
 hook-driven rejections, and hand-craft synthetic messages against a
 running broker — all from a docked panel you mount in your own app.
 
@@ -92,10 +92,9 @@ Six tabs, each backed by one channel of broker observability.
 | Tab               | Source                                                                                            | Purpose                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | **Messages**      | `useBeforeSendHook` (pending) + `useAfterSendHook` (delivered / failed)                            | Live feed of every message. Topic, source, target, status, latency, delivery result, JSON payload preview.  |
-| **Clients**       | `inspect.getClients()` + `subscription.*` and `client.*` system events                             | Tree of every registered client and its subscriptions, with per-subscription last-received timestamp.       |
-| **Bridges**       | `inspect.getBridges()` + `bridge.*` system events                                                  | Every registered bridge — forward patterns, transport kind, approximate send / receive counters.            |
+| **Clients**       | `inspect.getClients()` + `subscription.*`, `client.*` and `remote.*` system events                 | Tree of every registered client and its subscriptions. Remote clients carry a `remote · <transport>` badge; their detail shows identity mode, `accepts` and forwarded topics. |
 | **Replay Buffer** | `inspect.getHistory()`                                                                             | Contents of the broker's history ring. Only populated when `initBroker({ history: { enabled: true } })`.    |
-| **System Events** | `$systemEvents.onAny`                                                                              | Unified log of lifecycle signals: `client.*`, `subscription.*`, `bridge.*`, plus `*.rejected` security signals and `bridge.send.failed` wire failures. |
+| **System Events** | `$systemEvents.onAny`                                                                              | Unified log of lifecycle signals: `client.*`, `subscription.*`, `remote.*`, plus `*.rejected` security signals, `remote.frame.rejected` edge drops and `remote.send.failed` wire failures. |
 | **Debug**         | `broker.$debug.send`                                                                               | Compose and send a synthetic message through the full pipeline. Impersonate any source; multicast or unicast. Requires `initBroker({ debug: true })`; otherwise the tab explains how to arm the channel. |
 
 Rejections from hooks surface in three places at once:
@@ -103,7 +102,7 @@ Rejections from hooks surface in three places at once:
 - `subscription.rejected` → System Events tab (the security channel).
 - `message.rejected` → System Events tab, **and** the corresponding
   emit shows as `NACK HOOK_REJECTED` in Messages.
-- `bridge.send.failed` → System Events tab with an amber `failed` badge
+- `remote.send.failed` → System Events tab with an amber `failed` badge
   (distinct from the red `rejected`, which is a policy decision). The
   sender's message still shows as delivered in Messages — the local
   delivery succeeded; only the wire dropped it.
@@ -217,7 +216,7 @@ specifically debugging burst behaviour and want each row visible).
 The Debug tab drives `broker.$debug.send`, the broker's internal
 inject-with-arbitrary-source primitive. Every message it sends flows
 through the **full pipeline**: hooks run, subscribers receive it, the
-history buffer records it, bridges forward it. The only difference
+history buffer records it, remote clients receive it. The only difference
 from a normal `emit` is `synthetic: true` in the message envelope, so
 DevTools can visually flag spoofed traffic.
 
@@ -348,18 +347,18 @@ that wires up two channels:
   This is how the Messages tab shows a message before it's dispatched
   and updates it in place with the final outcome and latency.
 - **System events (lifecycle path)** — `$systemEvents.on('client.*')`,
-  `$systemEvents.on('subscription.*')`, and `$systemEvents.on('bridge.*')`
-  drive the Clients and Bridges tabs and populate the System Events log.
+  `$systemEvents.on('subscription.*')`, and `$systemEvents.on('remote.*')`
+  drive the Clients tab and populate the System Events log.
   `subscription.rejected` and `message.rejected` are surfaced separately
-  as security signals; `bridge.send.failed` is logged without touching
-  the bridge list, since the bridge is still registered.
+  as security signals; `remote.frame.rejected` and `remote.send.failed`
+  are log-only, since the remote client is still registered.
   `broker.duplicate_copy` (the library bundled twice in one realm) is
   hydrated from `inspect.getVersionInfo()` on attach, because it fires
   at app bootstrap before any panel exists.
 - **Snapshots (initial hydration)** — `inspect.getClients()`,
-  `inspect.getHistory()`, and `inspect.getBridges()` prime state on
-  attach and refresh on each system event, so the tabs are correct
-  even for bridges that were registered *before* the panel mounted.
+  and `inspect.getHistory()` prime state on attach and refresh on each
+  system event, so the tabs are correct even for remote clients that
+  were registered *before* the panel mounted.
 
 On unmount everything unsubscribes — the broker is left exactly as it
 was before the panel attached. Nothing on the broker knows or cares

@@ -29,7 +29,6 @@ function createInspectStub(options: InspectStubOptions = {}) {
   return {
     getClients: jest.fn(() => []),
     getSubscribedClientIds: jest.fn(() => []),
-    getBridges: jest.fn(() => []),
     getHistory: jest.fn(() => []),
     getHistoryStats: jest.fn(() => ({ count: 0, enabled: false })),
     getVersionInfo: jest.fn(() => ({
@@ -124,10 +123,6 @@ describe("attachInspector", () => {
         "subscription.removed",
         "subscription.rejected",
         "message.rejected",
-        "bridge.added",
-        "bridge.removed",
-        "bridge.send.failed",
-        "bridge.message.invalid",
         "remote.created",
         "remote.destroyed",
         "remote.frame.rejected",
@@ -250,29 +245,6 @@ describe("attachInspector", () => {
     expect(store.getSnapshot().entries[0]).toEqual(
       expect.objectContaining({ id: "r1", fromExternal: true, via: "backend" }),
     );
-  });
-
-  it("logs bridge.send.failed into the System Events ring without touching the bridge list", () => {
-    const { broker } = createMockBroker();
-    const store = createInspectorStore({ maxEvents: 20 });
-    const on = broker.$systemEvents.on as jest.Mock;
-    const refreshBridges = broker.inspect.getBridges as jest.Mock;
-
-    attachInspector(broker, store);
-    const callsBefore = refreshBridges.mock.calls.length;
-
-    const listener = on.mock.calls.find(([event]) => event === "bridge.send.failed")?.[1];
-    expect(listener).toBeDefined();
-    listener({ bridgeId: "ws", topic: "a.v1", messageId: "m-1", error: new Error("wire down") });
-
-    const { systemEvents } = store.getSnapshot();
-    expect(systemEvents.at(-1)).toEqual(
-      expect.objectContaining({
-        name: "bridge.send.failed",
-        payload: expect.objectContaining({ bridgeId: "ws", topic: "a.v1", messageId: "m-1" }),
-      }),
-    );
-    expect(refreshBridges.mock.calls.length).toBe(callsBefore);
   });
 
   describe("version handshake", () => {

@@ -8,7 +8,7 @@ interface SystemEventRowProps {
   entry: SystemEventLogEntry;
 }
 
-type EventFacet = "client" | "subscription" | "bridge" | "remote" | "message" | "broker";
+type EventFacet = "client" | "subscription" | "remote" | "message" | "broker";
 type EventVerb = "added" | "removed" | "rejected" | "failed" | "warning";
 
 function facetOf(name: SystemEventLogEntry["name"]): EventFacet {
@@ -18,7 +18,7 @@ function facetOf(name: SystemEventLogEntry["name"]): EventFacet {
   if (name.startsWith("broker.")) return "broker";
   if (name.startsWith("hook.")) return "broker";
   if (name.startsWith("remote.")) return "remote";
-  return "bridge";
+  return "broker";
 }
 
 function verbOf(name: SystemEventLogEntry["name"]): EventVerb {
@@ -42,7 +42,6 @@ function summarize(entry: SystemEventLogEntry): string {
   const source = typeof p.source === "string" ? p.source : undefined;
   const target = typeof p.target === "string" ? p.target : undefined;
   const topic = typeof p.topic === "string" ? p.topic : undefined;
-  const bridgeId = typeof p.bridgeId === "string" ? p.bridgeId : undefined;
   const remoteId = typeof p.remoteId === "string" ? p.remoteId : undefined;
   const transportKind = typeof p.kind === "string" && remoteId ? p.kind : undefined;
   const identity = typeof p.identity === "string" ? p.identity : undefined;
@@ -82,13 +81,6 @@ function summarize(entry: SystemEventLogEntry): string {
     return `broker ${version} · ${copies} extra ${copies === 1 ? "copy" : "copies"} of @hedwigjs/broker on this page${who}`;
   }
 
-  // bridge.message.invalid: reason + what the frame claimed.
-  if (bridgeId && reason) {
-    return `${bridgeId} · ${reason}${source ? ` · claimed source ${source}` : ""}${topic ? ` · ${topic}` : ""}`;
-  }
-  // bridge.send.failed carries topic + messageId; lifecycle events only bridgeId.
-  if (bridgeId && topic) return `${bridgeId} · ${topic}${messageId ? ` · ${messageId}` : ""}`;
-  if (bridgeId) return bridgeId;
   if (source && target && topic) return `${source} → ${target} · ${topic}${reason ? ` · ${reason}` : ""}`;
   if (clientId && topic) return `${clientId} · ${topic}${reason ? ` · ${reason}` : ""}`;
   if (clientId) return clientId;
@@ -98,7 +90,6 @@ function summarize(entry: SystemEventLogEntry): string {
 const FACET_CLASS: Record<EventFacet, string> = {
   client: styles.facetClient,
   subscription: styles.facetSubscription,
-  bridge: styles.facetBridge,
   remote: styles.facetRemote,
   message: styles.facetMessage,
   broker: styles.facetBroker,

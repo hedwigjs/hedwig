@@ -2,7 +2,7 @@ import { BrokerCore } from './BrokerCore';
 import { BrokerClient } from './client/BrokerClient';
 import { RoutingReason } from './routing/RoutingResult';
 import type { BrokerLogger } from './logger/BrokerLogger.types';
-import type { BridgeTransport } from './bridge/Bridge.types';
+import type { Transport } from './transport/Transport.types';
 
 /**
  * Fault-isolation tests.
@@ -44,7 +44,7 @@ function recordingLogger(): BrokerLogger & { calls: Array<[string, string, unkno
   };
 }
 
-function fakeTransport(overrides: Partial<BridgeTransport> = {}): BridgeTransport {
+function fakeTransport(overrides: Partial<Transport> = {}): Transport {
   return {
     send: jest.fn(),
     onMessage: jest.fn(() => () => {}),
@@ -53,7 +53,7 @@ function fakeTransport(overrides: Partial<BridgeTransport> = {}): BridgeTranspor
   };
 }
 
-function throwingTransport(): BridgeTransport {
+function throwingTransport(): Transport {
   return fakeTransport({
     send: jest.fn(() => {
       throw new Error('wire down');
@@ -145,11 +145,11 @@ describe('BrokerCore fault isolation', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 2. A throwing transport.send() must not reject emit() or starve other bridges
+  // 2. A throwing transport.send() must not reject emit() or starve other remotes
   // ─────────────────────────────────────────────────────────────────────────
 
   describe('throwing transport', () => {
-    test('emit() resolves ACK even though a bridge transport threw on send()', async () => {
+    test('emit() resolves ACK even though a remote transport threw on send()', async () => {
       const logger = recordingLogger();
       const core = new BrokerCore<Topics, Payloads>({ logger });
       const sender = new BrokerClient('sender', core);
@@ -157,7 +157,7 @@ describe('BrokerCore fault isolation', () => {
       const handler = jest.fn();
       receiver.on('a.v1', handler);
 
-      core.addBridge('bad', { transport: throwingTransport(), forward: ['a.*'] });
+      core.createRemoteClient('bad', { transport: throwingTransport(), forward: ['a.*'] });
 
       const result = await sender.emit('a.v1', { n: 1 });
 
@@ -166,19 +166,19 @@ describe('BrokerCore fault isolation', () => {
       expect(handler).toHaveBeenCalledTimes(1);
       expect(logger.calls).toContainEqual([
         'error',
-        'bridge.send.failed',
-        expect.objectContaining({ bridgeId: 'bad', topic: 'a.v1', messageId: expect.any(String) }),
+        'remote.send.failed',
+        expect.objectContaining({ remoteId: 'bad', topic: 'a.v1', messageId: expect.any(String) }),
       ]);
       core.destroy();
     });
 
-    test('request() resolves with the handler result even though a bridge transport threw', async () => {
+    test('request() resolves with the handler result even though a remote transport threw', async () => {
       const core = new BrokerCore<Topics, Payloads>({ logger: recordingLogger() });
       const sender = new BrokerClient('sender', core);
       const receiver = new BrokerClient('receiver', core);
       receiver.on('a.v1', (msg) => ({ echoed: msg.data.n }));
 
-      core.addBridge('bad', { transport: throwingTransport(), forward: ['a.*'] });
+      core.createRemoteClient('bad', { transport: throwingTransport(), forward: ['a.*'] });
 
       const result = await sender.request<'a.v1', { echoed: number }>('receiver', 'a.v1', { n: 7 });
 
@@ -187,15 +187,15 @@ describe('BrokerCore fault isolation', () => {
       core.destroy();
     });
 
-    test('bridges registered after a throwing one still receive the message', async () => {
+    test('remotes registered after a throwing one still receive the message', async () => {
       const core = new BrokerCore<Topics, Payloads>({ logger: recordingLogger() });
       const sender = new BrokerClient('sender', core);
       const receiver = new BrokerClient('receiver', core);
       receiver.on('a.v1', () => {});
 
       const good = fakeTransport();
-      core.addBridge('bad', { transport: throwingTransport(), forward: ['a.*'] });
-      core.addBridge('good', { transport: good, forward: ['a.*'] });
+      core.createRemoteClient('bad', { transport: throwingTransport(), forward: ['a.*'] });
+      core.createRemoteClient('good', { transport: good, forward: ['a.*'] });
 
       await sender.emit('a.v1', { n: 1 });
 
@@ -204,15 +204,15 @@ describe('BrokerCore fault isolation', () => {
       core.destroy();
     });
 
-    test('emits bridge.send.failed on $systemEvents with bridge id, topic, message id and error', async () => {
+    test('emits remote.send.failed on $systemEvents with remote id, topic, message id, reason and error', async () => {
       const core = new BrokerCore<Topics, Payloads>({ logger: recordingLogger() });
       const sender = new BrokerClient('sender', core);
       const receiver = new BrokerClient('receiver', core);
       receiver.on('a.v1', () => {});
-      core.addBridge('bad', { transport: throwingTransport(), forward: ['a.*'] });
+      core.createRemoteClient('bad', { transport: throwingTransport(), forward: ['a.*'] });
 
       const seen: unknown[] = [];
-      core.$systemEvents.on('bridge.send.failed', (payload) => seen.push(payload));
+      core.$systemEvents.on('remote.send.failed', (payload) => seen.push(payload));
       let sentId = '';
       core.useAfterSendHook((message) => {
         sentId = message.id;
@@ -222,24 +222,25 @@ describe('BrokerCore fault isolation', () => {
 
       expect(seen).toHaveLength(1);
       expect(seen[0]).toEqual({
-        bridgeId: 'bad',
+        remoteId: 'bad',
         topic: 'a.v1',
         messageId: sentId,
+        reason: 'TRANSPORT_THREW',
         error: expect.any(Error),
       });
       core.destroy();
     });
 
-    test('a bridge whose forward patterns do not match is never invoked, so it cannot fail', async () => {
+    test('a remote whose forward patterns do not match is never invoked, so it cannot fail', async () => {
       const core = new BrokerCore<Topics, Payloads>({ logger: recordingLogger() });
       const sender = new BrokerClient('sender', core);
       const receiver = new BrokerClient('receiver', core);
       receiver.on('a.v1', () => {});
       const bad = throwingTransport();
-      core.addBridge('bad', { transport: bad, forward: ['b.*'] });
+      core.createRemoteClient('bad', { transport: bad, forward: ['b.*'] });
 
       const seen = jest.fn();
-      core.$systemEvents.on('bridge.send.failed', seen);
+      core.$systemEvents.on('remote.send.failed', seen);
 
       await sender.emit('a.v1', { n: 1 });
 
@@ -292,7 +293,7 @@ describe('BrokerCore fault isolation', () => {
       core.destroy();
     });
 
-    test('a binary payload arriving through a bridge (structured clone) is routed, not dropped', async () => {
+    test('a binary payload arriving from a remote client (structured clone) is routed, not dropped', async () => {
       const core = new BrokerCore<Topics, Payloads>({ logger: recordingLogger() });
       const receiver = new BrokerClient('receiver', core);
       const handler = jest.fn();
@@ -305,12 +306,12 @@ describe('BrokerCore fault isolation', () => {
           return () => {};
         }),
       });
-      core.addBridge('iframe', { transport, forward: ['blob.*'] });
+      core.createRemoteClient('iframe', { transport, accepts: ['blob.*'] });
 
       inbound!({
         id: 'remote-1',
         topic: 'blob.v1',
-        source: 'remote',
+        source: 'iframe',
         target: '*',
         data: { bytes: new Uint8Array([7]), meta: { len: 1 } },
         timestamp: Date.now(),

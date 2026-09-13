@@ -54,8 +54,9 @@ invisible to the tools you already use.
 regardless of what's on the other side. Modules living in the same
 runtime talk to each other **in-process** through the broker's
 routing — no transport involved. When a module lives elsewhere
-(another tab, an iframe, a Worker, a backend service), a **bridge**
-wraps the wire; the caller writes exactly the same code.
+(another tab, an iframe, a Worker, a backend service), it joins as a
+**remote client** behind a transport; the caller writes exactly the
+same code.
 
 ```ts
 import { createClient } from '@hedwigjs/broker';
@@ -76,9 +77,11 @@ const { orderId } = await cartClient.request<'checkout.submit.v1', OrderResp>(
 );
 ```
 
-Custom transports plug into the 3-method `BridgeTransport` interface
-without touching core — WebRTC data channels, Service Worker
-messaging, Electron IPC, whatever you need.
+Built-in transports are named by descriptor (`{ kind: 'websocket' }`,
+`postmessage`, `message-port`, `sse`, `broadcast-channel`); custom ones
+plug into the 3-method `Transport` interface without touching core —
+WebRTC data channels, Service Worker messaging, Electron IPC, whatever
+you need.
 
 ### ✉️ Every message declared with its intent
 
@@ -108,8 +111,8 @@ round-trip. It's a pattern, not an API tier.
 
 Every message — regardless of transport, regardless of whether the
 sender was a browser tab or a backend service — flows through one
-broker pipeline and shows up in one DevTools panel: messages, clients,
-active bridges, replay buffer, system events. Security signals
+broker pipeline and shows up in one DevTools panel: messages, clients
+(local and remote), replay buffer, system events. Security signals
 (hook-rejected subscriptions, blocked sends) get their own dedicated
 stream so audit tooling can consume them without inspecting every user
 message.
@@ -163,8 +166,8 @@ each other without any of them knowing about the others.
 
 | Package                     | What it is                                                                                                                                                                                                                                                                                        | Status                  |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `@hedwigjs/broker`          | Runtime broker. Typed `emit` / `request` / `on`. Routes messages **in-process** between clients on the same broker, and — through **built-in or custom bridges** — across contexts (iframes, tabs, workers, backends via `postMessage` / `BroadcastChannel` / `WebSocket` / `SSE` / your own). Hook system (`beforeSend` / `afterSend` / `onSubscribe`), message history + replay, backpressure primitives. | Published |
-| `@hedwigjs/devtools`        | React panel that mounts inside the host app. Messages, clients, bridges, replay buffer, dedicated system-events stream.                                                                                                                                                                            | Published |
+| `@hedwigjs/broker`          | Runtime broker. Typed `emit` / `request` / `on`. Routes messages **in-process** between clients on the same broker, and — through **remote clients** on built-in or custom transports — across contexts (iframes, tabs, workers, backends via `postMessage` / `MessagePort` / `BroadcastChannel` / `WebSocket` / `SSE` / your own). Hook system (`beforeSend` / `afterSend` / `onSubscribe`), message history + replay, backpressure primitives. | Published |
+| `@hedwigjs/devtools`        | React panel that mounts inside the host app. Messages, clients (local and remote), replay buffer, dedicated system-events stream.                                                                                                                                                                            | Published |
 | `@hedwigjs/create-registry` | Optional CLI (`npm create @hedwigjs/registry`) that scaffolds a topic-registry package with contract files + codegen. Broker also accepts topic types from Zod / Protobuf / GraphQL / hand-written — registry is a pattern, not a mandate.                                                          | Published |
 
 ## Quickstart
@@ -199,9 +202,9 @@ createRoot(devHost).render(
 ```
 
 That's the full onboarding for a single-page app. For cross-tab or
-iframe traffic, add a bridge with a `postMessage` or `BroadcastChannel`
-transport — same three methods on the sender side, no code change to
-the receiver.
+iframe traffic, register a remote client over `postMessage` or
+`BroadcastChannel` — same three methods on the sender side, no code
+change to the receiver.
 
 ## Reference stand
 
@@ -219,7 +222,7 @@ ACL layer implemented through hooks.
 
 | Module          | Role                                                                              |
 | --------------- | --------------------------------------------------------------------------------- |
-| `shell`         | Single-spa host. Installs ACL hooks, wires bridges, mounts DevTools               |
+| `shell`         | Single-spa host. Installs ACL hooks, registers remote clients, mounts DevTools     |
 | `menu`          | Dish grid. Sends `cart.add-item.v1` requests to the cart runtime                  |
 | `cart`          | Cart runtime + UI. Owns the cart state, publishes `cart.snapshot.v1`              |
 | `checkout`      | Headless iframe controller. Handles `checkout.start.v1` request                    |
@@ -227,17 +230,17 @@ ACL layer implemented through hooks.
 | `ai-chat`       | Streaming chat over SSE                                                            |
 | `analytics`     | Semi-trusted read-only tracker — demonstrates ACL rejections                       |
 
-**Backend (over transports):**
+**Backend (remote clients over transports):**
 
-| Module                  | Bridge      | Role                                                              |
+| Remote client id        | Transport   | Role                                                              |
 | ----------------------- | ----------- | ----------------------------------------------------------------- |
 | `notifications-backend` | WebSocket   | Pushes `notification.show.v1` to every connected frontend module   |
 | `ai-backend`            | SSE         | Streams `chat.reply-chunk.v1` + `chat.reply-completed.v1`          |
 | `checkout-iframe`       | PostMessage | Iframe HTML at `/checkout`; sends `checkout.completed.v1` on submit |
 
 Backend modules speak the same topics as any frontend module — they
-just cross a transport bridge to reach the broker. In DevTools they
-appear with an `external` pill on the message row.
+are remote clients of the broker. In DevTools they carry a `remote`
+badge in Clients and a `via <id>` pill on every message row.
 
 ### Running locally
 
@@ -272,7 +275,7 @@ your local http://localhost:3000.
    from `cart-store`), `cart.snapshot.v1` (**event** with
    `{ history: true }` — retained so any late-joining module gets the
    current cart via `replay`), `notification.show.v1` (**event** —
-   multicast, from a backend module through the WebSocket bridge).
+   multicast, from a backend remote client over WebSocket).
 3. Click «Оформить заказ» → `checkout.start.v1` request from cart to
    the checkout MFE, response captured in `RoutingResult.data`.
 4. Under the cart, use the analytics widget's two «попробовать
@@ -308,7 +311,7 @@ M-series MacBook:
 - **~2 ns per additional beforeSend hook**
 - **< 1 %** overhead for a DevTools-shape observer attached
 - **~814 B per subscription** heap footprint
-- **~14 ns** extra to round-trip through a bridge
+- **~14 ns** extra to round-trip through a remote client's transport
 
 ```bash
 cd packages/broker
@@ -321,7 +324,7 @@ npm run bench:one 04    # single file, by prefix
 ```
 hedwig/
 ├── packages/
-│   ├── broker/         # @hedwigjs/broker — runtime + hooks + bridges
+│   ├── broker/         # @hedwigjs/broker — runtime + hooks + remote clients
 │   ├── devtools/       # @hedwigjs/devtools — React panel
 │   └── create-registry/# @hedwigjs/create-registry — scaffolder
 ├── examples/
@@ -335,7 +338,7 @@ Design decisions live under [`docs/content/rfcs/`](./docs/content/rfcs).
 
 The v2 direction — declared topic classes with compile-time
 enforcement (event vs request vs retained state), correlation-id-based
-cross-bridge requests, per-topic retention policy, and eventually
+requests to remote clients, per-topic retention policy, and eventually
 splitting transports into standalone `@hedwigjs/adapter-*` packages —
 lives in [`docs/content/rfcs/`](./docs/content/rfcs) as design docs.
 None of it is required to use the current runtime — everything above

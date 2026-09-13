@@ -108,7 +108,7 @@ export function DebugTab({ store, broker }: DebugTabProps): ReactNode {
     } catch (err) {
       // Broker's $debug.send is Promise-based; failures come back as NACK
       // results, not thrown. But guard anyway for unexpected transport
-      // errors from custom bridges.
+      // errors from custom transports.
       setLastResult({
         status: "NACK",
         reason: "HANDLER_FAILED",

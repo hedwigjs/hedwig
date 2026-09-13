@@ -1,4 +1,4 @@
-import type { BridgeTransport } from '../core/bridge/Bridge.types';
+import type { Transport } from '../core/transport/Transport.types';
 
 /**
  * Configuration for {@link SSETransport}.
@@ -29,7 +29,7 @@ export interface SSETransportConfig {
  * SSETransport — inbound-only transport backed by `EventSource`.
  *
  * SSE is server → client by design. `send()` is a no-op with a warning;
- * bridges built on top of this transport are effectively receive-only.
+ * a remote client on this transport is inbound-only (`duplex: false`).
  * If your integration needs client → server frames, use
  * {@link WebSocketTransport} or pair SSE with a separate POST endpoint.
  *
@@ -39,9 +39,9 @@ export interface SSETransportConfig {
  *
  * Expects incoming payloads to be JSON-encoded broker Messages
  * (`{id, topic, source, target, data, timestamp}`) — the same wire
- * format all the other bridges use.
+ * format every transport uses.
  */
-export class SSETransport implements BridgeTransport {
+export class SSETransport implements Transport {
   /** Server → client only. A remote on this transport can never be asked. */
   readonly duplex = false;
   readonly fanout = false;
@@ -59,24 +59,24 @@ export class SSETransport implements BridgeTransport {
 
   /**
    * SSE has no upstream channel from the browser. This method exists to
-   * satisfy the {@link BridgeTransport} contract but never actually
+   * satisfy the {@link Transport} contract but never actually
    * transmits — it logs a warning so misconfigurations surface early.
    *
-   * Practical guidance: keep the bridge's `forward` list to topics that
-   * are ONLY emitted by the server (never by local clients), so this
-   * warning never fires in normal operation.
+   * Practical guidance: do not `forward()` anything to a remote client on
+   * SSE — the runtime marks it `duplex: false` — so this warning never
+   * fires in normal operation.
    */
   send(_data: unknown): void {
     console.warn(
       '[SSETransport] send() is a no-op — SSE is inbound-only. ' +
-        'Ensure the bridge forward list contains topics emitted only by ' +
-        'the server, or use WebSocketTransport for duplex traffic.',
+        'Do not forward() topics to a remote client on SSE; use a ' +
+        'websocket transport for duplex traffic.',
     );
   }
 
   /**
    * Subscribe to incoming SSE messages. Parses JSON payloads before
-   * forwarding to the bridge.
+   * handing them to the remote client.
    */
   onMessage(callback: (data: unknown) => void): () => void {
     this.#messageCallback = callback;

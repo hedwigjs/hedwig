@@ -1,12 +1,16 @@
-import type { BridgeTransport } from '../core/bridge/Bridge.types';
+import type { Transport } from '../core/transport/Transport.types';
 
 /**
  * WebSocketTransport - Transport wrapper for WebSocket
  *
- * Simple wrapper that forwards messages to/from an existing WebSocket.
- * All connection management (connect, reconnect, etc.) is handled externally.
+ * Forwards frames to/from a WebSocket the caller constructed. Connecting
+ * and reconnecting stay outside: `ready` resolves once the socket is OPEN,
+ * `onClose` fires when it closes (the runtime then destroys the remote
+ * client, freeing its id for the next attempt). `destroy()` closes the
+ * socket if it is still connecting or open — the remote client owns its
+ * transport.
  */
-export class WebSocketTransport implements BridgeTransport {
+export class WebSocketTransport implements Transport {
   readonly duplex = true;
   readonly fanout = false;
   /** Resolves once the socket is OPEN; rejects if it closes first. */
@@ -98,5 +102,9 @@ export class WebSocketTransport implements BridgeTransport {
       this.#messageHandler = null;
     }
     this.#messageCallback = null;
+    const state = this.#socket.readyState;
+    if (state === WebSocket.CONNECTING || state === WebSocket.OPEN) {
+      this.#socket.close();
+    }
   }
 }

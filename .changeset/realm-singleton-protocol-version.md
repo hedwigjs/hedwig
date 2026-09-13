@@ -15,7 +15,7 @@ incompatible copy throws from `initBroker` / `getBroker` /
 `createClient` with both versions in the message and never creates a
 second bus. `VERSION`, `isCompatibleVersion`, `broker.version` and
 `inspect.getVersionInfo()` expose the diagnostics. Iframes and Workers
-are separate realms: they keep their own broker plus a bridge.
+are separate realms: they keep their own broker plus a remote client.
 
 DevTools performs a version handshake on attach and shows a header
 badge when the core's version is incompatible with the one the panel

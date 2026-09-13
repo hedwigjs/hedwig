@@ -16,10 +16,10 @@ describe('createSafeLogger', () => {
     const inner: BrokerLogger = { warn: jest.fn(), error: jest.fn() };
     const safe = createSafeLogger(inner);
 
-    safe.warn('broker.bridge.replaced', { bridgeId: 'b' });
+    safe.warn('broker.replay.history_disabled', { clientId: 'b' });
     safe.error('handler.failed', { error: 'x' });
 
-    expect(inner.warn).toHaveBeenCalledWith('broker.bridge.replaced', { bridgeId: 'b' });
+    expect(inner.warn).toHaveBeenCalledWith('broker.replay.history_disabled', { clientId: 'b' });
     expect(inner.error).toHaveBeenCalledWith('handler.failed', { error: 'x' });
     expect(consoleError).not.toHaveBeenCalled();
   });
@@ -34,13 +34,13 @@ describe('createSafeLogger', () => {
     };
     const safe = createSafeLogger(inner);
 
-    expect(() => safe.warn('broker.bridge.replaced', { bridgeId: 'b' })).not.toThrow();
+    expect(() => safe.warn('broker.replay.history_disabled', { clientId: 'b' })).not.toThrow();
     expect(consoleError).toHaveBeenCalledWith(
       '[broker] logger.failed',
       expect.objectContaining({
         level: 'warn',
-        event: 'broker.bridge.replaced',
-        meta: { bridgeId: 'b' },
+        event: 'broker.replay.history_disabled',
+        meta: { clientId: 'b' },
         error: boom,
       }),
     );

@@ -1,11 +1,10 @@
 import type { ClientID, ClientInfo } from '../../types';
 import type { ClientRegistry } from '../../client/ClientRegistry';
 import type { Subscriptions } from '../../routing/Subscriptions';
-import type { Bridge } from '../../bridge/Bridge.types';
 import type { RemoteClientImpl } from '../../remote/RemoteClient';
 import type { MessageHistory } from '../../history/MessageHistory';
 import type { HistoryEntry, HistoryStats } from '../../history/MessageHistory.types';
-import type { BridgeInfo, VersionInfo } from './Inspector.types';
+import type { VersionInfo } from './Inspector.types';
 
 /**
  * Inspector - read-only view over broker state.
@@ -25,7 +24,6 @@ import type { BridgeInfo, VersionInfo } from './Inspector.types';
 export class Inspector<T extends string, P extends Record<T, any>> {
   #clients: ClientRegistry<T, P>;
   #subscriptions: Subscriptions<T>;
-  #bridges: ReadonlyMap<string, Bridge>;
   #remotes: ReadonlyMap<string, RemoteClientImpl>;
   #getHistory: () => MessageHistory<T, P> | undefined;
   #getVersionInfo: () => VersionInfo;
@@ -33,14 +31,12 @@ export class Inspector<T extends string, P extends Record<T, any>> {
   constructor(
     clients: ClientRegistry<T, P>,
     subscriptions: Subscriptions<T>,
-    bridges: ReadonlyMap<string, Bridge>,
     remotes: ReadonlyMap<string, RemoteClientImpl>,
     getHistory: () => MessageHistory<T, P> | undefined,
     getVersionInfo: () => VersionInfo,
   ) {
     this.#clients = clients;
     this.#subscriptions = subscriptions;
-    this.#bridges = bridges;
     this.#remotes = remotes;
     this.#getHistory = getHistory;
     this.#getVersionInfo = getVersionInfo;
@@ -97,22 +93,6 @@ export class Inspector<T extends string, P extends Record<T, any>> {
    */
   getSubscribedClientIds(): ReadonlyArray<ClientID> {
     return this.#subscriptions.getAllSubscribedClients();
-  }
-
-  /**
-   * Lifecycle info for every registered bridge. Does NOT expose internal
-   * `Bridge` instances (see `BridgeInfo`).
-   */
-  getBridges(): ReadonlyArray<BridgeInfo> {
-    const result: BridgeInfo[] = [];
-    for (const [id, bridge] of this.#bridges) {
-      result.push({
-        id,
-        forwardPatterns: bridge.forwardPatterns,
-        transportKind: bridge.transportKind,
-      });
-    }
-    return result;
   }
 
   /**

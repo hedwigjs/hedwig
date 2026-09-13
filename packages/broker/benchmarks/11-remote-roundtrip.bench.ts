@@ -1,18 +1,19 @@
 /**
- * 11 · Bridge round-trip (loopback transport)
+ * 11 · Remote client round-trip (loopback transport)
  *
- * BroadcastChannel / postMessage bridges are the real-world way brokers talk
- * across contexts. We can't spin up a real BroadcastChannel in Node here,
- * but we CAN measure the bridge machinery itself with a synchronous
- * loopback transport — the delta over an in-process emit is the wire
- * overhead we'd add if the transport were free.
+ * Remote clients over BroadcastChannel / postMessage are the real-world
+ * way brokers talk across contexts. We can't spin up a real
+ * BroadcastChannel in Node here, but we CAN measure the remote-client
+ * machinery itself with a synchronous loopback transport — the delta over
+ * an in-process emit is the wire overhead we'd add if the transport were
+ * free.
  *
- * The loopback transport plays two roles: it forwards outbound messages
- * back through the same bridge as inbound, so we see the full round-trip
- * (send → serialize → onMessage → inject → route).
+ * The loopback transport plays two roles: it hands every outbound frame
+ * straight back as inbound, so we see the full round-trip
+ * (forward → frame → onMessage → accepts/identity → inject → route).
  */
 
-import type { BridgeTransport } from '../src/core/bridge/Bridge.types';
+import type { Transport } from '../src/core/transport/Transport.types';
 import type { Client } from '../src/core/client/Client.types';
 import {
   createClient,
@@ -25,7 +26,7 @@ import { newBench, runSuite } from './harness';
 type T = 'm.evt.v1';
 type P = { 'm.evt.v1': { i: number } };
 
-class LoopbackTransport implements BridgeTransport {
+class LoopbackTransport implements Transport {
   #cb: ((data: unknown) => void) | null = null;
   send(data: unknown): void {
     this.#cb?.(data);
@@ -41,7 +42,7 @@ class LoopbackTransport implements BridgeTransport {
   }
 }
 
-class SinkTransport implements BridgeTransport {
+class SinkTransport implements Transport {
   send(): void {}
   onMessage(): () => void {
     return () => {};
@@ -58,14 +59,18 @@ function scenario(kind: 'plain' | 'outbound' | 'loopback') {
       sender = createClient<T, P>('sender');
       createClient<T, P>('receiver').on('m.evt.v1', () => {});
       if (kind === 'outbound') {
-        getBroker<T, P>().addBridge('sink', {
+        getBroker<T, P>().createRemoteClient('sink', {
           transport: new SinkTransport(),
           forward: ['m.evt.v1'],
         });
       } else if (kind === 'loopback') {
-        getBroker<T, P>().addBridge('loop', {
+        // prefix identity: the echoed frame claims `source: 'sender'`, which
+        // becomes `loop:sender` instead of colliding with the local client.
+        getBroker<T, P>().createRemoteClient('loop', {
           transport: new LoopbackTransport(),
+          identity: { mode: 'prefix' },
           forward: ['m.evt.v1'],
+          accepts: ['m.evt.v1'],
         });
       }
     },
@@ -86,20 +91,20 @@ async function run() {
   const outbound = scenario('outbound');
   const loopback = scenario('loopback');
 
-  bench.add('plain emit (no bridge, baseline)', plain.fn, {
+  bench.add('plain emit (no remote, baseline)', plain.fn, {
     beforeAll: plain.beforeAll,
     afterAll: plain.afterAll,
   });
-  bench.add('emit + bridge forward (outbound only)', outbound.fn, {
+  bench.add('emit + remote forward (outbound only)', outbound.fn, {
     beforeAll: outbound.beforeAll,
     afterAll: outbound.afterAll,
   });
-  bench.add('emit + bridge loopback round-trip', loopback.fn, {
+  bench.add('emit + remote loopback round-trip', loopback.fn, {
     beforeAll: loopback.beforeAll,
     afterAll: loopback.afterAll,
   });
 
-  await runSuite('11 · Bridge round-trip (loopback transport)', bench);
+  await runSuite('11 · Remote client round-trip (loopback transport)', bench);
 }
 
 run().catch((err) => {

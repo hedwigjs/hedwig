@@ -45,7 +45,6 @@
 
 .facetClient,
 .facetSubscription,
-.facetBridge,
 .facetRemote,
 .facetMessage,
 .facetBroker,
@@ -72,12 +71,7 @@
   color: #67e8f9;
 }
 
-.facetBridge {
-  background: #0b3b0f;
-  color: #86efac;
-}
-
-/* Remote clients — same green family as bridges, which they replace. */
+/* Remote clients — participants behind a transport. */
 .facetRemote {
   background: #0b3b0f;
   color: #86efac;
@@ -109,7 +103,7 @@
   color: #fecaca;
 }
 
-/* Infrastructure failure (e.g. bridge.send.failed): amber, distinct from the
+/* Infrastructure failure (e.g. remote.send.failed): amber, distinct from the
    red "rejected" which is a deliberate policy decision, not a malfunction. */
 .verbFailed {
   background: #78350f;

@@ -8,11 +8,12 @@
  *   - Each microfrontend creates a client: `createClient(id)`.
  *   - Debug tooling accesses the broker: `getBroker()`.
  *
- * Built-in transports (PostMessage, BroadcastChannel, WebSocket, SSE) are
- * exported from this package for zero-config integrations. Framework
- * adapters (`@hedwigjs/adapter-*`) may re-export or wrap them. Custom
- * transports plug in via the {@link BridgeTransport} extension point —
- * see the "Custom transports" section in the README.
+ * Participants behind a wire (a backend over WebSocket, an iframe over
+ * postMessage, another tab over BroadcastChannel) join as remote clients:
+ * `createRemoteClient(id, { transport, … })`. Built-in transports are
+ * named by descriptor (`{ kind: 'websocket', socket }`) and instantiated
+ * by the runtime; custom ones implement the {@link Transport} interface —
+ * see the "Remote clients" section in the README.
  */
 
 // ── Entry points ────────────────────────────────────────────────────────
@@ -62,13 +63,10 @@ export type {
   SystemAnyEventListener,
 } from './core/events/SystemEvents.types';
 export type { Inspector } from './core/observability/inspect/Inspector';
-export type { BridgeInfo, VersionInfo } from './core/observability/inspect/Inspector.types';
+export type { VersionInfo } from './core/observability/inspect/Inspector.types';
 
 // ── History inspection ──────────────────────────────────────────────────
 export type { HistoryEntry, HistoryStats } from './core/history/MessageHistory.types';
-
-// ── Bridge extension point ──────────────────────────────────────────────
-export type { BridgeTransport, BridgeConfig, InvalidFrameReason } from './core/bridge/Bridge.types';
 
 // ── Remote clients & transports ─────────────────────────────────────────
 export type {
@@ -84,25 +82,9 @@ export type {
 } from './core/transport/Transport.types';
 export type { RemoteClientInfo } from './core/types';
 
-// ── Built-in transports ─────────────────────────────────────────────────
-// Ready-to-use implementations for the common cross-context wires. Kept
-// here for zero-config demo integrations; framework-specific adapters
-// (`@hedwigjs/adapter-*`) may re-export or wrap these.
-export {
-  PostMessageTransport,
-  type PostMessageTransportConfig,
-} from './transports/PostMessageTransport';
-export {
-  BroadcastChannelTransport,
-} from './transports/BroadcastChannelTransport';
-export {
-  WebSocketTransport,
-} from './transports/WebSocketTransport';
-export {
-  SSETransport,
-  type SSETransportConfig,
-} from './transports/SSETransport';
-export { MessagePortTransport } from './transports/MessagePortTransport';
+// Built-in transports are not exported: the runtime instantiates them from
+// a `TransportDescriptor` so their code never ships in a module's bundle.
+// Custom wires implement the `Transport` interface above.
 
 // ── Backpressure configuration ──────────────────────────────────────────
 export type { BackpressureOptions } from './core/backpressure/BackpressureHandler.types';

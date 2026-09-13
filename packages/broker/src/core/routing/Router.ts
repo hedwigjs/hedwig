@@ -14,7 +14,7 @@ import { RoutingResult, RoutingReason } from './RoutingResult';
  * Does NOT handle:
  * - Subscription management (delegated to Subscriptions)
  * - Hooks (delegated to HooksRegistry)
- * - Bridge forwarding (delegated to BrokerCore)
+ * - Forwarding to remote clients (delegated to BrokerCore)
  * - Message creation (delegated to BrokerCore)
  *
  * Design: Uses Dependency Injection to receive Subscriptions (read-only access)

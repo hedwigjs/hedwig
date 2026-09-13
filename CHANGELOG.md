@@ -149,6 +149,24 @@ step; it goes away once DevTools and the reference stand have moved.
   `tabs` (may be forwarded `cart.snapshot.v1`) and `tab:cart-store` (may
   send it); the same hooks now cover local and remote participants.
 
+### Broker and DevTools — bridges removed (RFC-0003 step 3c)
+
+- `addBridge`, `BridgeConfig`, `BridgeTransport`, `BridgeInfo`,
+  `inspect.getBridges()`, the `bridge.*` system events and log codes are
+  gone; remote clients are the only way across a wire. The bridge items
+  in the two sections above (`bridge.send.failed`, minimum bridge
+  safety) were intermediate steps and are superseded by
+  `remote.send.failed` / `remote.frame.rejected`.
+- Built-in transport classes are no longer exported: the runtime
+  instantiates them from a `TransportDescriptor`. Custom wires implement
+  `Transport`.
+- `postmessage` requires both `allowedOrigins` and `targetOrigin`; the
+  `'*'` default and the deprecated `origin` field are removed.
+- `WebSocketTransport.destroy()` closes a still-open socket — the remote
+  client owns its transport.
+- DevTools: Bridges tab removed; its counters live on the remote
+  client's card.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

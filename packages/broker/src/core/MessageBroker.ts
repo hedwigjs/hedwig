@@ -1,5 +1,5 @@
-import type { BridgeConfig } from './bridge/Bridge.types';
 import type { RemoteClient, RemoteClientOptions } from './remote/RemoteClient.types';
+import type { Transport } from './transport/Transport.types';
 import type { SystemEventsEmitter } from './events/SystemEvents.types';
 import type { Inspector } from './observability/inspect/Inspector';
 import type {
@@ -24,7 +24,8 @@ export interface DebugChannel<T extends string, P extends Record<T, any>> {
   /**
    * Inject a message into the pipeline with an arbitrary `source`.
    *
-   * Runs full routing/hooks/history/bridge-forward like a normal emit;
+   * Runs full routing/hooks/history/forwarding to remote clients like a
+   * normal emit;
    * only difference is `message.synthetic === true` and `source` is not
    * validated against the client registry. Multicast when `target === '*'`,
    * unicast otherwise (return value from the handler is captured in
@@ -61,10 +62,10 @@ export interface DebugChannel<T extends string, P extends Record<T, any>> {
  *    observe broker behaviour without reaching into internals.
  *    - `useBeforeSendHook`, `useAfterSendHook`, `useOnSubscribeHook`.
  *
- * 3. **Infrastructure wiring** — bridges for cross-context delivery.
- *    - `addBridge(id, { transport, forward })`. Pass a {@link BridgeTransport}
- *      instance; built-in implementations are used internally by framework
- *      adapters and are not part of the public surface.
+ * 3. **Remote clients** — participants that live behind a transport.
+ *    - `createRemoteClient(id, { transport, identity, accepts, forward })`.
+ *      Built-in transports are named by descriptor (`{ kind: 'websocket', … }`);
+ *      custom ones implement the {@link Transport} interface.
  *
  * 4. **Lifecycle**
  *    - `destroy()` for clean shutdown.
@@ -119,23 +120,6 @@ export interface MessageBroker<T extends string, P extends Record<T, any>> {
   readonly $debug: DebugChannel<T, P>;
 
   /**
-   * Register a bridge for cross-context communication (idempotent).
-   *
-   * A bridge forwards messages whose topic matches `forward` patterns to
-   * the given {@link BridgeTransport}, and injects messages coming back from
-   * the transport into this broker. Framework adapters supply the transport;
-   * this package does not export concrete transport classes.
-   *
-   * If a bridge with the given `id` already exists, the old one is
-   * destroyed and replaced. This keeps the operation HMR-safe.
-   *
-   * @param id - Unique bridge identifier (e.g. `'cross-tab'`, `'iframe-checkout'`).
-   * @param config - Bridge configuration: `transport` + `forward` patterns.
-   * @returns Function that removes the bridge and tears down its listeners.
-   */
-  addBridge(id: string, config: BridgeConfig): () => void;
-
-  /**
    * Register a participant whose code runs on the far side of a transport
    * (a backend over WebSocket, an iframe over postMessage, another tab over
    * BroadcastChannel). Returns a {@link RemoteClient} proxy: `forward()`
@@ -158,7 +142,7 @@ export interface MessageBroker<T extends string, P extends Record<T, any>> {
    * Register a `beforeSend` hook.
    *
    * Invoked synchronously before every message enters the routing stage,
-   * for both locally-emitted AND externally-injected (bridge) messages.
+   * for both locally-emitted AND externally-injected (remote client) messages.
    * Use `message.fromExternal` to distinguish.
    *
    * A hook returning `{ allowed: false, message }` short-circuits the
@@ -187,7 +171,7 @@ export interface MessageBroker<T extends string, P extends Record<T, any>> {
   /**
    * Shut the broker down and release all resources.
    *
-   * Destroys every bridge, clears subscriptions, history, hooks and the
+   * Destroys every remote client, clears subscriptions, history, hooks and the
    * client registry. After `destroy()` the broker becomes inert: further
    * calls are no-ops with console warnings.
    */

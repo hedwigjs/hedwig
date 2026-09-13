@@ -33,7 +33,7 @@ export interface Message<T extends string = string, P = any> {
   /** Indicates if this is a replayed historical message */
   replayed?: boolean;
 
-  /** Indicates if this message was received from external source (bridge) */
+  /** True when the message was injected by a remote client (see `via`). */
   fromExternal?: boolean;
 
   /**
@@ -45,7 +45,7 @@ export interface Message<T extends string = string, P = any> {
 
   /**
    * Marks a debug/test message injected via `broker.$debug.send(...)`.
-   * Routing, hooks, history and bridge forwarding all treat it as a
+   * Routing, hooks, history and forwarding all treat it as a
    * real message — the flag is purely metadata so DevTools and integration
    * tests can distinguish spoofed traffic from production events.
    */

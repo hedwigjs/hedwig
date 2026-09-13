@@ -14,10 +14,10 @@ import type {
  * - `useBeforeSendHook` / `useAfterSendHook`: extension hooks the inspector uses
  *   to record the live message feed (topic, result, latency).
  * - `$systemEvents`: broker-internal push channel of lifecycle events
- *   (client.*, subscription.*, bridge.*) — keeps the client tree in sync.
+ *   (client.*, subscription.*, remote.*) — keeps the client tree in sync.
  *   The `$` prefix signals this is a tooling-only API.
- * - `inspect`: pull API for point-in-time state snapshots (clients, history,
- *   bridges). Used for initial hydration without races.
+ * - `inspect`: pull API for point-in-time state snapshots (clients incl.
+ *   remote ones, history). Used for initial hydration without races.
  */
 export interface MessageBrokerForDevTools {
   /**
@@ -132,7 +132,7 @@ export const DEFAULT_MESSAGES_ROLLUP: MessagesRollupConfig = {
 
 /**
  * One system event surfaced by `broker.$systemEvents`. These are broker
- * infrastructure signals (client / subscription / bridge lifecycle) —
+ * infrastructure signals (client / subscription / remote-client lifecycle) —
  * NOT user message topics. DevTools shows them in a dedicated tab so
  * they don't drown out (or get drowned by) the user-message feed.
  */
@@ -145,10 +145,6 @@ export type SystemEventName =
   | "subscription.removed"
   | "subscription.rejected"
   | "message.rejected"
-  | "bridge.added"
-  | "bridge.removed"
-  | "bridge.send.failed"
-  | "bridge.message.invalid"
   | "remote.created"
   | "remote.destroyed"
   | "remote.frame.rejected"
@@ -205,33 +201,6 @@ export interface ClientEntry {
   subscriptions: ClientSubscriptionEntry[];
 }
 
-// ─── Bridge snapshot ────────────────────────────────────────────────────────
-
-export interface BridgeEntry {
-  id: string;
-  forwardPatterns: ReadonlyArray<string>;
-  /**
-   * Transport class name (`WebSocket`, `SSE`, `PostMessage`,
-   * `BroadcastChannel`, or a custom class name). Populated by the broker
-   * from the transport's constructor; may be `undefined` for anonymous
-   * transports.
-   */
-  transportKind?: string;
-  /**
-   * Approx. count of local emits whose topic matches this bridge's
-   * forward patterns — i.e. messages that WOULD have been sent out
-   * through this transport. Broker doesn't expose per-bridge attribution
-   * directly, so this is a heuristic over the message log.
-   */
-  sentThroughCount: number;
-  /**
-   * Approx. count of `fromExternal=true` messages matching this bridge's
-   * forward patterns — i.e. messages injected FROM this transport. Same
-   * heuristic caveat as above.
-   */
-  receivedFromCount: number;
-}
-
 // ─── Version handshake ────────────────────────────────────────────────────────
 
 /**
@@ -260,8 +229,6 @@ export interface InspectorSnapshot {
   historyEntries: ReadonlyArray<HistoryEntry>;
   /** Recent system events (oldest → newest). Ring-buffered by `maxEvents`. */
   systemEvents: ReadonlyArray<SystemEventLogEntry>;
-  /** Registered bridges with cached forward patterns and derived counters. */
-  bridges: ReadonlyArray<BridgeEntry>;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -285,7 +252,6 @@ function snapshotFrom(
   messagesFilter: MessagesFilter,
   historyEntries: ReadonlyArray<HistoryEntry>,
   systemEvents: ReadonlyArray<SystemEventLogEntry>,
-  bridges: ReadonlyArray<BridgeEntry>,
 ): InspectorSnapshot {
   return {
     entries: list,
@@ -296,7 +262,6 @@ function snapshotFrom(
     messagesFilter,
     historyEntries,
     systemEvents,
-    bridges,
   };
 }
 

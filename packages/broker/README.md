@@ -25,7 +25,7 @@ npm install @hedwigjs/broker
   - [Broker extension surface](#broker-extension-surface)
 - [Message shape](#message-shape)
 - [RoutingResult](#routingresult)
-- [Built-in bridges](#built-in-bridges)
+- [Remote clients](#remote-clients)
 - [Custom transports](#custom-transports)
 - [Hooks](#hooks)
 - [Message history & replay](#message-history--replay)
@@ -96,12 +96,15 @@ lights up every subscriber and emitter that has drifted.
   it for the full lifecycle of that module.
 - **Broker** — the singleton runtime returned by `initBroker(config)`.
   Owns the routing plane, the hook chain, the history buffer, and the
-  bridges. In-process by default; bridges extend it across contexts.
+  remote clients. In-process by default; remote clients extend it
+  across contexts.
   One instance per realm, even if the library is bundled more than once
   on the page — see [One broker per realm](#one-broker-per-realm).
-- **Bridge** — a lane that forwards matching topics to a `BridgeTransport`
-  (postMessage, WebSocket, BroadcastChannel, …) and injects inbound
-  traffic back into the same pipeline as `fromExternal: true`.
+- **Remote client** — a participant whose code runs on the far side of a
+  transport (postMessage, WebSocket, BroadcastChannel, …). Locally a
+  proxy: its `forward` patterns are its subscriptions, `accepts` names
+  what it may inject; inbound frames enter the same pipeline as
+  `fromExternal: true` with `via` set to the remote's id.
 - **Two semantics** — `emit()` for fan-out events, `request()` for a
   targeted call awaiting a typed response. Retention and replay are an
   orthogonal mechanism layered on top of both, not a third semantic.
@@ -129,7 +132,7 @@ import {
 | `initBroker<T, P>(config?)`             | Boot the broker once. Idempotent — returns the existing instance if already initialized.      |
 | `getBroker<T, P>()`                     | Return the current broker without holding the `initBroker` reference. Throws if not booted.   |
 | `createClient<T, P>(id)`                | Return the typed `Client` for `id`. Idempotent: existing clients are reset and returned.      |
-| `destroyBroker()`                       | Tear down bridges, subscriptions, history, hooks, and the client registry.                    |
+| `destroyBroker()`                       | Tear down remote clients, subscriptions, history, hooks, and the client registry.             |
 
 `BrokerConfig`:
 
@@ -184,7 +187,8 @@ shared: {
 ```
 
 Iframes and Workers are separate realms. They run their own
-`initBroker()` and talk through a bridge (`PostMessageTransport`, …);
+`initBroker()` and talk through a remote client (`{ kind: 'postmessage' }`,
+`{ kind: 'message-port' }`);
 do not reach for `parent.globalThis` to share an instance — a frame's
 subscriptions would outlive the frame, and cross-realm objects break
 `instanceof`.
@@ -235,15 +239,17 @@ Returned by `initBroker()` / `getBroker()`.
 
 | Member                                            | Kind          | Purpose                                                                                          |
 | ------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------ |
-| `$systemEvents`                                   | push channel  | Subscribe to broker lifecycle events (clients, subscriptions, bridges, rejections).              |
-| `inspect`                                         | pull snapshot | Read-only view over clients, subscriptions, bridges, history.                                    |
+| `$systemEvents`                                   | push channel  | Subscribe to broker lifecycle events (clients, subscriptions, remote clients, rejections).       |
+| `inspect`                                         | pull snapshot | Read-only view over clients (local and remote), subscriptions, history.                          |
 | `$debug.send(source, topic, target, data)`        | internal      | Inject a synthetic message through the full pipeline. Marked `synthetic: true`. For DevTools & tests. Requires `initBroker({ debug: true })`, otherwise resolves `NACK DEBUG_DISABLED`; `$debug.enabled` reports the state. |
 | `version`                                         | readonly      | Package version of the copy that created this core. See [One broker per realm](#one-broker-per-realm). |
-| `addBridge(id, { transport, forward })`           | wiring        | Register a bridge. Idempotent — an existing id is destroyed and replaced. Returns a remover.     |
+| `createRemoteClient(id, options)`                 | wiring        | Register a participant behind a transport. See [Remote clients](#remote-clients).                |
+| `getRemoteClient(id)`                             | wiring        | The remote client with that id, if any.                                                          |
+| `capabilities`                                    | readonly      | `Set` of stable strings this runtime supports (`transport.websocket`, …).                        |
 | `useBeforeSendHook(fn)`                           | extension     | Gate outgoing messages. Return `{ allowed: false, message }` to reject.                          |
 | `useAfterSendHook(fn)`                            | extension     | Observe delivery outcomes. Receives the frozen message + `RoutingResult`.                        |
 | `useOnSubscribeHook(fn)`                          | extension     | Gate subscriptions. Return `{ allowed: false, message }` to reject.                              |
-| `destroy()`                                       | lifecycle     | Full shutdown. Bridges torn down, registries cleared, subsequent calls become no-op warnings.    |
+| `destroy()`                                       | lifecycle     | Full shutdown. Remote clients destroyed, registries cleared, subsequent calls become no-op warnings. |
 
 The `$` prefix marks broker-internal surfaces intended for tooling
 (DevTools, tracing) — never for business code.
@@ -263,7 +269,8 @@ interface Message<T extends string, P> {
   data: P;                 // typed payload
   timestamp: number;       // Date.now() at emit
   replayed?: boolean;      // true when delivered from the history buffer
-  fromExternal?: boolean;  // true when injected by a bridge
+  fromExternal?: boolean;  // true when injected by a remote client
+  via?: string;            // id of that remote client (local-only, never on the wire)
   synthetic?: boolean;     // true when injected via broker.$debug.send
 }
 ```
@@ -319,95 +326,118 @@ statements.
 
 ---
 
-## Built-in bridges
+## Remote clients
 
-Four transports ship inside `@hedwigjs/broker` for the common wires.
-Each implements `BridgeTransport`; pair with `broker.addBridge()`.
-
-| Transport                       | Wire                                       | Direction | Notes                                                                                             |
-| ------------------------------- | ------------------------------------------ | --------- | ------------------------------------------------------------------------------------------------- |
-| `PostMessageTransport`          | `window.postMessage` between window/iframe | duplex    | `allowedOrigins` allowlist is the trust boundary. Warn on `'*'` origin.                            |
-| `BroadcastChannelTransport`     | `BroadcastChannel` between same-origin tabs | duplex    | Same-origin only. Sync UI state across tabs (theme, session, locale).                              |
-| `WebSocketTransport`            | Wraps an externally-owned `WebSocket`      | duplex    | Connection/reconnect handled outside the transport. Serializes as JSON.                            |
-| `SSETransport`                  | Wraps `EventSource`                        | inbound   | `send()` is a no-op with a warning. Browser handles reconnect. Pair a POST endpoint if you need upstream. |
+Anything that lives behind a wire — a backend over WebSocket, an iframe
+over `postMessage`, another tab over `BroadcastChannel`, a Worker over a
+`MessagePort` — joins the broker as a **remote client**. It is a client
+like any other: it has an id, it subscribes (`forward`), it sends
+(`accepts`), and the same hooks and ACL rules apply to it.
 
 ```ts
-import { getBroker, PostMessageTransport } from '@hedwigjs/broker';
+import { createRemoteClient } from '@hedwigjs/broker';
 
-const iframe = document.querySelector('iframe')!;
-getBroker().addBridge('checkout-iframe', {
-  transport: new PostMessageTransport({
-    target: iframe.contentWindow!,
-    allowedOrigins: ['https://checkout.example.com'],
-  }),
-  forward: ['cart.*', 'user.*'],
+const backend = createRemoteClient('notifications-backend', {
+  transport: { kind: 'websocket', socket },
+  accepts: ['notification.*'],          // what it may inject
 });
+
+const iframe = createRemoteClient('checkout-iframe', {
+  transport: {
+    kind: 'postmessage',
+    target: iframeEl.contentWindow!,
+    allowedOrigins: ['https://checkout.example.com'],   // inbound trust boundary
+    targetOrigin: 'https://checkout.example.com',       // never '*'
+  },
+  accepts: ['checkout.completed.v1'],
+});
+iframe.forward('cart.*');               // its subscriptions; goes through onSubscribe hooks
+
+iframe.destroy();                       // closes the transport, unregisters
 ```
 
-`forward` patterns support `*` glob segments. Anything not matched
-stays local to the current broker instance.
+Built-in transports are named by a **descriptor** and instantiated by
+the runtime, so their code never ships in a module's bundle:
+
+| `kind`              | Wire                                        | Flags                        | Descriptor fields                                  |
+| ------------------- | ------------------------------------------- | ---------------------------- | -------------------------------------------------- |
+| `postmessage`       | `window.postMessage` between window/iframe  | duplex                       | `target`, `allowedOrigins`, `targetOrigin` (all required) |
+| `message-port`      | `MessagePort` (Worker, `MessageChannel`)    | duplex                       | `port`                                             |
+| `websocket`         | An externally-constructed `WebSocket`       | duplex, `ready` on OPEN      | `socket`                                           |
+| `sse`               | `EventSource`                               | inbound-only                 | `url`, `withCredentials?`, `eventName?`            |
+| `broadcast-channel` | `BroadcastChannel` between same-origin tabs | duplex, fan-out              | `name`                                             |
+
+An unknown `kind` throws `TRANSPORT_UNSUPPORTED`; `broker.capabilities`
+lists what the runtime provides (`transport.websocket`, …).
+
+**Identity** of inbound frames is decided on this side, never trusted
+from the wire:
+
+| `identity.mode`    | Use when                                             | Effect on a frame's `source`                                   |
+| ------------------ | ---------------------------------------------------- | -------------------------------------------------------------- |
+| `fixed` (default)  | One participant behind the wire (backend, iframe)    | Empty or equal to the remote's id → accepted as the remote; anything else → `SOURCE_MISMATCH`. |
+| `allow`            | A gateway multiplexing known services                | Must be in `sources`; otherwise `SOURCE_NOT_ALLOWED`.          |
+| `prefix`           | A foreign realm with its own clients (tab, worker)   | Kept and prefixed: `tab:cart-store`. Cannot collide with a local id. |
+
+**Edge protection** happens before any hook: `accepts` (topics the remote
+may inject; everything else is `TOPIC_NOT_ACCEPTED`), `maxBytes`,
+`rateLimit`, and a structural check of the frame. Every drop is
+published as `remote.frame.rejected { reason }`.
+
+Only multicasts are forwarded to a remote. A `request()` is resolved
+against the local client registry and never crosses the wire (requests
+to remote clients are a separate, later feature). Local and remote
+clients share one id namespace: a taken id throws `CLIENT_ID_TAKEN`.
 
 ---
 
 ## Custom transports
 
-`BridgeTransport` is the extension point. Anything that satisfies its
+`Transport` is the extension point. Anything that satisfies its
 three-method contract plugs in — WebRTC data channels, Service Worker
-messaging, Electron IPC, MessageChannel to a Worker, custom protocols.
+messaging, Electron IPC, custom protocols. Pass the instance instead of
+a descriptor.
 
 ```ts
-import type { BridgeTransport } from '@hedwigjs/broker';
+import type { Transport } from '@hedwigjs/broker';
 
-class MyTransport implements BridgeTransport {
-  #cb: ((data: unknown) => void) | null = null;
+class MyTransport implements Transport {
+  readonly duplex = true;   // optional flags; defaults: duplex, not fan-out
+  readonly fanout = false;
+  #cb: ((frame: unknown) => void) | null = null;
 
-  send(data: unknown): void {
-    try { myWire.publish(data); }
-    catch (e) { console.error('[MyTransport] send failed:', e); }
+  send(frame: unknown): void {
+    myWire.publish(frame);
   }
 
-  onMessage(cb: (data: unknown) => void): () => void {
+  onMessage(cb: (frame: unknown) => void): () => void {
     this.#cb = cb;
-    const off = myWire.subscribe((payload) => {
-      // Validate source/origin/signature BEFORE forwarding.
-      // The transport is the trust boundary between broker and wire.
-      if (!isTrusted(payload)) return;
-      this.#cb?.(payload);
-    });
+    const off = myWire.subscribe((payload) => this.#cb?.(payload));
     return () => { off(); this.#cb = null; };
   }
 
   destroy(): void { this.#cb = null; myWire.close(); }
 }
+
+createRemoteClient('peer', { transport: new MyTransport(), accepts: ['sync.*'] });
 ```
 
 Contract summary:
 
-- **`send(data)`** should catch wire errors and log them. If it does
-  throw, the broker isolates the failure: the message has already been
-  delivered locally, the caller's promise resolves normally, other
-  bridges still receive the message, and `bridge.send.failed` fires on
-  the logger and on `$systemEvents` with `{ bridgeId, topic, messageId,
-  error }`. Catching inside the transport is still preferred — it gives
-  you the chance to retry or queue.
-- **`onMessage(cb)`** is called once at bridge construction. Validate
-  every inbound payload (origin, signature, schema) before invoking
-  `cb`. Return an unsubscribe function.
-- **`destroy()`** releases sockets, listeners, timers. Must be
-  idempotent.
-
-Transports are the **trust boundary** between the broker and the
-outside world. The bridge checks the *shape* of every inbound frame
-(`topic`, `source`, `target` non-empty strings, `data` present) and
-drops anything else as `bridge.message.invalid`; it does not
-authenticate the peer. Because hooks and ACLs key on `message.source`,
-set `allowedSources` on every bridge whose peer you do not fully trust —
-a frame claiming another source is dropped before any hook runs.
-
-Only multicasts cross a bridge. A `request()` is resolved against the
-local client registry and never forwarded: its result could not come
-back over the wire, and forwarding it would execute a command remotely
-while reporting `NOT_SUBSCRIBED` here.
+- **`send(frame)`** — hand a JSON-serialisable frame to the wire. If it
+  throws, the runtime isolates the failure per remote: the message was
+  already delivered locally, the caller's promise resolves normally,
+  other remotes still receive it, and `remote.send.failed` fires.
+- **`onMessage(cb)`** — called once at creation; return an unsubscribe.
+  Identity and topic policy are enforced by the remote client, so the
+  transport only needs to verify *where the bytes came from* (origin,
+  connection) when the wire has such a notion.
+- **`destroy()`** — release sockets, listeners, timers. Must be
+  idempotent. The remote client owns the transport and calls this.
+- Optional: `duplex` (`false` for inbound-only), `fanout` (`true` when
+  one `send` reaches many peers — such a remote can never be asked),
+  `ready` (a promise the runtime awaits before sending), `onClose(cb)`
+  (lets the runtime destroy the remote when the wire is gone).
 
 ---
 
@@ -419,8 +449,8 @@ function.
 
 ### `useBeforeSendHook` — gate outgoing messages
 
-Synchronous. Runs for every emit *and* for every inbound bridge
-message (use `msg.fromExternal` to distinguish). Return
+Synchronous. Runs for every emit *and* for every frame injected by a
+remote client (use `msg.fromExternal` / `msg.via` to distinguish). Return
 `{ allowed: false, message }` to short-circuit; the emit resolves with
 `NACK HOOK_REJECTED` and a `message.rejected` system event fires.
 
@@ -601,10 +631,10 @@ user messages — infrastructure telemetry.
 | `subscription.rejected`  | `{ clientId, topic, reason }`                              | An `onSubscribe` hook denied the subscription. Client also throws.          |
 | `message.rejected`       | `{ source, target, topic, reason }`                        | A `beforeSend` hook denied a message. Emit also resolves `NACK HOOK_REJECTED`. |
 | `hook.failed`            | `{ kind, failMode, error, topic?, messageId?, source?, clientId? }` | A hook threw. Guard hooks deny under `failMode: 'closed'` (default) and are skipped under `'open'`; `afterSend` is always skipped. |
-| `bridge.added`           | `{ bridgeId }`                                             | `broker.addBridge(id, …)`.                                                  |
-| `bridge.removed`         | `{ bridgeId }`                                             | Bridge remover called, or broker teardown.                                  |
-| `bridge.send.failed`     | `{ bridgeId, topic, messageId, error }`                    | A transport threw from `send()`. The message was delivered locally and the caller got a normal result — this is the only trace that the wire dropped it. |
-| `bridge.message.invalid` | `{ bridgeId, reason, source?, topic? }`                    | An inbound frame was dropped at the bridge: `MALFORMED` (bad shape) or `SOURCE_NOT_ALLOWED` (not in `allowedSources`). Never reached a hook. |
+| `remote.created`         | `{ remoteId, kind, identity, at }`                         | `createRemoteClient(id, …)`. `client.registered` fires too.                 |
+| `remote.destroyed`       | `{ remoteId, at }`                                         | `remote.destroy()`, transport closed, or broker teardown. `client.unregistered` fires too. |
+| `remote.frame.rejected`  | `{ remoteId, reason, source?, topic? }`                    | An inbound frame was dropped at the edge before any hook: `MALFORMED`, `TOO_LARGE`, `RATE_LIMITED`, `TOPIC_NOT_ACCEPTED`, `SOURCE_MISMATCH`, `SOURCE_NOT_ALLOWED`, `UNSUPPORTED`. |
+| `remote.send.failed`     | `{ remoteId, topic, messageId, reason, error? }`           | A frame could not be sent: the transport threw (`TRANSPORT_THREW`) or never became ready (`NOT_OPEN`). The message was delivered locally and the caller got a normal result. |
 
 ```ts
 const off = getBroker().$systemEvents.on('message.rejected', (evt) => {
@@ -631,9 +661,8 @@ snapshot first, then subscribe.
 ```ts
 const inspect = getBroker().inspect;
 
-inspect.getClients();            // [{ id, connectedAt, subscriptions: [...] }, ...]
+inspect.getClients();            // [{ id, connectedAt, subscriptions: [...], remote?: { kind, identity, ... } }, ...]
 inspect.getSubscribedClientIds(); // ['cart', 'menu', ...]
-inspect.getBridges();            // [{ id, forwardPatterns, transportKind }, ...]
 inspect.getHistory();            // [{ message, timestamp, sequence }, ...]
 inspect.getHistoryStats();       // { enabled, count, oldestTimestamp?, newestTimestamp?, memoryUsage? }
 ```
@@ -696,17 +725,20 @@ cartClient.on(
 ### Cross-tab sync
 
 ```ts
-import { getBroker, BroadcastChannelTransport } from '@hedwigjs/broker';
+import { createRemoteClient } from '@hedwigjs/broker';
 
-getBroker().addBridge('cross-tab', {
-  transport: new BroadcastChannelTransport('my-app'),
+createRemoteClient('tabs', {
+  transport: { kind: 'broadcast-channel', name: 'my-app' },
+  identity: { mode: 'prefix', prefix: 'tab' },
   forward: ['theme.*', 'user.session.*'],
+  accepts: ['theme.*', 'user.session.*'],
 });
 ```
 
 Now any `emit` on those topics reaches every open tab of the same
 origin. On the receiving side the same handler runs, with
-`msg.fromExternal === true`.
+`msg.fromExternal === true`, `msg.via === 'tabs'` and the sender's id
+prefixed (`tab:settings`) so it cannot be confused with a local client.
 
 ### Declarative allowlist ACL
 
@@ -741,7 +773,7 @@ initBroker({
 ```
 
 `BrokerLogEvent` is a closed union of stable string codes
-(`'handler.failed'`, `'hook.failed'`, `'bridge.send.failed'`,
+(`'handler.failed'`, `'hook.failed'`, `'remote.send.failed'`,
 `'broker.duplicate_copy'`, `'debug.disabled'`, …) — safe to use as
 filter keys in Sentry / Datadog / Grafana.
 

@@ -1,4 +1,3 @@
-import { Bridge as BridgeImpl } from './bridge/Bridge';
 import { RoutingResult, RoutingReason } from './routing/RoutingResult';
 import { Router } from './routing/Router';
 import { HooksRegistry } from './hooks/HooksRegistry';
@@ -30,7 +29,6 @@ import type {
 import type { BrokerLogger } from './logger/BrokerLogger.types';
 import type { BrokerClient } from './client/BrokerClient';
 import type { OnSubscribeHook, BeforeSendHook, AfterSendHook } from './hooks/HooksRegistry.types';
-import type { Bridge, BridgeConfig, ExternalMessageInjector } from './bridge/Bridge.types';
 import type { SystemEventsEmitter, SystemEventPayload } from './events/SystemEvents.types';
 import type { RemoteClient, RemoteClientOptions } from './remote/RemoteClient.types';
 import type { Transport } from './transport/Transport.types';
@@ -41,10 +39,10 @@ import type { MessageBroker } from './MessageBroker';
  * of the public {@link MessageBroker} interface.
  *
  * Responsibilities:
- * - Message routing and delivery pipeline (hooks → routing → history → bridges)
+ * - Message routing and delivery pipeline (hooks → routing → history → remote clients)
  * - Subscription management (delegates to Subscriptions)
  * - Coordinate Router, HooksRegistry, ClientRegistry
- * - Bridge management for cross-context communication
+ * - Remote clients: participants that live behind a transport
  * - Message history & replay
  * - Emit system events on the internal system events channel
  * - Expose state snapshots via the inspect facade
@@ -55,7 +53,7 @@ import type { MessageBroker } from './MessageBroker';
  * `getBroker()`. Methods tagged `@internal` (subscribe, unsubscribe,
  * processMessage, registerClient, unregisterClient, resetClient,
  * getClient) form the internal protocol between
- * BrokerClient, Bridge and the facade — they are stable only inside the
+ * BrokerClient, RemoteClientImpl and the facade — they are stable only inside the
  * package and may change without notice.
  */
 export class BrokerCore<T extends string, P extends Record<T, any>>
@@ -75,7 +73,6 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   #backpressure: BackpressureHandler;
   #history?: MessageHistory<T, P>;
   #replay?: SubscriptionReplay<T, P>;
-  #bridges = new Map<string, Bridge>();
   #remotes = new Map<string, RemoteClientImpl>();
   #inspect: Inspector<T, P>;
 
@@ -134,7 +131,6 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     this.#inspect = new Inspector(
       this.#clientRegistry,
       this.#subscriptions,
-      this.#bridges,
       this.#remotes,
       () => this.#history,
       () => ({
@@ -324,7 +320,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
    * Process a message originating from a local client.
    *
    * Runs the full lifecycle pipeline: beforeSend → history → routing →
-   * afterSend → forward to bridges.
+   * afterSend → forward to remote clients.
    *
    * @param topic - Type of message
    * @param sender - Client ID of sender
@@ -357,7 +353,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
    *
    * `send()` runs the full message pipeline exactly like a normal
    * `Client.emit()` / `Client.request()` — routing, hooks, history and
-   * bridge forwarding all apply — but with two differences:
+   * forwarding to remote clients all apply — but with two differences:
    *
    *  1. `source` is an arbitrary string, not tied to a registered client.
    *     Nothing gets reset in the client registry: safe to «impersonate»
@@ -415,8 +411,8 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   }
 
   /**
-   * Shared pipeline body for local {@link processMessage} and external
-   * inject wired in {@link addBridge}.
+   * Shared pipeline body for local {@link processMessage} and frames
+   * injected by remote clients ({@link createRemoteClient}).
    *
    * Pipeline stages:
    *  1. Create Message (assign id, timestamp) and deep-freeze it.
@@ -426,16 +422,16 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
    *  3. Record to history — ONLY for local-origin messages that explicitly
    *     opt in via `options.history`. External (injected) messages are
    *     skipped: the sender-side broker has already recorded them; recording
-   *     again here would duplicate on every bridge hop.
+   *     again here would duplicate on every hop between realms.
    *  4. Route: unicast → one recipient, multicast (`*`) → all subscribers.
    *  5. Run `afterSend` hooks with the delivery result.
-   *  6. Forward to bridges — ONLY for local-origin messages. External
-   *     messages are never bounced back to bridges; otherwise a bridge would
-   *     send what it just received right back to its transport.
+   *  6. Forward to remote clients — ONLY for local-origin multicasts.
+   *     External messages are never bounced back; otherwise a remote
+   *     would get what it just sent right back over its transport.
    *
    * `fromExternal` gates stages 3 and 6 — the two places where local and
    * external paths diverge. `synthetic` is metadata-only: routing, hooks,
-   * history and bridge forwarding all treat the message as real. Both
+   * history and forwarding all treat the message as real. Both
    * flags are internal — never on the public API.
    */
   async #runPipeline<K extends T, R = unknown>(
@@ -508,74 +504,17 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     // Stage 5: afterSend hooks
     this.#hooks.afterSend(frozenMessage, result);
 
-    // Stage 6: Forward to bridges — local multicasts only. A frame that came
-    // in over a transport is never echoed back, and a unicast never crosses
-    // a bridge: its recipient is resolved locally (NOT_SUBSCRIBED otherwise)
+    // Stage 6: Forward to remote clients — local multicasts only. A frame
+    // that came in over a transport is never echoed back, and a unicast
+    // never crosses the wire: its recipient is resolved locally
+    // (NOT_SUBSCRIBED otherwise)
     // and its result could not come back over the wire, so forwarding it
     // would execute a command remotely while reporting failure here.
     if (!fromExternal && recipient === '*') {
-      this.#forwardToBridges(frozenMessage);
       this.#forwardToRemotes(frozenMessage);
     }
 
     return result;
-  }
-
-  // ========================================
-  // BRIDGE MANAGEMENT
-  // ========================================
-
-  /**
-   * Add a bridge for cross-context communication (idempotent)
-   *
-   * If a bridge with the given ID already exists, the old bridge is destroyed
-   * and replaced with the new one. This prevents duplicate bridges during HMR.
-   *
-   * @param id - Unique identifier for the bridge (e.g. 'cross-tab', 'iframe-checkout')
-   * @param config - Bridge configuration (transport + forward patterns)
-   * @returns Function to remove the bridge
-   */
-  addBridge(id: string, config: BridgeConfig): () => void {
-    if (this.#isDestroyed) {
-      this.logger.warn('broker.bridge.add.after_destroy', { bridgeId: id });
-      return () => {};
-    }
-
-    const existing = this.#bridges.get(id);
-
-    if (existing) {
-      this.logger.warn('broker.bridge.replaced', { bridgeId: id });
-      existing.destroy();
-      this.#systemEvents.emit('bridge.removed', { bridgeId: id });
-    }
-
-    const inject: ExternalMessageInjector<T, P> = (topic, sender, recipient, data) =>
-      this.#runPipeline(topic, sender, recipient, data, undefined, true, false);
-
-    const bridge = new BridgeImpl<T, P>(inject, config, this.logger, (reason, raw) => {
-      // A frame the bridge refused to inject: malformed, or from a source
-      // outside the allow-list. Never reaches hooks — surface it here.
-      const source =
-        raw && typeof raw === 'object' && typeof (raw as { source?: unknown }).source === 'string'
-          ? ((raw as { source: string }).source as ClientID)
-          : undefined;
-      const topic =
-        raw && typeof raw === 'object' && typeof (raw as { topic?: unknown }).topic === 'string'
-          ? (raw as { topic: string }).topic
-          : undefined;
-      this.logger.warn('bridge.message.invalid', { bridgeId: id, reason, source, topic });
-      this.#systemEvents.emit('bridge.message.invalid', { bridgeId: id, reason, source, topic });
-    });
-    this.#bridges.set(id, bridge);
-    this.#systemEvents.emit('bridge.added', { bridgeId: id });
-
-    return () => {
-      if (this.#bridges.get(id) === bridge) {
-        this.#bridges.delete(id);
-        bridge.destroy();
-        this.#systemEvents.emit('bridge.removed', { bridgeId: id });
-      }
-    };
   }
 
   // ========================================
@@ -661,7 +600,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   /**
    * Register a beforeSend hook
    *
-   * Called before routing for ALL messages, including those from bridges.
+   * Called before routing for ALL messages, including those from remote clients.
    * Use message.fromExternal to distinguish local vs external if needed.
    */
   useBeforeSendHook(hook: BeforeSendHook<T, P>): () => void {
@@ -688,16 +627,15 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   // ========================================
 
   /**
-   * Forward message to all bridges that match the topic.
+   * Forward a local multicast to every remote client whose `forward`
+   * patterns match the topic.
    *
-   * Each bridge is isolated: a transport that throws on `send()` is
-   * reported (`bridge.send.failed` on both the logger and `$systemEvents`)
-   * and skipped, so the remaining bridges still receive the message and
-   * the caller's `emit()` / `request()` promise resolves normally. Local
-   * delivery has already happened by the time this runs — a throwing wire
-   * must not retroactively turn that into a rejection.
-   *
-   * @private
+   * Each remote is isolated: a transport that throws on `send()` (or never
+   * becomes ready) is reported as `remote.send.failed` and skipped, so the
+   * remaining remotes still receive the message and the caller's `emit()`
+   * promise resolves normally. Local delivery has already happened by the
+   * time this runs — a throwing wire must not retroactively turn that into
+   * a rejection.
    */
   #forwardToRemotes(message: Message<T, P[T]>): void {
     for (const remote of this.#remotes.values()) {
@@ -790,28 +728,6 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     return this.#remotes.get(id);
   }
 
-  #forwardToBridges(message: Message<T, P[T]>): void {
-    for (const [bridgeId, bridge] of this.#bridges) {
-      if (!bridge.shouldForward(message.topic)) continue;
-      try {
-        bridge.send(message);
-      } catch (error) {
-        this.logger.error('bridge.send.failed', {
-          bridgeId,
-          topic: message.topic,
-          messageId: message.id,
-          error,
-        });
-        this.#systemEvents.emit('bridge.send.failed', {
-          bridgeId,
-          topic: message.topic,
-          messageId: message.id,
-          error,
-        });
-      }
-    }
-  }
-
   /**
    * Create a message with all required fields
    *
@@ -846,10 +762,6 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     }
     this.#isDestroyed = true;
 
-    for (const bridge of this.#bridges.values()) {
-      bridge.destroy();
-    }
-    this.#bridges.clear();
     for (const remote of Array.from(this.#remotes.values())) {
       remote.destroy();
     }

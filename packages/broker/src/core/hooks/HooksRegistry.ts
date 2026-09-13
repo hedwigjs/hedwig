@@ -31,7 +31,7 @@ export interface HooksRegistryOptions {
  * - beforeSend:   guard hook, called before routing; can block
  * - afterSend:    observer hook, called after routing with delivery result
  *
- * All hooks are executed for ALL messages including those from bridges.
+ * All hooks are executed for ALL messages including those from remote clients.
  * Use `message.fromExternal` to distinguish local vs external messages.
  *
  * A throwing guard hook is a denial under `failMode: 'closed'` (default)
@@ -69,7 +69,7 @@ export class HooksRegistry<T extends string, P extends Record<T, any>> {
   /**
    * Register beforeSend hook(s).
    *
-   * Called before routing for EVERY message, including those received from bridges.
+   * Called before routing for EVERY message, including those received from remote clients.
    * Return `{ allowed: false }` to block delivery.
    *
    * @returns Cleanup function to remove the hook(s).
@@ -82,7 +82,7 @@ export class HooksRegistry<T extends string, P extends Record<T, any>> {
    * Register afterSend hook(s).
    *
    * Called after each message is processed. Receives the routing result.
-   * Called for ALL messages — both local and forwarded from bridges.
+   * Called for ALL messages — both local and injected by remote clients.
    *
    * @returns Cleanup function to remove the hook(s).
    */
@@ -106,7 +106,7 @@ export class HooksRegistry<T extends string, P extends Record<T, any>> {
 
   /**
    * Execute beforeSend hooks. Stops at the first hook that denies.
-   * Executed for ALL messages, including those from bridges.
+   * Executed for ALL messages, including those from remote clients.
    */
   beforeSend(message: Readonly<Message<T, P[T]>>): HookResult {
     return this.#runGuard(this.#beforeSendHooks, 'beforeSend', (hook) => hook(message), {

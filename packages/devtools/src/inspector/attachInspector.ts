@@ -8,7 +8,7 @@ import type { MessageInspectorStore } from "./createInspectorStore";
  * Two channels:
  *  - Extension hooks (useBeforeSendHook / useAfterSendHook) drive the
  *    live user-message feed with pending → delivered/failed transitions.
- *  - `$systemEvents` (client/subscription/bridge lifecycle) drives two
+ *  - `$systemEvents` (client/subscription/remote-client lifecycle) drives two
  *    things: the aggregate Clients tab (via `refresh`) and the dedicated
  *    System Events log (via `pushSystemEvent`).
  *
@@ -28,32 +28,17 @@ export function attachInspector(
   // Initial snapshots before any hooks/events fire
   store.refreshClients(broker);
   store.refreshHistory(broker);
-  store.refreshBridges(broker);
 
   // Realm-singleton diagnostics happen at app bootstrap, long before this
   // panel mounts, so the live event was never observed. Reconstruct it from
-  // the inspect snapshot, same idea as the hydrated `bridge.added` below.
+  // the inspect snapshot; remote clients registered before attach are
+  // covered by `refreshClients` above.
   // Optional chaining: cores that predate `getVersionInfo`.
   const versionInfo = broker.inspect.getVersionInfo?.();
   if (versionInfo && versionInfo.duplicateCopies > 0) {
     store.pushSystemEvent("broker.duplicate_copy", {
       version: versionInfo.version,
       copies: versionInfo.duplicateCopies,
-      hydrated: true,
-    });
-  }
-
-  // Synthesize `bridge.added` for bridges that were registered BEFORE the
-  // inspector attached. Otherwise the System Events log would miss any
-  // bridge whose registration is synchronous during app bootstrap —
-  // DevTools mounts via React useEffect, which is a tick later than sync
-  // `addBridge` calls in the shell. Also covers late-attach scenarios
-  // (DevTools toggled off then on).
-  for (const bridge of broker.inspect.getBridges()) {
-    store.pushSystemEvent("bridge.added", {
-      bridgeId: bridge.id,
-      // Non-standard field: signals the event was reconstructed from a
-      // snapshot rather than observed live. Consumers may ignore it.
       hydrated: true,
     });
   }
@@ -89,26 +74,6 @@ export function attachInspector(
   const unsubSubscriptionRemoved = broker.$systemEvents.on("subscription.removed", (payload) => {
     store.pushSystemEvent("subscription.removed", payload);
     refreshClients();
-  });
-  const unsubBridgeAdded = broker.$systemEvents.on("bridge.added", (payload) => {
-    store.pushSystemEvent("bridge.added", payload);
-    store.refreshBridges(broker);
-  });
-  const unsubBridgeRemoved = broker.$systemEvents.on("bridge.removed", (payload) => {
-    store.pushSystemEvent("bridge.removed", payload);
-    store.refreshBridges(broker);
-  });
-  // Outbound wire failure. The message was delivered locally and the sender
-  // got a normal ACK — this event is the only trace that a transport threw
-  // on `send()` and the frame never left the page. Log-only: bridge
-  // registry is unchanged.
-  const unsubBridgeSendFailed = broker.$systemEvents.on("bridge.send.failed", (payload) => {
-    store.pushSystemEvent("bridge.send.failed", payload);
-  });
-  // Inbound frame refused at the bridge (malformed or source not allowed).
-  // Never reached a hook, so Messages has no row for it — this is the only trace.
-  const unsubBridgeMessageInvalid = broker.$systemEvents.on("bridge.message.invalid", (payload) => {
-    store.pushSystemEvent("bridge.message.invalid", payload);
   });
   // Remote clients (`broker.createRemoteClient`). Lifecycle is mirrored by
   // `client.registered` / `client.unregistered`, which already refresh the
@@ -165,10 +130,6 @@ export function attachInspector(
     unsubClientUnregistered();
     unsubSubscriptionAdded();
     unsubSubscriptionRemoved();
-    unsubBridgeAdded();
-    unsubBridgeRemoved();
-    unsubBridgeSendFailed();
-    unsubBridgeMessageInvalid();
     unsubRemoteCreated();
     unsubRemoteDestroyed();
     unsubRemoteFrameRejected();

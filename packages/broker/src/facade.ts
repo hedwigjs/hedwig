@@ -178,7 +178,7 @@ export function createRemoteClient(id: string, options: RemoteClientOptions): Re
  * Get the current broker instance.
  *
  * Use when you need access to broker methods (hooks, `$systemEvents`,
- * `inspect`, `addBridge`) without holding the reference returned by
+ * `inspect`, `createRemoteClient`) without holding the reference returned by
  * {@link initBroker}.
  *
  * Types can be passed explicitly: `getBroker<MyTopics, MyPayloads>()`.
@@ -202,7 +202,7 @@ export function getBroker<
 /**
  * Destroy the broker and release all resources.
  *
- * Destroys bridges, clears subscriptions, history, and the client registry,
+ * Destroys remote clients, clears subscriptions, history, and the client registry,
  * and frees the realm-wide slot so the next `initBroker()` — from any copy
  * of the library — starts fresh.
  */
