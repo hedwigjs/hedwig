@@ -1,6 +1,6 @@
 {
   "name": "@hedwigjs/vue",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Vue composables for Hedwig: clients, topics, retained state, requests and remote clients bound to the component scope.",
   "publishConfig": {
     "access": "public"
@@ -34,7 +34,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hedwigjs/client": "^0.1.0"
+    "@hedwigjs/client": "^0.2.0"
   },
   "peerDependencies": {
     "vue": "^3.3.0"
