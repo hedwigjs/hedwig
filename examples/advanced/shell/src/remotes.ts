@@ -100,9 +100,13 @@ export function installBackendNotificationsRemote(): void {
  * arrives as `tab:cart-store`, which can never collide with ours. The ACL
  * has a rule for that id.
  *
- * Note: this converges to "last write wins" if two tabs mutate at the same
- * time. For richer conflict handling later — CRDT snapshots, vector clocks,
- * or an explicit owner-tab election.
+ * Each tab keeps its own cart store; the stores converge on `updatedAt`
+ * in the snapshot (see mfe/cart/src/state/cartStore.ts): a newer snapshot
+ * is adopted silently, an older one is answered with the current cart, an
+ * equal one is ignored — one mutation is one frame per other tab, no echo.
+ * Two tabs mutating at the same time end up with "last write
+ * wins". For richer conflict handling later — CRDT snapshots, vector
+ * clocks, or an explicit owner-tab election.
  */
 export function installCrossTabCartRemote(): () => void {
   const broker = getBroker<Topic, TopicPayloads>();

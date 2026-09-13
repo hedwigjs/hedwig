@@ -221,4 +221,9 @@ Let's Encrypt every ~60 days).
   boundary.
 - **Other tabs (BroadcastChannel)** — one remote client `tabs` with
   `prefix` identity: a snapshot from another tab's `cart-store` arrives
-  as `tab:cart-store`, so the ACL can tell it from the local one.
+  as `tab:cart-store`, so the ACL can tell it from the local one. Each
+  tab keeps its own store; they converge on the snapshot's `updatedAt`
+  (newer is adopted silently, older is answered with the current cart,
+  equal is ignored — one mutation is one frame per other tab), so
+  removing an item in the second tab works and travels back, and a
+  freshly opened tab picks the cart up instead of wiping it.
