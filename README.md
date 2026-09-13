@@ -236,7 +236,8 @@ implemented through hooks.
 | `shell`         | —                                         | Single-spa host. Boots the runtime with `TOPIC_KINDS`, installs ACL hooks, registers the WebSocket and cross-tab remotes, mounts DevTools |
 | `menu`          | `menu`                                    | Dish grid. Sends `cart.add-item.v1` requests to the cart store                                                                |
 | `cart`          | `cart-store`, `cart-ui`                   | Cart store + UI. Owns the cart, publishes the `cart.snapshot.v1` state                                                        |
-| `late-mount`    | `late-mount-demo`, `remote-request-demo`  | Two demo cards from the cart package: mount a fresh client and get the retained snapshot inside `on()`; ask the backend `notification.status.v1` over the WebSocket remote |
+| `late-mount`    | `late-mount-demo`                         | Demo card from the cart package: mounts a fresh client on demand and gets the retained snapshot inside `on()`                |
+| `remote-request` | `remote-request-demo`                    | Demo card from the cart package: asks the backend `notification.status.v1` over the WebSocket and shows the answer            |
 | `checkout`      | `checkout`                                | Headless iframe controller. Handles the `checkout.start.v1` request, registers the iframe as a remote client                  |
 | `notifications` | `notifications-toast`                     | Toast panel. Subscribes to `notification.show.v1`                                                                             |
 | `ai-chat`       | `ai-chat`                                 | Streaming chat. Registers one SSE remote per reply                                                                            |

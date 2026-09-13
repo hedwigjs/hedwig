@@ -1,6 +1,9 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { ModuleFederationPlugin } = require('webpack').container;
+// Shared React version = the one this workspace installs; a literal drifted
+// out of sync with Dependabot's bumps and MF warned on every page load.
+const pkg = require('./package.json');
 
 // When deploying to a single-origin host (nginx serving shell + all MFEs
 // under one domain), pass MFE_REMOTES_BASE=/mfe to point every remote at
@@ -71,8 +74,8 @@ module.exports = {
         analytics:     remoteUrl('analytics',     3006),
       },
       shared: {
-        react: { singleton: true, eager: true, requiredVersion: '19.1.1' },
-        'react-dom': { singleton: true, eager: true, requiredVersion: '19.1.1' },
+        react: { singleton: true, eager: true, requiredVersion: pkg.dependencies.react },
+        'react-dom': { singleton: true, eager: true, requiredVersion: pkg.dependencies['react-dom'] },
         'single-spa': { singleton: true, eager: true, requiredVersion: '^6.0.3' },
         // `@hedwigjs/broker` is deliberately NOT shared: the runtime is
         // private to the host. Modules talk to it through `@hedwigjs/client`

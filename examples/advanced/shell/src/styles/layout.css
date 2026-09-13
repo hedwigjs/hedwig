@@ -183,9 +183,11 @@
   box-shadow: var(--hdw-shadow-soft);
 }
 
-/* Replay-buffer demo — small card between cart and analytics. Same chrome
-   as the cart but tighter padding; the MFE controls its own header. */
-.hdw-main__late-mount {
+/* The two demo cards between the cart and analytics — late mount and the
+   request to a remote client. Same chrome as the cart but tighter padding;
+   each MFE controls its own header. */
+.hdw-main__late-mount,
+.hdw-main__remote-request {
   background: var(--hdw-surface);
   border: 1px solid var(--hdw-line);
   border-radius: var(--hdw-r-xl);

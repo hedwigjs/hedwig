@@ -3,6 +3,7 @@ export type SlotName =
   | 'cart-panel'
   | 'cart-header'
   | 'late-mount'
+  | 'remote-request'
   | 'ai-chat'
   | 'notifications'
   | 'checkout'

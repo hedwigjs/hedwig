@@ -125,6 +125,7 @@ export function renderChrome(): void {
       <aside class="hdw-main__right">
         <section class="hdw-main__cart" data-slot-host="cart-panel"></section>
         <section class="hdw-main__late-mount" data-slot-host="late-mount"></section>
+        <section class="hdw-main__remote-request" data-slot-host="remote-request"></section>
         <section class="hdw-main__analytics" data-slot-host="analytics"></section>
       </aside>
     </main>
@@ -138,6 +139,7 @@ export function renderChrome(): void {
   ensureSlot('cart-panel');
   ensureSlot('cart-header');
   ensureSlot('late-mount');
+  ensureSlot('remote-request');
   ensureSlot('ai-chat');
   ensureSlot('notifications');
   ensureSlot('checkout');

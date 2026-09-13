@@ -22,6 +22,7 @@ const registry: Array<{
     | 'cart-panel'
     | 'cart-header'
     | 'late-mount'
+    | 'remote-request'
     | 'ai-chat'
     | 'notifications'
     | 'checkout'
@@ -58,6 +59,16 @@ const registry: Array<{
     slot: 'late-mount',
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     loader: () => import('cart/LateMount' as any) as Promise<MfeModule>,
+  },
+  {
+    // Demo of a request to a remote client: `bus.request('notifications-backend',
+    // 'notification.status.v1', …)` crosses the WebSocket with a
+    // correlationId and a deadline. Own card, own chunk, own client id
+    // (`remote-request-demo`) — see mfe/cart/src/views/RemoteRequestDemo.
+    name: 'remote-request',
+    slot: 'remote-request',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    loader: () => import('cart/RemoteRequest' as any) as Promise<MfeModule>,
   },
   {
     name: 'ai-chat',

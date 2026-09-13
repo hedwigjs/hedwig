@@ -1,6 +1,9 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { ModuleFederationPlugin } = require('webpack').container;
+// Shared React version = the one this workspace installs; a literal drifted
+// out of sync with Dependabot's bumps and MF warned on every page load.
+const pkg = require('./package.json');
 
 module.exports = {
   mode: 'development',
@@ -48,8 +51,8 @@ module.exports = {
         './App': './src/bootstrap.tsx',
       },
       shared: {
-        react: { singleton: true, requiredVersion: '19.1.1' },
-        'react-dom': { singleton: true, requiredVersion: '19.1.1' },
+        react: { singleton: true, requiredVersion: pkg.dependencies.react },
+        'react-dom': { singleton: true, requiredVersion: pkg.dependencies['react-dom'] },
         // `@hedwigjs/broker` is NOT shared: the runtime is private to the
         // host. This module bundles `@hedwigjs/client` (stateless, tiny).
       },
