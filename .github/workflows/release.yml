@@ -69,9 +69,10 @@ jobs:
           # actual publish step. When there are still pending changesets,
           # changesets/action opens/updates the PR instead and this
           # script is not invoked.
-          publish: npx changeset publish
-          commit: "chore(release): bump versions"
-          title: "chore(release): version packages"
+          # changesets/action@v2 renamed these inputs (v1: publish / commit / title).
+          publish-script: npx changeset publish
+          commit-message: "chore(release): bump versions"
+          pr-title: "chore(release): version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

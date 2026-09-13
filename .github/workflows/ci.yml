@@ -51,6 +51,15 @@ jobs:
           npm run build -w @hedwig-demo/contracts
           git diff --exit-code -- examples/advanced/shared/contracts/src/index.generated.ts
 
+      - name: Production build of the stand shell
+        # Same command the deploy runs. Catches a lockfile that installs
+        # react somewhere the shell cannot resolve it (a regenerated lock
+        # once nested every copy under packages/*) before it reaches main.
+        env:
+          NOTIFICATIONS_WS_URL: wss://hedwigjs.com/demo/advanced/ws/notifications
+          MFE_REMOTES_BASE: /demo/advanced/mfe
+        run: npm run build -w @hedwig-demo/shell
+
   e2e:
     name: Reference stand · Playwright
     runs-on: ubuntu-latest
