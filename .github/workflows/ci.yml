@@ -93,10 +93,15 @@ jobs:
 
   changesets:
     name: Changeset present
-    # Dependabot only touches dependency ranges and never adds changesets;
-    # a version bump that matters to consumers gets its changeset from the
-    # human who merges it (`npx changeset add`).
-    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+    # Two kinds of PR legitimately change packages/* without a changeset:
+    # Dependabot (bumps ranges, cannot add one — a bump consumers should
+    # hear about gets its changeset from whoever merges it) and the
+    # "Version Packages" PR the release workflow opens, which consumes the
+    # changesets and bumps the versions.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.actor != 'dependabot[bot]' &&
+      !startsWith(github.head_ref, 'changeset-release/')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
