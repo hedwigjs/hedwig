@@ -387,10 +387,28 @@ may inject; everything else is `TOPIC_NOT_ACCEPTED`), `maxBytes`,
 `rateLimit`, and a structural check of the frame. Every drop is
 published as `remote.frame.rejected { reason }`.
 
-Only multicasts are forwarded to a remote. A `request()` is resolved
-against the local client registry and never crosses the wire (requests
-to remote clients are a separate, later feature). Local and remote
-clients share one id namespace: a taken id throws `CLIENT_ID_TAKEN`.
+**Requests across the wire.** `client.request(remote.id, topic, data)`
+goes out as a `kind: 'request'` frame with a `correlationId` and a
+`deadline`; the far side answers with a `kind: 'response'` frame over the
+same transport and the promise resolves with its result. Every other
+outcome is a `NACK` you can switch on:
+
+| Reason | When |
+| --- | --- |
+| `TIMEOUT` | No response within `timeout` (per call → `RemoteClientOptions.timeout` → `BrokerConfig.request.timeout` → 5000 ms). The far side may still run it; retry is your call, keyed by the request `id`. |
+| `REMOTE_GONE` | The remote was destroyed while waiting, or its transport could not carry the frame. |
+| `BROKER_DESTROYED` | The broker was shut down while waiting. |
+| `TRANSPORT_ONE_WAY` | The transport is inbound-only (`sse`). Refused immediately. |
+| `TRANSPORT_FANOUT` | The transport reaches many peers (`broadcast-channel`). Refused immediately. |
+| `HANDLER_FAILED`, `NOT_SUBSCRIBED`, `HOOK_REJECTED`, `SERIALIZATION_FAILED` | The far side said so. |
+
+Requests **from** a remote (`kind: 'request'` frames) are routed to the
+named local client and always answered over the same transport, hook
+denials included. `request.forwarded`, `response.received`,
+`request.timeout` and `response.sent` on `$systemEvents` are the
+wire-level trace; the request's own `afterSend` carries the final result
+with `via` set to the remote id. Local and remote clients share one id
+namespace: a taken id throws `CLIENT_ID_TAKEN`.
 
 ---
 

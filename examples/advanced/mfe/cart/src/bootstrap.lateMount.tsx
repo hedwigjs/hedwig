@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
 import { LateMountDemo } from './views/LateMountDemo';
+import { RemoteRequestDemo } from './views/RemoteRequestDemo';
 
 type MountProps = {
   domElement?: HTMLElement;
@@ -19,7 +20,12 @@ export async function mount(props: MountProps): Promise<void> {
   const target = props.domElement ?? document.getElementById('root');
   if (!target) throw new Error('late-mount: no mount target');
   root = createRoot(target);
-  root.render(<LateMountDemo />);
+  root.render(
+    <>
+      <LateMountDemo />
+      <RemoteRequestDemo />
+    </>,
+  );
 }
 
 export async function unmount(): Promise<void> {

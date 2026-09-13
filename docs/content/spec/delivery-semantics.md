@@ -10,12 +10,18 @@ remote client, and what it must not assume.
 | Verb | Locally | Across a wire |
 | --- | --- | --- |
 | `emit(topic, data)` | Multicast to every current subscriber; resolves `ACK DISPATCHED` with the recipient ids. | The same multicast is additionally handed to every remote client whose `forward` patterns match the topic. The caller's result reflects **local** delivery only; wire failures surface as `remote.send.failed`. |
-| `request(target, topic, data)` | Unicast to one handler; resolves with its return value or a `NACK` reason. | Resolved against the **local** registry only. A request never crosses a wire in this version; requests to remote clients are specified separately and gated by the `requests` capability of the remote. |
+| `request(target, topic, data)` | Unicast to one handler; resolves with its return value or a `NACK` reason. | When `target` is a remote client: a `kind: 'request'` frame with `correlationId` and `deadline`, answered by a `kind: 'response'` frame over the same transport. Resolves with the far side's result, `NACK TIMEOUT` locally, `NACK REMOTE_GONE` / `BROKER_DESTROYED` on teardown, `NACK TRANSPORT_ONE_WAY` / `TRANSPORT_FANOUT` immediately when the transport cannot answer. Exactly one `afterSend` fires, with `via` set. |
 
 ## At-most-once
 
-A frame is sent at most once per remote client. There is no retry, no
-acknowledgement and no persistence in the runtime. A transport that
+A frame is sent at most once per remote client. A request that times out
+locally may still be executed by the far side; a retry is a new request
+with a new id, and idempotency is the handler's job (key on the request
+id, which the responder sees as `wireId`). A request that arrived over
+one wire is never relayed to another remote client: it is answered
+`NOT_SUBSCRIBED` unless a local client handles it.
+
+There is no retry, no acknowledgement and no persistence in the runtime. A transport that
 throws or never becomes ready loses the frame; the loss is reported
 (`remote.send.failed { reason: 'TRANSPORT_THREW' | 'NOT_OPEN' }`), never
 retried. Applications that need durability implement it above the
@@ -40,6 +46,9 @@ remote clients there is no ordering guarantee.
   subscriber's replay does not re-send anything on the wire.
 - Synthetic messages from the debug channel are forwarded like real
   ones; the `synthetic` flag itself stays local.
+- Responses are matched by `correlationId` on the remote client whose
+  transport carried the request. A response over any other path, a late
+  one, or a duplicate is ignored.
 
 ## Deduplication
 

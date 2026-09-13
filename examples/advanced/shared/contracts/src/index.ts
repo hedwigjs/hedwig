@@ -22,3 +22,4 @@ export type { CartAddItemResponse } from "./domains/cart/add-item.v1.js";
 export type { CartDecrementResponse } from "./domains/cart/decrement.v1.js";
 export type { CartRemoveItemResponse } from "./domains/cart/remove-item.v1.js";
 export type { CheckoutStartResponse } from "./domains/checkout/start.v1.js";
+export type { NotificationStatusResponse } from "./domains/notification/status.v1.js";

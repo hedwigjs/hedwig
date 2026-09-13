@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Ajv from 'ajv';
-import { parseFrame, buildFrame, WIRE_VERSION } from './envelope';
+import { parseFrame, buildFrame, buildResponse, toWireReason, WIRE_VERSION } from './envelope';
 
 /**
  * The runtime does not embed a JSON Schema validator; `parseFrame` is a
@@ -43,6 +43,9 @@ const corpus: Array<[string, unknown, boolean]> = [
   ['response without source', { ...response, source: undefined }, false],
   ['response with status MAYBE', { ...response, status: 'MAYBE' }, false],
   ['response with open-ended reason', { ...response, reason: 'REMOTE_GONE' }, false],
+  ['response with SERIALIZATION_FAILED', { ...response, status: 'NACK', reason: 'SERIALIZATION_FAILED' }, true],
+  ['explicit request targeting *', { ...event, kind: 'request', target: '*' }, false],
+  ['explicit event targeting one client', { ...event, target: 'cart' }, true],
   ['response with non-string message', { ...response, message: 42 }, false],
   ['array frame', [1, 2], false],
   ['null frame', null, false],
@@ -121,9 +124,39 @@ describe('buildFrame', () => {
     expect(validate(frame)).toBe(true);
   });
 
-  test('a unicast becomes kind: request', () => {
-    const frame = buildFrame({ id: 'm', topic: 'a.v1', source: 'a', target: 'b', data: 1, timestamp: 1 }, 'o');
-    expect(frame.kind).toBe('request');
+  test('a unicast becomes kind: request, with correlationId and deadline when given', () => {
+    const frame = buildFrame({ id: 'm', topic: 'a.v1', source: 'a', target: 'b', data: 1, timestamp: 1 }, 'o', {
+      correlationId: 'm',
+      deadline: 5000,
+    });
+    expect(frame).toMatchObject({ kind: 'request', correlationId: 'm', deadline: 5000 });
     expect(validate(frame)).toBe(true);
+  });
+});
+
+describe('buildResponse / toWireReason', () => {
+  test('produces a schema-valid flat response', () => {
+    const frame = buildResponse({
+      id: 'p',
+      origin: 'o',
+      correlationId: 'm',
+      topic: 'a.v1',
+      source: 'b',
+      target: 'a',
+      status: 'NACK',
+      reason: 'HANDLER_FAILED',
+      message: 'boom',
+      details: { original: 'DISPATCHED' },
+    });
+    expect(validate(frame)).toBe(true);
+    expect(frame).toMatchObject({ v: 1, kind: 'response', correlationId: 'm', status: 'NACK', reason: 'HANDLER_FAILED' });
+    expect(frame.data).toBeUndefined();
+  });
+
+  test('local-only reasons collapse to HANDLER_FAILED', () => {
+    expect(toWireReason('DELIVERED')).toEqual({ reason: 'DELIVERED', exact: true });
+    expect(toWireReason('TIMEOUT')).toEqual({ reason: 'TIMEOUT', exact: true });
+    expect(toWireReason('DISPATCHED')).toEqual({ reason: 'HANDLER_FAILED', exact: false });
+    expect(toWireReason('REMOTE_GONE')).toEqual({ reason: 'HANDLER_FAILED', exact: false });
   });
 });

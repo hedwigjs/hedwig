@@ -184,6 +184,31 @@ step; it goes away once DevTools and the reference stand have moved.
   validates every frame against the schema (Node test runner + ajv).
 - DevTools: message details show `Via … · wire id …` and the `ext` block.
 
+### Requests across the wire (RFC-0003 step 5)
+
+- `client.request(remote.id, …)` now crosses the transport: a
+  `kind: 'request'` frame with `correlationId` + `deadline`, answered by
+  a `kind: 'response'` frame over the same transport, pending entries
+  kept on the remote client. Local outcomes: `TIMEOUT` (per call →
+  remote default → broker default → 5000 ms; the far side may still run
+  it), `REMOTE_GONE`, `BROKER_DESTROYED`, and immediate
+  `TRANSPORT_ONE_WAY` / `TRANSPORT_FANOUT` for transports that cannot
+  answer. Exactly one `afterSend`, with `via`.
+- Requests from a remote are routed to the named local client and always
+  answered: handler result, `HANDLER_FAILED`, `NOT_SUBSCRIBED`,
+  `HOOK_REJECTED`, `SERIALIZATION_FAILED` (unencodable return value). A
+  request that came over one wire is never relayed to another remote.
+- Trace on `$systemEvents`: `request.forwarded`, `response.received`
+  (with latency), `request.timeout`, `response.sent`. DevTools renders
+  them with `sent` / `received` badges.
+- Spec: `SERIALIZATION_FAILED` joins the closed response reasons; an
+  explicit request targeting `*` is malformed; new "Requests" section.
+- Reference stand: new contract `notification.status.v1`; the backend
+  answers it over the WebSocket (connected clients, uptime); a "Request
+  to a remote" card under the cart sends it and shows the round trip, or
+  `NACK TIMEOUT` when the backend is down. ACL rule for
+  `remote-request-demo`.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

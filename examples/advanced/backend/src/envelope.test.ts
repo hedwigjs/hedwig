@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import Ajv from 'ajv';
 
-import { createEnvelope, ORIGIN, WIRE_VERSION } from './envelope.js';
+import { createEnvelope, createResponse, readRequest, ORIGIN, WIRE_VERSION } from './envelope.js';
 import { iframeHtml } from './routes/checkout.js';
 
 /**
@@ -68,6 +68,56 @@ test('a frame that copies a browser origin would be an echo — the helper never
   const frame = createEnvelope({ topic: 'x.v1', source: 's', data: null });
   assert.equal(frame.origin, ORIGIN);
   assert.ok(ORIGIN.startsWith('backend-'));
+});
+
+test('a response to a request validates and points back at the requester', () => {
+  const request = {
+    v: 1,
+    id: 'req-1',
+    origin: 'realm-a',
+    kind: 'request',
+    correlationId: 'req-1',
+    topic: 'notification.status.v1',
+    source: 'remote-request-demo',
+    target: 'notifications-backend',
+    data: { includeLang: true },
+    deadline: Date.now() + 5000,
+  };
+  assertValid(request);
+  const parsed = readRequest(JSON.stringify(request));
+  assert.deepEqual(parsed, {
+    correlationId: 'req-1',
+    topic: 'notification.status.v1',
+    source: 'remote-request-demo',
+    target: 'notifications-backend',
+    data: { includeLang: true },
+  });
+
+  const response = createResponse({
+    correlationId: parsed!.correlationId,
+    topic: parsed!.topic,
+    source: 'notifications-backend',
+    target: parsed!.source,
+    status: 'ACK',
+    reason: 'DELIVERED',
+    data: { connected: 1, uptimeMs: 10, lang: 'en', serverTime: Date.now() },
+  });
+  assertValid(response);
+  assert.equal(response.kind, 'response');
+  assert.equal(response.correlationId, 'req-1');
+  assert.equal(response.target, 'remote-request-demo');
+  assert.equal(response.origin, ORIGIN);
+
+  const nack = createResponse({ ...parsed!, source: 'notifications-backend', target: parsed!.source, status: 'NACK', reason: 'NOT_SUBSCRIBED', message: 'no' });
+  assertValid(nack);
+});
+
+test('events and malformed frames are not requests', () => {
+  assert.equal(readRequest({ topic: 'x.v1', target: '*', data: 1 }), null);
+  assert.equal(readRequest({ kind: 'response', correlationId: 'c', topic: 'x.v1', source: 's', target: 't', status: 'ACK', reason: 'DELIVERED' }), null);
+  assert.equal(readRequest('{oops'), null);
+  assert.equal(readRequest({ kind: 'request', topic: 'x.v1', target: 'me', data: 1 }), null, 'no id, nothing to correlate');
+  assert.deepEqual(readRequest({ id: 'q', topic: 'x.v1', target: 'me', data: 1 })?.correlationId, 'q', 'legacy frame: kind defaults from target, id doubles as correlationId');
 });
 
 test('the checkout iframe posts a v1 event frame with its own origin', () => {

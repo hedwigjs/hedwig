@@ -152,7 +152,11 @@ export type SystemEventName =
   | "remote.created"
   | "remote.destroyed"
   | "remote.frame.rejected"
-  | "remote.send.failed";
+  | "remote.send.failed"
+  | "request.forwarded"
+  | "response.received"
+  | "request.timeout"
+  | "response.sent";
 
 export interface SystemEventLogEntry {
   /** Monotonic local id, assigned by the store on ingestion. */

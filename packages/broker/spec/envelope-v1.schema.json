@@ -4,8 +4,12 @@
   "title": "Hedwig wire envelope v1",
   "description": "One frame on a transport between a Hedwig runtime and a remote client. Either a message (kind: event | request) or a response. Unknown top-level fields are ignored; unknown `kind` or a `v` other than 1 is rejected. `v` and `kind` may be omitted for one wire version: `kind` then defaults to `target === '*' ? 'event' : 'request'`.",
   "oneOf": [
-    { "$ref": "#/definitions/message" },
-    { "$ref": "#/definitions/response" }
+    {
+      "$ref": "#/definitions/message"
+    },
+    {
+      "$ref": "#/definitions/response"
+    }
   ],
   "definitions": {
     "id": {
@@ -36,12 +40,18 @@
       "type": "object",
       "description": "Opaque extension block, passed through untouched. `ext.hedwig.*` is reserved for runtime-owned keys; `ext.traceparent` / `ext.tracestate` are the W3C trace-context slots.",
       "properties": {
-        "traceparent": { "type": "string" },
-        "tracestate": { "type": "string" },
+        "traceparent": {
+          "type": "string"
+        },
+        "tracestate": {
+          "type": "string"
+        },
         "hedwig": {
           "type": "object",
           "properties": {
-            "claimedSource": { "type": "string" }
+            "claimedSource": {
+              "type": "string"
+            }
           },
           "additionalProperties": true
         }
@@ -51,26 +61,45 @@
     "message": {
       "type": "object",
       "description": "An event (multicast) or a request (unicast expecting a response).",
-      "required": ["topic", "target", "data"],
+      "required": [
+        "topic",
+        "target",
+        "data"
+      ],
       "properties": {
-        "v": { "const": 1 },
-        "id": { "$ref": "#/definitions/id" },
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/definitions/id"
+        },
         "origin": {
           "type": "string",
           "minLength": 1,
           "description": "Session id of the producing realm. A receiving runtime drops frames whose `origin` equals its own (`ECHO`)."
         },
-        "kind": { "enum": ["event", "request"] },
-        "topic": { "$ref": "#/definitions/topic" },
+        "kind": {
+          "enum": [
+            "event",
+            "request"
+          ]
+        },
+        "topic": {
+          "$ref": "#/definitions/topic"
+        },
         "source": {
           "$ref": "#/definitions/clientId",
           "description": "Claimed sender. Validated by the receiving remote client's identity mode; may be omitted for `fixed` identity."
         },
-        "target": { "$ref": "#/definitions/target" },
+        "target": {
+          "$ref": "#/definitions/target"
+        },
         "data": {
           "description": "Payload. Any JSON value; `null` is a value, absence is a malformed frame."
         },
-        "timestamp": { "$ref": "#/definitions/timestamp" },
+        "timestamp": {
+          "$ref": "#/definitions/timestamp"
+        },
         "correlationId": {
           "$ref": "#/definitions/id",
           "description": "Request: the request's own id. Event: optional, groups a streamed partial result."
@@ -80,24 +109,65 @@
           "minimum": 0,
           "description": "Request only. Absolute Unix ms after which the far side may drop it unanswered."
         },
-        "ext": { "$ref": "#/definitions/ext" }
+        "ext": {
+          "$ref": "#/definitions/ext"
+        }
       },
-      "additionalProperties": true
+      "additionalProperties": true,
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "request"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "target": {
+            "not": {
+              "const": "*"
+            }
+          }
+        },
+        "description": "A request names one recipient; `*` is an event's target."
+      }
     },
     "response": {
       "type": "object",
       "description": "Flat outcome of a request. No stack traces cross the wire.",
-      "required": ["kind", "correlationId", "topic", "source", "target", "status", "reason"],
+      "required": [
+        "kind",
+        "correlationId",
+        "topic",
+        "source",
+        "target",
+        "status",
+        "reason"
+      ],
       "properties": {
-        "v": { "const": 1 },
-        "id": { "$ref": "#/definitions/id" },
-        "origin": { "type": "string", "minLength": 1 },
-        "kind": { "const": "response" },
+        "v": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/definitions/id"
+        },
+        "origin": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "const": "response"
+        },
         "correlationId": {
           "$ref": "#/definitions/id",
           "description": "The `id` of the request being answered."
         },
-        "topic": { "$ref": "#/definitions/topic" },
+        "topic": {
+          "$ref": "#/definitions/topic"
+        },
         "source": {
           "$ref": "#/definitions/clientId",
           "description": "The responder (the request's `target`)."
@@ -106,16 +176,39 @@
           "$ref": "#/definitions/clientId",
           "description": "The requester (the request's `source`)."
         },
-        "status": { "enum": ["ACK", "NACK"] },
+        "status": {
+          "enum": [
+            "ACK",
+            "NACK"
+          ]
+        },
         "reason": {
-          "enum": ["DELIVERED", "HOOK_REJECTED", "NOT_SUBSCRIBED", "HANDLER_FAILED", "TIMEOUT", "BROKER_DESTROYED"],
+          "enum": [
+            "DELIVERED",
+            "HOOK_REJECTED",
+            "NOT_SUBSCRIBED",
+            "HANDLER_FAILED",
+            "TIMEOUT",
+            "BROKER_DESTROYED",
+            "SERIALIZATION_FAILED"
+          ],
           "description": "Closed set; the browser runtime maps it onto its `RoutingReason`."
         },
-        "message": { "type": "string" },
-        "data": { "description": "Handler return value on `ACK`." },
-        "details": { "description": "Optional structured error details on `NACK`." },
-        "timestamp": { "$ref": "#/definitions/timestamp" },
-        "ext": { "$ref": "#/definitions/ext" }
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "description": "Handler return value on `ACK`."
+        },
+        "details": {
+          "description": "Optional structured error details on `NACK`."
+        },
+        "timestamp": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "ext": {
+          "$ref": "#/definitions/ext"
+        }
       },
       "additionalProperties": true
     }

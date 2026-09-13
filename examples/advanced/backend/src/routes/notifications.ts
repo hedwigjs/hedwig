@@ -2,7 +2,7 @@ import type { Server as HttpServer } from 'node:http';
 import type { Express, Request, Response } from 'express';
 import { WebSocket, WebSocketServer } from 'ws';
 
-import { createEnvelope } from '../envelope';
+import { createEnvelope, createResponse, readRequest } from '../envelope';
 import type { Envelope } from '../envelope';
 
 type NotificationKind = 'success' | 'info' | 'warn' | 'error';
@@ -80,6 +80,54 @@ export function registerNotificationsRoutes(
   const wss = new WebSocketServer({ server, path: '/ws/notifications' });
 
   const clients = new Map<WebSocket, Lang>();
+  const startedAt = Date.now();
+
+  /**
+   * Requests from the page arrive as `kind: 'request'` frames on the same
+   * socket. Every one gets a `kind: 'response'` back, matched by
+   * `correlationId`; a topic we do not serve is `NACK NOT_SUBSCRIBED`.
+   */
+  function answer(socket: WebSocket, lang: Lang, raw: unknown): void {
+    const request = readRequest(raw);
+    if (!request) return; // not a request (or malformed): nothing to answer
+    const base = {
+      correlationId: request.correlationId,
+      topic: request.topic,
+      source: SOURCE,
+      target: request.source,
+    };
+    if (request.topic === 'notification.status.v1') {
+      const includeLang = typeof (request.data as { includeLang?: unknown } | null)?.includeLang === 'boolean'
+        ? (request.data as { includeLang: boolean }).includeLang
+        : true;
+      socket.send(
+        JSON.stringify(
+          createResponse({
+            ...base,
+            status: 'ACK',
+            reason: 'DELIVERED',
+            data: {
+              connected: clients.size,
+              uptimeMs: Date.now() - startedAt,
+              ...(includeLang ? { lang } : {}),
+              serverTime: Date.now(),
+            },
+          }),
+        ),
+      );
+      return;
+    }
+    socket.send(
+      JSON.stringify(
+        createResponse({
+          ...base,
+          status: 'NACK',
+          reason: 'NOT_SUBSCRIBED',
+          message: `notifications-backend does not handle '${request.topic}'`,
+        }),
+      ),
+    );
+  }
 
   wss.on('connection', (socket, req) => {
     // Language comes in as `?lang=en|ru` in the WS handshake URL. Each client
@@ -91,6 +139,10 @@ export function registerNotificationsRoutes(
     console.log(
       `[notifications] client connected (lang=${lang}, total=${clients.size})`,
     );
+
+    socket.on('message', (raw) => {
+      answer(socket, lang, raw.toString());
+    });
 
     socket.on('close', () => {
       clients.delete(socket);

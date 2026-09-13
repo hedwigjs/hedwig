@@ -14,6 +14,7 @@ import CheckoutCancelledV1 from "./domains/checkout/cancelled.v1";
 import CheckoutCompletedV1 from "./domains/checkout/completed.v1";
 import CheckoutStartV1 from "./domains/checkout/start.v1";
 import NotificationShowV1 from "./domains/notification/show.v1";
+import NotificationStatusV1 from "./domains/notification/status.v1";
 import UiMenuItemClosedV1 from "./domains/ui/menu-item-closed.v1";
 import UiMenuItemOpenedV1 from "./domains/ui/menu-item-opened.v1";
 
@@ -31,6 +32,7 @@ export const registry = {
   "checkout.completed.v1": CheckoutCompletedV1,
   "checkout.start.v1": CheckoutStartV1,
   "notification.show.v1": NotificationShowV1,
+  "notification.status.v1": NotificationStatusV1,
   "ui.menu-item-closed.v1": UiMenuItemClosedV1,
   "ui.menu-item-opened.v1": UiMenuItemOpenedV1,
 } as const;
@@ -55,6 +57,7 @@ export const TOPICS = {
   CHECKOUT_COMPLETED_V1: "checkout.completed.v1",
   CHECKOUT_START_V1: "checkout.start.v1",
   NOTIFICATION_SHOW_V1: "notification.show.v1",
+  NOTIFICATION_STATUS_V1: "notification.status.v1",
   UI_MENU_ITEM_CLOSED_V1: "ui.menu-item-closed.v1",
   UI_MENU_ITEM_OPENED_V1: "ui.menu-item-opened.v1",
 } as const;

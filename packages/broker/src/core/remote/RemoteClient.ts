@@ -1,7 +1,6 @@
 import type { ClientID, Message } from '../types';
 import type { BrokerLogger } from '../logger/BrokerLogger.types';
 import type { HookResult } from '../hooks/HooksRegistry.types';
-import type { RoutingResult } from '../routing/RoutingResult';
 import type { Transport } from '../transport/Transport.types';
 import type {
   RemoteClient,
@@ -10,8 +9,9 @@ import type {
   RemoteIdentity,
 } from './RemoteClient.types';
 import { matchesAnyPattern } from '../utils/matchPattern';
-import { parseFrame, buildFrame } from '../wire/envelope';
-import type { WireExt } from '../wire/envelope';
+import { RoutingResult, RoutingReason } from '../routing/RoutingResult';
+import { parseFrame, buildFrame, buildResponse, toWireReason } from '../wire/envelope';
+import type { WireExt, WireResponse, ParsedWireMessage } from '../wire/envelope';
 
 /**
  * What a remote client needs from the core. Injected as callbacks so the
@@ -44,7 +44,22 @@ export interface RemoteHost {
   sendFailed(remoteId: string, topic: string, messageId: string, reason: string, error?: unknown): void;
   /** Called once from `destroy()` so the core can unregister the remote. */
   destroyed(remoteId: string): void;
+  /** Fresh local id for a frame this runtime produces on its own (responses). */
+  nextId(): string;
+  requestForwarded(payload: { remoteId: string; topic: string; messageId: string; correlationId: string; deadline?: number }): void;
+  responseReceived(payload: { remoteId: string; topic: string; correlationId: string; status: 'ACK' | 'NACK'; reason: string; latencyMs: number }): void;
+  requestTimeout(payload: { remoteId: string; topic: string; correlationId: string; timeout: number }): void;
+  responseSent(payload: { remoteId: string; topic: string; correlationId: string; status: 'ACK' | 'NACK'; reason: string }): void;
 }
+
+interface PendingRequest {
+  topic: string;
+  startedAt: number;
+  timer: ReturnType<typeof setTimeout> | null;
+  resolve: (result: RoutingResult) => void;
+}
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
 
 /**
  * Runtime implementation of {@link RemoteClient}. Created by
@@ -60,7 +75,6 @@ export class RemoteClientImpl implements RemoteClient {
   readonly requests: boolean;
   readonly ready: Promise<void>;
   readonly createdAt = Date.now();
-  pending = 0;
 
   #identity: RemoteIdentity;
   #accepts: string[];
@@ -73,6 +87,8 @@ export class RemoteClientImpl implements RemoteClient {
   #rate: { max: number; window: number; stamps: number[] } | undefined;
   #readyState: 'pending' | 'ready' | 'failed' = 'pending';
   #destroyed = false;
+  #pending = new Map<string, PendingRequest>();
+  #timeout: number | undefined;
 
   constructor(id: string, kind: string, transport: Transport, options: RemoteClientOptions, host: RemoteHost) {
     this.id = id;
@@ -87,6 +103,7 @@ export class RemoteClientImpl implements RemoteClient {
     this.requests = this.duplex && !this.fanout;
     this.#maxBytes = options.maxBytes;
     this.#rate = options.rateLimit ? { ...options.rateLimit, stamps: [] } : undefined;
+    this.#timeout = options.timeout;
 
     this.ready = (transport.ready ?? Promise.resolve()).then(
       () => {
@@ -106,6 +123,11 @@ export class RemoteClientImpl implements RemoteClient {
 
   get forwardPatterns(): ReadonlyArray<string> {
     return this.#forward;
+  }
+
+  /** Requests in flight to this remote. */
+  get pending(): number {
+    return this.#pending.size;
   }
 
   get acceptPatterns(): ReadonlyArray<string> {
@@ -168,26 +190,180 @@ export class RemoteClientImpl implements RemoteClient {
    */
   send(message: Message): void {
     if (this.#destroyed) return;
-    const frame = buildFrame(message, this.#host.origin);
-    const deliver = () => {
+    this.#deliver(buildFrame(message, this.#host.origin), message.topic, message.id, (reason, error) => {
+      this.#host.sendFailed(this.id, message.topic, message.id, reason, error);
+    });
+  }
+
+  /**
+   * Hand a frame to the transport once it is ready. Failure is reported to
+   * `onFailure` with `TRANSPORT_THREW` / `NOT_OPEN`; nothing is thrown.
+   */
+  #deliver(frame: unknown, _topic: string, _messageId: string, onFailure: (reason: 'TRANSPORT_THREW' | 'NOT_OPEN', error?: unknown) => void): void {
+    const attempt = () => {
       if (this.#destroyed) return;
       try {
         this.#transport.send(frame);
       } catch (error) {
-        this.#host.sendFailed(this.id, message.topic, message.id, 'TRANSPORT_THREW', error);
+        onFailure('TRANSPORT_THREW', error);
       }
     };
     if (this.#readyState === 'ready') {
-      deliver();
+      attempt();
       return;
     }
     if (this.#readyState === 'failed') {
-      this.#host.sendFailed(this.id, message.topic, message.id, 'NOT_OPEN');
+      onFailure('NOT_OPEN');
       return;
     }
-    this.ready.then(deliver, (error: unknown) => {
-      this.#host.sendFailed(this.id, message.topic, message.id, 'NOT_OPEN', error);
+    this.ready.then(attempt, (error: unknown) => {
+      onFailure('NOT_OPEN', error);
     });
+  }
+
+  // ── requests to the remote ─────────────────────────────────────────────
+
+  /**
+   * Send a local unicast to the remote as a `kind: 'request'` frame and
+   * wait for the matching `kind: 'response'` over this transport.
+   *
+   * Resolves — never rejects — with the far side's result, `NACK TIMEOUT`
+   * when nothing came back in time (the far side may still run it; retry
+   * is the caller's decision, keyed by the message id), `NACK REMOTE_GONE`
+   * when the remote is destroyed or the transport could not carry the
+   * frame, `NACK TRANSPORT_ONE_WAY` / `NACK TRANSPORT_FANOUT` immediately
+   * for transports that cannot answer. `NACK BROKER_DESTROYED` when the
+   * broker went down while the request was pending.
+   * @internal
+   */
+  request(message: Message, timeout: number | undefined): Promise<RoutingResult> {
+    if (!this.duplex) {
+      return Promise.resolve(
+        RoutingResult.create('NACK', RoutingReason.TRANSPORT_ONE_WAY, `Remote '${this.id}' is inbound-only (${this.kind}); it cannot answer a request`, this.id),
+      );
+    }
+    if (this.fanout) {
+      return Promise.resolve(
+        RoutingResult.create('NACK', RoutingReason.TRANSPORT_FANOUT, `Remote '${this.id}' is a fan-out transport (${this.kind}); a request has no single responder`, this.id),
+      );
+    }
+    if (this.#destroyed) {
+      return Promise.resolve(RoutingResult.create('NACK', RoutingReason.REMOTE_GONE, `Remote '${this.id}' has been destroyed`, this.id));
+    }
+
+    const effectiveTimeout = timeout ?? this.#timeout ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    const correlationId = message.id;
+    const deadline = Date.now() + effectiveTimeout;
+
+    return new Promise<RoutingResult>((resolve) => {
+      const entry: PendingRequest = {
+        topic: message.topic,
+        startedAt: Date.now(),
+        timer: setTimeout(() => {
+          if (this.#pending.delete(correlationId)) {
+            this.#host.requestTimeout({ remoteId: this.id, topic: message.topic, correlationId, timeout: effectiveTimeout });
+            resolve(
+              RoutingResult.create('NACK', RoutingReason.TIMEOUT, `Request to remote '${this.id}' timed out after ${effectiveTimeout} ms`, this.id),
+            );
+          }
+        }, effectiveTimeout),
+        resolve,
+      };
+      this.#pending.set(correlationId, entry);
+
+      const frame = buildFrame(message, this.#host.origin, { correlationId, deadline });
+      this.#deliver(frame, message.topic, message.id, (reason, error) => {
+        // The frame never left: settle now instead of waiting for the timeout.
+        if (this.#settle(correlationId)) {
+          this.#host.sendFailed(this.id, message.topic, message.id, reason, error);
+          resolve(
+            RoutingResult.create('NACK', RoutingReason.REMOTE_GONE, `Remote '${this.id}' could not be reached (${reason})`, this.id),
+          );
+        }
+      });
+      this.#host.requestForwarded({ remoteId: this.id, topic: message.topic, messageId: message.id, correlationId, deadline });
+    });
+  }
+
+  /** Remove a pending entry and clear its timer; `undefined` when unknown. */
+  #settle(correlationId: string): PendingRequest | undefined {
+    const entry = this.#pending.get(correlationId);
+    if (!entry) return undefined;
+    this.#pending.delete(correlationId);
+    if (entry.timer) clearTimeout(entry.timer);
+    return entry;
+  }
+
+  #failPending(reason: 'REMOTE_GONE' | 'BROKER_DESTROYED', message: string): void {
+    for (const [correlationId, entry] of Array.from(this.#pending)) {
+      this.#pending.delete(correlationId);
+      if (entry.timer) clearTimeout(entry.timer);
+      entry.resolve(RoutingResult.create('NACK', RoutingReason[reason], message, this.id));
+    }
+  }
+
+  #handleResponse(frame: WireResponse): void {
+    const entry = this.#settle(frame.correlationId);
+    // A response nobody waits for (late, duplicated, or for another realm)
+    // is ignored — matching is by correlationId over this transport only.
+    if (!entry) return;
+    const latencyMs = Date.now() - entry.startedAt;
+    this.#host.responseReceived({
+      remoteId: this.id,
+      topic: frame.topic,
+      correlationId: frame.correlationId,
+      status: frame.status,
+      reason: frame.reason,
+      latencyMs,
+    });
+    entry.resolve(
+      RoutingResult.create(frame.status, frame.reason, frame.message ?? `Remote '${this.id}' answered ${frame.status} ${frame.reason}`, this.id, frame.data),
+    );
+  }
+
+  /**
+   * A request that arrived over the wire targets a local client. Route it
+   * as a unicast, then answer over the same transport — every outcome,
+   * including a hook denial, becomes a response so the peer never waits
+   * for its own timeout unnecessarily. A frame with neither `id` nor
+   * `correlationId` cannot be answered; it is still routed.
+   */
+  async #handleRequest(frame: ParsedWireMessage, source: string, ext: WireExt | undefined): Promise<void> {
+    const result = await this.#host.inject(this.id, frame.topic, source, frame.target, frame.data, {
+      wireId: frame.id,
+      ext,
+    });
+    const correlationId = frame.correlationId ?? frame.id;
+    if (correlationId === undefined || this.#destroyed) return;
+
+    let status = result.status;
+    let { reason, exact } = toWireReason(result.reason);
+    let message: string | undefined = result.message;
+    let data: unknown = result.data;
+    let details: unknown = exact ? undefined : { reason: result.reason };
+    if (status === 'ACK' && data !== undefined && !isEncodable(data)) {
+      status = 'NACK';
+      reason = 'SERIALIZATION_FAILED';
+      message = `Handler result for '${frame.topic}' cannot be encoded for the wire`;
+      data = undefined;
+    }
+    const response = buildResponse({
+      id: this.#host.nextId(),
+      origin: this.#host.origin,
+      correlationId,
+      topic: frame.topic,
+      source: frame.target,
+      target: frame.source ?? this.id,
+      status,
+      reason,
+      message,
+      data,
+      details,
+    });
+    this.#deliver(response, frame.topic, response.id as string, (sendReason, error) => {
+      this.#host.sendFailed(this.id, frame.topic, response.id as string, sendReason, error);
+    });
+    this.#host.responseSent({ remoteId: this.id, topic: frame.topic, correlationId, status, reason });
   }
 
   // ── inbound ────────────────────────────────────────────────────────────
@@ -220,10 +396,12 @@ export class RemoteClientImpl implements RemoteClient {
       return;
     }
 
-    // Response frames are matched to pending requests by correlationId
-    // (later step); until then nothing waits for them, and they must not
-    // be routed as events.
-    if (frame.kind === 'response') return;
+    // Responses bypass `accepts` and identity: they are matched to a
+    // pending request by correlationId, over this transport only.
+    if (frame.kind === 'response') {
+      this.#handleResponse(frame);
+      return;
+    }
 
     if (!matchesAnyPattern(frame.topic, this.#accepts)) {
       this.#host.frameRejected(this.id, 'TOPIC_NOT_ACCEPTED', claimed);
@@ -244,6 +422,10 @@ export class RemoteClientImpl implements RemoteClient {
       ext = { ...ext, hedwig: { ...(ext?.hedwig ?? {}), claimedSource: frame.source } };
     }
 
+    if (frame.kind === 'request') {
+      void this.#handleRequest(frame, source.value, ext);
+      return;
+    }
     void this.#host.inject(this.id, frame.topic, source.value, frame.target, frame.data, {
       wireId: frame.id,
       ext,
@@ -286,8 +468,21 @@ export class RemoteClientImpl implements RemoteClient {
   // ── lifecycle ──────────────────────────────────────────────────────────
 
   destroy(): void {
+    this.dispose('REMOTE_GONE');
+  }
+
+  /**
+   * Tear down with a specific verdict for pending requests: `REMOTE_GONE`
+   * (the remote went away) or `BROKER_DESTROYED` (the whole broker did).
+   * @internal
+   */
+  dispose(pendingReason: 'REMOTE_GONE' | 'BROKER_DESTROYED'): void {
     if (this.#destroyed) return;
     this.#destroyed = true;
+    this.#failPending(
+      pendingReason,
+      pendingReason === 'REMOTE_GONE' ? `Remote '${this.id}' was destroyed while the request was pending` : 'Broker is destroyed',
+    );
     this.#unsubscribe?.();
     this.#unsubscribe = null;
     this.#offClose?.();
@@ -311,5 +506,15 @@ export class RemoteClientImpl implements RemoteClient {
     if (this.#destroyed) {
       throw new Error(`@hedwigjs/broker: remote client '${this.id}' has been destroyed`);
     }
+  }
+}
+
+/** JSON-encodable check for a handler's return value before it goes on the wire. */
+function isEncodable(value: unknown): boolean {
+  try {
+    JSON.stringify(value);
+    return true;
+  } catch {
+    return false;
   }
 }

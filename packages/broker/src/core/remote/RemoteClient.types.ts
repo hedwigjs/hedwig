@@ -30,6 +30,12 @@ export interface RemoteClientOptions {
   maxBytes?: number;
   /** Inbound rate limit; frames over the limit are dropped. */
   rateLimit?: { max: number; window: number };
+  /**
+   * Default timeout (ms) for `request()` calls to this remote. Overridable
+   * per call via `RequestOptions.timeout`; falls back to
+   * `BrokerConfig.request.timeout`, then 5000 ms.
+   */
+  timeout?: number;
 }
 
 /**
@@ -61,7 +67,11 @@ export interface RemoteClient {
   readonly identity: RemoteIdentity['mode'];
   readonly duplex: boolean;
   readonly fanout: boolean;
-  /** `duplex && !fanout` — may be the recipient of a `request()`. */
+  /**
+   * `duplex && !fanout` — may be the recipient of a `request()`. A request
+   * to a remote with `requests: false` resolves `NACK TRANSPORT_ONE_WAY`
+   * (inbound-only) or `NACK TRANSPORT_FANOUT` immediately.
+   */
   readonly requests: boolean;
   /** Resolves when the transport can carry frames; outbound waits for it. */
   readonly ready: Promise<void>;

@@ -111,6 +111,15 @@ export const ACL: AclRules = {
     send: {},
   },
 
+  // ── Remote-request demo — asks the notifications backend (a remote
+  // client over WebSocket) for its status. Send-only, one recipient, one
+  // topic; the response comes back matched by correlationId and never
+  // passes through hooks.
+  'remote-request-demo': {
+    subscribe: [],
+    send: { 'notifications-backend': ['notification.status.v1'] },
+  },
+
   // ── Replay-buffer demo — reads the last cart snapshot on mount. ─────
   // Only listens; never emits. Separate id so the demo's subscription
   // appears distinctly in DevTools' Clients tab.

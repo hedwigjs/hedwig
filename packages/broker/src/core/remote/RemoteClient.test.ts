@@ -631,3 +631,281 @@ describe('built-in transports', () => {
     }
   });
 });
+
+const flush = () => new Promise((r) => setTimeout(r, 5));
+
+describe('requests to a remote client', () => {
+  test('inbound-only and fan-out transports refuse immediately', async () => {
+    const { core } = setup();
+    core.createRemoteClient('sse', { transport: fakeTransport({ duplex: false }) });
+    core.createRemoteClient('tabs', { transport: fakeTransport({ fanout: true }) });
+    const local = new BrokerClient('local', core);
+
+    const oneWay = await local.request('sse', 'a.v1', { n: 1 });
+    const fanout = await local.request('tabs', 'a.v1', { n: 1 });
+    expect(oneWay).toMatchObject({ status: 'NACK', reason: 'TRANSPORT_ONE_WAY', recipientId: 'sse' });
+    expect(fanout).toMatchObject({ status: 'NACK', reason: 'TRANSPORT_FANOUT', recipientId: 'tabs' });
+    core.destroy();
+  });
+
+  test('goes out as kind: request with correlationId + deadline; the matching response resolves it once', async () => {
+    const { core, events } = setup();
+    const transport = fakeTransport();
+    const remote = core.createRemoteClient('backend', { transport });
+    const local = new BrokerClient('local', core);
+    const afterSend = jest.fn();
+    core.useAfterSendHook(afterSend);
+
+    const pending = local.request<'a.v1', { ok: boolean }>('backend', 'a.v1', { n: 1 }, { timeout: 1000 });
+    await tick();
+    expect(remote.pending).toBe(1);
+    const frame = transport.send.mock.calls[0]![0] as Record<string, unknown>;
+    expect(frame).toMatchObject({
+      v: 1,
+      kind: 'request',
+      topic: 'a.v1',
+      source: 'local',
+      target: 'backend',
+      correlationId: frame.id,
+      deadline: expect.any(Number),
+    });
+    expect(events.find(([n]) => n === 'request.forwarded')?.[1]).toMatchObject({ remoteId: 'backend', correlationId: frame.id });
+
+    transport.fire({
+      v: 1,
+      kind: 'response',
+      correlationId: frame.id,
+      topic: 'a.v1',
+      source: 'backend',
+      target: 'local',
+      status: 'ACK',
+      reason: 'DELIVERED',
+      data: { ok: true },
+    });
+    const result = await pending;
+    expect(result).toMatchObject({ status: 'ACK', reason: 'DELIVERED', recipientId: 'backend', data: { ok: true } });
+    expect(remote.pending).toBe(0);
+    expect(afterSend).toHaveBeenCalledTimes(1);
+    expect(afterSend.mock.calls[0]![0]).toMatchObject({ via: 'backend', target: 'backend' });
+    expect(afterSend.mock.calls[0]![1].status).toBe('ACK');
+    expect(events.find(([n]) => n === 'response.received')?.[1]).toMatchObject({
+      remoteId: 'backend',
+      correlationId: frame.id,
+      status: 'ACK',
+      reason: 'DELIVERED',
+      latencyMs: expect.any(Number),
+    });
+    // A duplicate response is ignored.
+    transport.fire({ v: 1, kind: 'response', correlationId: frame.id, topic: 'a.v1', source: 'backend', target: 'local', status: 'NACK', reason: 'HANDLER_FAILED' });
+    await tick();
+    expect(events.filter(([n]) => n === 'response.received')).toHaveLength(1);
+    core.destroy();
+  });
+
+  test('a NACK response is surfaced with its wire reason and message', async () => {
+    const { core } = setup();
+    const transport = fakeTransport();
+    core.createRemoteClient('backend', { transport });
+    const local = new BrokerClient('local', core);
+    const pending = local.request('backend', 'a.v1', { n: 1 });
+    await tick();
+    const { id } = transport.send.mock.calls[0]![0] as { id: string };
+    transport.fire({ kind: 'response', correlationId: id, topic: 'a.v1', source: 'backend', target: 'local', status: 'NACK', reason: 'HANDLER_FAILED', message: 'boom' });
+    expect(await pending).toMatchObject({ status: 'NACK', reason: 'HANDLER_FAILED', message: 'boom', recipientId: 'backend' });
+    core.destroy();
+  });
+
+  test('times out locally (per-call, then remote default), the far side may still run it, a late response is ignored', async () => {
+    const { core, events } = setup();
+    const transport = fakeTransport();
+    const remote = core.createRemoteClient('backend', { transport, timeout: 40 });
+    const local = new BrokerClient('local', core);
+
+    const perCall = await local.request('backend', 'a.v1', { n: 1 }, { timeout: 15 });
+    expect(perCall).toMatchObject({ status: 'NACK', reason: 'TIMEOUT', recipientId: 'backend' });
+    expect(events.find(([n]) => n === 'request.timeout')?.[1]).toMatchObject({ remoteId: 'backend', timeout: 15 });
+
+    const started = Date.now();
+    const byDefault = await local.request('backend', 'a.v1', { n: 2 });
+    expect(byDefault.reason).toBe('TIMEOUT');
+    expect(Date.now() - started).toBeGreaterThanOrEqual(35);
+    expect(remote.pending).toBe(0);
+
+    const { id } = transport.send.mock.calls[0]![0] as { id: string };
+    transport.fire({ kind: 'response', correlationId: id, topic: 'a.v1', source: 'backend', target: 'local', status: 'ACK', reason: 'DELIVERED' });
+    await tick();
+    expect(events.filter(([n]) => n === 'response.received')).toHaveLength(0);
+    core.destroy();
+  });
+
+  test('destroying the remote fails pending requests with REMOTE_GONE; destroying the broker with BROKER_DESTROYED', async () => {
+    const { core } = setup();
+    const t1 = fakeTransport();
+    const t2 = fakeTransport();
+    const r1 = core.createRemoteClient('one', { transport: t1 });
+    core.createRemoteClient('two', { transport: t2 });
+    const local = new BrokerClient('local', core);
+
+    const p1 = local.request('one', 'a.v1', { n: 1 }, { timeout: 5000 });
+    const p2 = local.request('two', 'a.v1', { n: 2 }, { timeout: 5000 });
+    await tick();
+    r1.destroy();
+    expect(await p1).toMatchObject({ status: 'NACK', reason: 'REMOTE_GONE' });
+    core.destroy();
+    expect(await p2).toMatchObject({ status: 'NACK', reason: 'BROKER_DESTROYED' });
+  });
+
+  test('a transport that cannot carry the frame settles the request as REMOTE_GONE right away', async () => {
+    const { core, events } = setup();
+    const transport = fakeTransport();
+    transport.send.mockImplementation(() => {
+      throw new Error('wire down');
+    });
+    core.createRemoteClient('backend', { transport });
+    const local = new BrokerClient('local', core);
+    const result = await local.request('backend', 'a.v1', { n: 1 }, { timeout: 5000 });
+    expect(result).toMatchObject({ status: 'NACK', reason: 'REMOTE_GONE' });
+    expect(events.find(([n]) => n === 'remote.send.failed')?.[1]).toMatchObject({ remoteId: 'backend', reason: 'TRANSPORT_THREW' });
+    core.destroy();
+  });
+
+  test('a response arriving over another remote is ignored', async () => {
+    const { core } = setup();
+    const a = fakeTransport();
+    const b = fakeTransport();
+    core.createRemoteClient('a', { transport: a });
+    core.createRemoteClient('b', { transport: b });
+    const local = new BrokerClient('local', core);
+    const pending = local.request('a', 'a.v1', { n: 1 }, { timeout: 30 });
+    await tick();
+    const { id } = a.send.mock.calls[0]![0] as { id: string };
+    b.fire({ kind: 'response', correlationId: id, topic: 'a.v1', source: 'a', target: 'local', status: 'ACK', reason: 'DELIVERED' });
+    expect((await pending).reason).toBe('TIMEOUT');
+    core.destroy();
+  });
+
+  test('a request that arrived over a wire is never relayed to another remote', async () => {
+    const { core } = setup();
+    const a = fakeTransport();
+    const b = fakeTransport();
+    core.createRemoteClient('a', { transport: a, accepts: ['a.v1'] });
+    core.createRemoteClient('b', { transport: b });
+    a.fire({ kind: 'request', id: 'q', correlationId: 'q', topic: 'a.v1', source: 'a', target: 'b', data: 1 });
+    await flush();
+    expect(b.send).not.toHaveBeenCalled();
+    const response = a.send.mock.calls[0]![0] as Record<string, unknown>;
+    expect(response).toMatchObject({ kind: 'response', correlationId: 'q', status: 'NACK', reason: 'NOT_SUBSCRIBED' });
+    core.destroy();
+  });
+});
+
+describe('requests from a remote client', () => {
+  function fireRequest(transport: FakeTransport, overrides: Record<string, unknown> = {}) {
+    transport.fire({
+      v: 1,
+      id: 'q-1',
+      origin: 'peer',
+      kind: 'request',
+      correlationId: 'q-1',
+      topic: 'a.v1',
+      source: 'backend',
+      target: 'local',
+      data: { n: 2 },
+      ...overrides,
+    });
+  }
+
+  test('is routed as a unicast and answered over the same transport with the handler result', async () => {
+    const { core, events } = setup();
+    const transport = fakeTransport();
+    core.createRemoteClient('backend', { transport, accepts: ['a.v1'] });
+    const seen: Message[] = [];
+    new BrokerClient('local', core).on('a.v1', (m) => {
+      seen.push(m);
+      return { sum: m.data.n * 2 };
+    });
+
+    fireRequest(transport);
+    await flush();
+
+    expect(seen[0]).toMatchObject({ source: 'backend', via: 'backend', wireId: 'q-1', fromExternal: true });
+    expect(transport.send).toHaveBeenCalledTimes(1);
+    expect(transport.send.mock.calls[0]![0]).toMatchObject({
+      v: 1,
+      kind: 'response',
+      correlationId: 'q-1',
+      topic: 'a.v1',
+      source: 'local',
+      target: 'backend',
+      status: 'ACK',
+      reason: 'DELIVERED',
+      data: { sum: 4 },
+      origin: expect.any(String),
+      id: expect.any(String),
+    });
+    expect(events.find(([n]) => n === 'response.sent')?.[1]).toMatchObject({ remoteId: 'backend', correlationId: 'q-1', status: 'ACK', reason: 'DELIVERED' });
+    core.destroy();
+  });
+
+  test.each([
+    ['a throwing handler', (core: BrokerCore<Topics, Payloads>) => new BrokerClient('local', core).on('a.v1', () => { throw new Error('boom'); }), 'HANDLER_FAILED'],
+    ['no handler', () => {}, 'NOT_SUBSCRIBED'],
+    ['a beforeSend denial', (core: BrokerCore<Topics, Payloads>) => core.useBeforeSendHook(() => ({ allowed: false, message: 'nope' })), 'HOOK_REJECTED'],
+    ['an unencodable result', (core: BrokerCore<Topics, Payloads>) => new BrokerClient('local', core).on('a.v1', () => ({ big: BigInt(1) })), 'SERIALIZATION_FAILED'],
+  ])('%s answers NACK %s', async (_name, arrange, reason) => {
+    const { core } = setup();
+    const transport = fakeTransport();
+    core.createRemoteClient('backend', { transport, accepts: ['a.v1'] });
+    arrange(core);
+    fireRequest(transport);
+    await flush();
+    expect(transport.send).toHaveBeenCalledTimes(1);
+    expect(transport.send.mock.calls[0]![0]).toMatchObject({ kind: 'response', correlationId: 'q-1', status: 'NACK', reason });
+    core.destroy();
+  });
+
+  test('a request without id and correlationId is routed but cannot be answered', async () => {
+    const { core } = setup();
+    const transport = fakeTransport();
+    core.createRemoteClient('backend', { transport, accepts: ['a.v1'] });
+    const handler = jest.fn(() => 'ok');
+    new BrokerClient('local', core).on('a.v1', handler);
+    fireRequest(transport, { id: undefined, correlationId: undefined });
+    await flush();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(transport.send).not.toHaveBeenCalled();
+    core.destroy();
+  });
+
+  test('an explicit request targeting * is MALFORMED', async () => {
+    const { core, events } = setup();
+    const transport = fakeTransport();
+    core.createRemoteClient('backend', { transport, accepts: ['a.v1'] });
+    fireRequest(transport, { target: '*' });
+    await flush();
+    expect(events.find(([n]) => n === 'remote.frame.rejected')?.[1]).toMatchObject({ reason: 'MALFORMED' });
+    core.destroy();
+  });
+
+  test('end to end: two brokers over a MessageChannel answer each other', async () => {
+    const { port1, port2 } = new MessageChannel();
+    const shell = setup().core;
+    const worker = setup().core;
+    try {
+      shell.createRemoteClient('worker', { transport: { kind: 'message-port', port: port1 }, identity: { mode: 'prefix' } });
+      worker.createRemoteClient('shell', { transport: { kind: 'message-port', port: port2 }, identity: { mode: 'prefix' }, accepts: ['a.*'] });
+      new BrokerClient('worker', worker).on('a.v1', (m) => ({ echo: m.data.n, from: m.source }));
+
+      const result = await new BrokerClient('ui', shell).request<'a.v1', { echo: number; from: string }>('worker', 'a.v1', { n: 5 }, { timeout: 2000 });
+      expect(result).toMatchObject({ status: 'ACK', reason: 'DELIVERED', recipientId: 'worker', data: { echo: 5, from: 'shell:ui' } });
+
+      // `b.*` is not in the worker's `accepts`: dropped at its ingress, no
+      // response ever comes, the shell side times out.
+      const missing = await new BrokerClient('ui2', shell).request('worker', 'b.v1', { n: 1 }, { timeout: 300 });
+      expect(missing).toMatchObject({ status: 'NACK', reason: 'TIMEOUT' });
+    } finally {
+      shell.destroy();
+      worker.destroy();
+    }
+  }, 10000);
+});

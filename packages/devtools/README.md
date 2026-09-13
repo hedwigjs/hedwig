@@ -104,6 +104,10 @@ Rejections from hooks surface in three places at once:
   emit shows as `NACK HOOK_REJECTED` in Messages.
 - `remote.frame.rejected` → System Events tab with a red `rejected` badge
   and the reason (`MALFORMED`, `ECHO`, `SOURCE_MISMATCH`, …).
+- `request.forwarded` / `response.received` / `response.sent` → System
+  Events tab with a blue `sent` / `received` badge, correlation id and
+  latency; `request.timeout` with an amber `failed` badge. The request's
+  own row in Messages carries the final result and round-trip latency.
 - `remote.send.failed` → System Events tab with an amber `failed` badge
   (distinct from the red `rejected`, which is a policy decision). The
   sender's message still shows as delivered in Messages — the local

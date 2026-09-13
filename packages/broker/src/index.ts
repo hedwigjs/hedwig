@@ -85,7 +85,7 @@ export type { RemoteClientInfo } from './core/types';
 // ── Wire envelope v1 ────────────────────────────────────────────────────
 // Spec: docs/content/spec/envelope-v1.md; schema shipped as
 // `@hedwigjs/broker/spec/envelope-v1.schema.json`.
-export { WIRE_VERSION, WIRE_RESPONSE_REASONS, parseFrame, buildFrame } from './core/wire/envelope';
+export { WIRE_VERSION, WIRE_RESPONSE_REASONS, parseFrame, buildFrame, buildResponse, toWireReason } from './core/wire/envelope';
 export type {
   WireKind,
   WireMessage,

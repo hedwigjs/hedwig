@@ -92,6 +92,21 @@ export function attachInspector(
   const unsubRemoteSendFailed = broker.$systemEvents.on("remote.send.failed", (payload) => {
     store.pushSystemEvent("remote.send.failed", payload);
   });
+  // Requests over a wire. The message row already carries the final result
+  // and latency; these four are the wire-level trace (frame left, response
+  // matched, local timeout, inbound request answered).
+  const unsubRequestForwarded = broker.$systemEvents.on("request.forwarded", (payload) => {
+    store.pushSystemEvent("request.forwarded", payload);
+  });
+  const unsubResponseReceived = broker.$systemEvents.on("response.received", (payload) => {
+    store.pushSystemEvent("response.received", payload);
+  });
+  const unsubRequestTimeout = broker.$systemEvents.on("request.timeout", (payload) => {
+    store.pushSystemEvent("request.timeout", payload);
+  });
+  const unsubResponseSent = broker.$systemEvents.on("response.sent", (payload) => {
+    store.pushSystemEvent("response.sent", payload);
+  });
   // Live counterpart of the hydrated realm-singleton event above — fires
   // when a lazily loaded remote brings its own copy of the library after
   // the panel is already attached.
@@ -134,6 +149,10 @@ export function attachInspector(
     unsubRemoteDestroyed();
     unsubRemoteFrameRejected();
     unsubRemoteSendFailed();
+    unsubRequestForwarded();
+    unsubResponseReceived();
+    unsubRequestTimeout();
+    unsubResponseSent();
     unsubDuplicateCopy();
     unsubHookFailed();
     unsubSubscriptionRejected();

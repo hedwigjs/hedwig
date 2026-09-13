@@ -21,17 +21,18 @@ Custom transports declare their own flags; defaults are `duplex: true`,
 | --- | --- | --- | --- | --- | --- |
 | Inbound events | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Outbound events (`forward`) | ✓ | ✓ | ✓ | ✓ | — (inbound-only) |
-| Requests to the remote | planned (`requests: true`) | planned | never (fan-out) | planned | never (one-way) |
-| Requests from the remote | planned | planned | never | planned | never |
+| Requests to the remote (`requests: true`) | ✓ | ✓ | never (`TRANSPORT_FANOUT`) | ✓ | never (`TRANSPORT_ONE_WAY`) |
+| Requests from the remote (answered over the same transport) | ✓ | ✓ | ✓ (fan-out: every tab answers) | ✓ | never (no upstream) |
 | `maxBytes` | — (objects) | — | — | ✓ | ✓ |
 | `rateLimit` | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Identity `fixed` | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Identity `allow` | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Identity `prefix` | ✓ | ✓ | ✓ (recommended) | ✓ | ✓ |
 
-"planned" = specified in RFC-0003 §7, lands with the requests step; the
-remote's `requests` flag already tells the SDK whether a transport could
-ever carry one.
+A request to a fan-out remote is refused because it would have as many
+responders as peers; a request *from* a peer on a fan-out transport is
+answered by every realm that holds a handler, and the peer keeps the
+first response matching its `correlationId`.
 
 ## Environments
 

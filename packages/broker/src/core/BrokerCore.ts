@@ -458,6 +458,9 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     }
     if (via !== undefined) {
       message.via = via;
+    } else if (recipient !== '*' && this.#remotes.has(recipient)) {
+      // A request to a remote client: the answer travels over that remote.
+      message.via = recipient;
     }
     if (wire?.wireId !== undefined) {
       message.wireId = wire.wireId;
@@ -498,26 +501,29 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       this.#history.record(frozenMessage);
     }
 
-    // Multicast never carries response data; the cast widens its phantom R
-    // so both branches share the Promise<RoutingResult<R>> return type.
+    // Stage 4: route. A unicast whose recipient is a remote client goes out
+    // as a `kind: 'request'` frame and waits for the response (local-origin
+    // only: a request that arrived over one wire is never relayed to
+    // another). Multicast never carries response data; the cast widens its
+    // phantom R so all branches share the Promise<RoutingResult<R>> type.
+    const remoteRecipient = recipient !== '*' && !fromExternal ? this.#remotes.get(recipient) : undefined;
     const result: RoutingResult<R> =
       recipient === '*'
         ? ((await this.#router.multicast(frozenMessage, sender)) as RoutingResult<R>)
-        : await this.#router.unicast<K, R>(
-            frozenMessage,
-            recipient,
-            options?.timeout ?? this.#requestTimeout,
-          );
+        : remoteRecipient
+          ? ((await remoteRecipient.request(frozenMessage, options?.timeout ?? this.#requestTimeout)) as RoutingResult<R>)
+          : await this.#router.unicast<K, R>(
+              frozenMessage,
+              recipient,
+              options?.timeout ?? this.#requestTimeout,
+            );
 
     // Stage 5: afterSend hooks
     this.#hooks.afterSend(frozenMessage, result);
 
     // Stage 6: Forward to remote clients — local multicasts only. A frame
-    // that came in over a transport is never echoed back, and a unicast
-    // never crosses the wire: its recipient is resolved locally
-    // (NOT_SUBSCRIBED otherwise)
-    // and its result could not come back over the wire, so forwarding it
-    // would execute a command remotely while reporting failure here.
+    // that came in over a transport is never echoed back; a unicast was
+    // already answered in stage 4 (locally, or by the remote it targeted).
     if (!fromExternal && recipient === '*') {
       this.#forwardToRemotes(frozenMessage);
     }
@@ -711,6 +717,11 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
         this.#systemEvents.emit('remote.destroyed', { remoteId, at });
         this.#systemEvents.emit('client.unregistered', { clientId: remoteId, at });
       },
+      nextId: () => `${this.#sessionId}-${++this.#eventCounter}`,
+      requestForwarded: (payload) => this.#systemEvents.emit('request.forwarded', { ...payload, topic: payload.topic as T }),
+      responseReceived: (payload) => this.#systemEvents.emit('response.received', { ...payload, topic: payload.topic as T }),
+      requestTimeout: (payload) => this.#systemEvents.emit('request.timeout', { ...payload, topic: payload.topic as T }),
+      responseSent: (payload) => this.#systemEvents.emit('response.sent', { ...payload, topic: payload.topic as T }),
     });
 
     // Registered before the initial `forward` so a policy denial there
@@ -772,7 +783,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     this.#isDestroyed = true;
 
     for (const remote of Array.from(this.#remotes.values())) {
-      remote.destroy();
+      remote.dispose('BROKER_DESTROYED');
     }
     this.#remotes.clear();
 

@@ -11,6 +11,11 @@
   background: rgba(107, 114, 128, 0.03);
 }
 
+.row[data-verb="sent"],
+.row[data-verb="received"] {
+  border-left: 3px solid #0ea5e9;
+}
+
 .row[data-verb="rejected"] {
   border-left: 3px solid #ef4444;
   background: rgba(239, 68, 68, 0.05);
@@ -52,7 +57,9 @@
 .verbRemoved,
 .verbRejected,
 .verbFailed,
-.verbWarning {
+.verbWarning,
+.verbSent,
+.verbReceived {
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 3px;
@@ -108,6 +115,17 @@
 .verbFailed {
   background: #78350f;
   color: #fde68a;
+}
+
+/* Wire-level request trace: neutral blue, a frame left or came back. */
+.verbSent {
+  background: #0c4a6e;
+  color: #bae6fd;
+}
+
+.verbReceived {
+  background: #075985;
+  color: #e0f2fe;
 }
 
 /* Nothing broke, but the page is not what the author assumed. Same amber

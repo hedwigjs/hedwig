@@ -35,7 +35,7 @@ structural check equivalent to the schema.
 | `kind` | no¹ | `event` \| `request` | Defaults to `target === '*' ? 'event' : 'request'`. |
 | `topic` | **yes** | non-empty string | |
 | `source` | no | non-empty string | May be omitted for a `fixed`-identity remote; must be listed for `allow`; required for `prefix`. |
-| `target` | **yes** | non-empty string | `*` for a multicast, otherwise a client id. |
+| `target` | **yes** | non-empty string | `*` for a multicast, otherwise a client id. An explicit `kind: 'request'` with `*` is `MALFORMED`. |
 | `data` | **yes** | any JSON | `null` is a value; absence is `MALFORMED`. |
 | `timestamp` | no | integer ≥ 0 | Producer clock; informational. |
 | `correlationId` | no | non-empty string | Request: equals `id`. Event: groups the frames of one streamed result. |
@@ -77,6 +77,7 @@ Required: `kind`, `correlationId`, `topic`, `source`, `target`, `status`,
 | `HANDLER_FAILED` | The handler threw. `message` is a summary. |
 | `TIMEOUT` | The responder gave up waiting for its own handler. |
 | `BROKER_DESTROYED` | The responder's runtime was shut down. |
+| `SERIALIZATION_FAILED` | The handler answered, but its return value could not be encoded for the wire (`BigInt`, cycles). |
 
 Anything else is `MALFORMED`. Reasons that are local to the requester
 (the remote is gone, the transport is one-way) never appear on the wire.
@@ -107,9 +108,22 @@ Nothing that fails here reaches a hook.
 2. Structural check equivalent to the schema (`MALFORMED`).
 3. `v` and `kind` support (`UNSUPPORTED`).
 4. Echo guard (`ECHO`).
-5. For messages: `topic` in the remote's `accepts` (`TOPIC_NOT_ACCEPTED`). For responses: a matching pending request by `correlationId`; unmatched responses are dropped.
+5. For messages: `topic` in the remote's `accepts` (`TOPIC_NOT_ACCEPTED`). For responses: a matching pending request by `correlationId` on **this** remote client; unmatched responses are dropped silently.
 6. Identity mode (`SOURCE_MISMATCH`, `SOURCE_NOT_ALLOWED`; a missing `source` under `prefix` is `MALFORMED`).
-7. Pipeline: `beforeSend` hooks, routing, `afterSend` hooks.
+7. Pipeline: `beforeSend` hooks, routing, `afterSend` hooks. A `kind: 'request'` is routed as a unicast to `target` and **always** answered over the same transport — the handler's result, or `NACK` with `NOT_SUBSCRIBED`, `HANDLER_FAILED`, `HOOK_REJECTED`, `SERIALIZATION_FAILED`. A request without `id` and `correlationId` is routed but cannot be answered.
+
+## Requests
+
+A runtime sends a local `request()` whose recipient is a remote client as
+a `kind: 'request'` frame with `correlationId = id` and `deadline = now +
+timeout`, and keeps a pending entry on that remote client. The response
+resolves it; the runtime's own timer resolves it `NACK TIMEOUT` (the far
+side may still execute — retry is the caller's decision, keyed by the
+request `id`). Destroying the remote resolves pending requests `NACK
+REMOTE_GONE`; destroying the runtime, `NACK BROKER_DESTROYED`. A remote
+whose transport cannot answer refuses immediately: `TRANSPORT_ONE_WAY`
+(inbound-only) or `TRANSPORT_FANOUT` (one `send` reaches many peers).
+Those reasons are local and never appear in a response frame.
 
 ## Local-only fields
 

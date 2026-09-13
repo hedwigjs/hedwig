@@ -13,6 +13,14 @@ export const RoutingReason = {
   DEBUG_DISABLED: 'DEBUG_DISABLED',
   /** `request()` — the recipient's handler did not settle within `timeout`. */
   TIMEOUT: 'TIMEOUT',
+  /** `request()` to a remote client whose transport is inbound-only (SSE). */
+  TRANSPORT_ONE_WAY: 'TRANSPORT_ONE_WAY',
+  /** `request()` to a remote client on a fan-out transport (BroadcastChannel). */
+  TRANSPORT_FANOUT: 'TRANSPORT_FANOUT',
+  /** `request()` to a remote client that was destroyed or could not be reached. */
+  REMOTE_GONE: 'REMOTE_GONE',
+  /** A handler's return value could not be encoded for the wire. */
+  SERIALIZATION_FAILED: 'SERIALIZATION_FAILED',
 } as const;
 
 export type RoutingReasonType = (typeof RoutingReason)[keyof typeof RoutingReason];

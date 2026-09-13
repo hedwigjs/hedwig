@@ -36,6 +36,96 @@ export interface Envelope<Topic extends string = string, Data = unknown> {
   ext?: Record<string, unknown>;
 }
 
+/** Flat outcome of a request that reached this backend. */
+export interface ResponseEnvelope<Data = unknown> {
+  v: typeof WIRE_VERSION;
+  id: string;
+  origin: string;
+  kind: 'response';
+  correlationId: string;
+  topic: string;
+  source: string;
+  target: string;
+  status: 'ACK' | 'NACK';
+  reason: 'DELIVERED' | 'HOOK_REJECTED' | 'NOT_SUBSCRIBED' | 'HANDLER_FAILED' | 'TIMEOUT' | 'BROKER_DESTROYED' | 'SERIALIZATION_FAILED';
+  message?: string;
+  data?: Data;
+  timestamp: number;
+}
+
+/**
+ * Answer a `kind: 'request'` frame. `correlationId` is the request's
+ * `correlationId` (or its `id`), `source` is us (the request's `target`),
+ * `target` is the requester (the request's `source`). `reason` is the
+ * spec's closed set — the browser maps it onto its own `RoutingReason`.
+ */
+export function createResponse<Data>(input: {
+  correlationId: string;
+  topic: string;
+  source: string;
+  target: string;
+  status: 'ACK' | 'NACK';
+  reason: ResponseEnvelope['reason'];
+  message?: string;
+  data?: Data;
+}): ResponseEnvelope<Data> {
+  const frame: ResponseEnvelope<Data> = {
+    v: WIRE_VERSION,
+    id: randomUUID(),
+    origin: ORIGIN,
+    kind: 'response',
+    correlationId: input.correlationId,
+    topic: input.topic,
+    source: input.source,
+    target: input.target,
+    status: input.status,
+    reason: input.reason,
+    timestamp: Date.now(),
+  };
+  if (input.message !== undefined) frame.message = input.message;
+  if (input.data !== undefined) frame.data = input.data;
+  return frame;
+}
+
+/**
+ * Minimal reading of an inbound frame: enough to tell a request apart and
+ * answer it. The browser runtime validates everything it sends per the
+ * schema; a backend that exposes the socket to the world should validate
+ * with the schema too.
+ */
+export interface InboundRequest {
+  correlationId: string;
+  topic: string;
+  source: string;
+  target: string;
+  data: unknown;
+}
+
+export function readRequest(raw: unknown): InboundRequest | null {
+  let frame: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      frame = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (!frame || typeof frame !== 'object') return null;
+  const f = frame as Record<string, unknown>;
+  const kind = f.kind ?? (f.target === '*' ? 'event' : 'request');
+  if (kind !== 'request') return null;
+  const correlationId = typeof f.correlationId === 'string' ? f.correlationId : typeof f.id === 'string' ? f.id : null;
+  if (correlationId === null) return null;
+  if (typeof f.topic !== 'string' || typeof f.target !== 'string' || !('data' in f)) return null;
+  return {
+    correlationId,
+    topic: f.topic,
+    source: typeof f.source === 'string' ? f.source : f.target,
+    target: f.target,
+    data: f.data,
+  };
+}
+
 export function createEnvelope<Topic extends string, Data>(input: {
   topic: Topic;
   source: string;

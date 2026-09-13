@@ -23,6 +23,7 @@ export const WIRE_RESPONSE_REASONS = [
   'HANDLER_FAILED',
   'TIMEOUT',
   'BROKER_DESTROYED',
+  'SERIALIZATION_FAILED',
 ] as const;
 export type WireResponseReason = (typeof WIRE_RESPONSE_REASONS)[number];
 
@@ -174,6 +175,9 @@ export function parseFrame(raw: unknown): ParseResult {
 
   if (!('data' in f)) return { ok: false, reason: 'MALFORMED' };
   if (!isOptionalTimestamp(f.deadline)) return { ok: false, reason: 'MALFORMED' };
+  // A request names one recipient; an explicit `kind: 'request'` with the
+  // multicast target is a contradiction the schema also refuses.
+  if (f.kind === 'request' && f.target === '*') return { ok: false, reason: 'MALFORMED' };
   const kind: 'event' | 'request' =
     f.kind === 'event' || f.kind === 'request' ? f.kind : f.target === '*' ? 'event' : 'request';
   return {
@@ -198,10 +202,16 @@ export function parseFrame(raw: unknown): ParseResult {
 /**
  * Build the outbound frame for a local message. Only wire fields are
  * copied — local-only flags (`replayed`, `fromExternal`, `synthetic`,
- * `via`, `wireId`, `ext`) never leave the realm.
+ * `via`, `wireId`, `ext`) never leave the realm. A request carries its
+ * own id as `correlationId` and an absolute `deadline` when it has a
+ * timeout.
  */
-export function buildFrame(message: Message, origin: string): WireMessage {
-  return {
+export function buildFrame(
+  message: Message,
+  origin: string,
+  options?: { correlationId?: string; deadline?: number },
+): WireMessage {
+  const frame: WireMessage = {
     v: WIRE_VERSION,
     id: message.id,
     origin,
@@ -212,4 +222,57 @@ export function buildFrame(message: Message, origin: string): WireMessage {
     data: message.data,
     timestamp: message.timestamp,
   };
+  if (options?.correlationId !== undefined) frame.correlationId = options.correlationId;
+  if (options?.deadline !== undefined) frame.deadline = options.deadline;
+  return frame;
+}
+
+/**
+ * Build the flat response frame for a request that arrived over a wire.
+ * `source` is the responder (the request's `target`), `target` the
+ * requester (the request's `source`). No stack traces: `message` is a
+ * one-line summary.
+ */
+export function buildResponse(input: {
+  id: string;
+  origin: string;
+  correlationId: string;
+  topic: string;
+  source: string;
+  target: string;
+  status: 'ACK' | 'NACK';
+  reason: WireResponseReason;
+  message?: string;
+  data?: unknown;
+  details?: unknown;
+}): WireResponse {
+  const frame: WireResponse = {
+    v: WIRE_VERSION,
+    id: input.id,
+    origin: input.origin,
+    kind: 'response',
+    correlationId: input.correlationId,
+    topic: input.topic,
+    source: input.source,
+    target: input.target,
+    status: input.status,
+    reason: input.reason,
+    timestamp: Date.now(),
+  };
+  if (input.message !== undefined) frame.message = input.message;
+  if (input.data !== undefined) frame.data = input.data;
+  if (input.details !== undefined) frame.details = input.details;
+  return frame;
+}
+
+/**
+ * Map a local routing reason onto the closed wire enum. Reasons that only
+ * make sense locally (`DISPATCHED`, `REPLAY_DELIVERED`, `DEBUG_DISABLED`,
+ * `NO_SUBSCRIBERS`, the `REMOTE_*` / `TRANSPORT_*` family) collapse to
+ * `HANDLER_FAILED` with the original reason kept in `details`.
+ */
+export function toWireReason(reason: string): { reason: WireResponseReason; exact: boolean } {
+  return (WIRE_RESPONSE_REASONS as readonly string[]).includes(reason)
+    ? { reason: reason as WireResponseReason, exact: true }
+    : { reason: 'HANDLER_FAILED', exact: false };
 }

@@ -145,6 +145,41 @@ export interface SystemEventMap<T extends string, P extends Record<T, any>> {
     reason: 'TRANSPORT_THREW' | 'NOT_OPEN';
     error?: unknown;
   };
+
+  // ─── Requests over a wire (trace; the message row carries the result) ──
+
+  /** A local `request()` to a remote client left as a `kind: 'request'` frame. */
+  'request.forwarded': {
+    remoteId: string;
+    topic: T;
+    messageId: string;
+    correlationId: string;
+    deadline?: number;
+  };
+  /** A `kind: 'response'` frame matched a pending request on that remote. */
+  'response.received': {
+    remoteId: string;
+    topic: T;
+    correlationId: string;
+    status: 'ACK' | 'NACK';
+    reason: string;
+    latencyMs: number;
+  };
+  /** A pending request to a remote expired locally; the far side may still run it. */
+  'request.timeout': {
+    remoteId: string;
+    topic: T;
+    correlationId: string;
+    timeout: number;
+  };
+  /** A request that arrived from a remote was answered over the same transport. */
+  'response.sent': {
+    remoteId: string;
+    topic: T;
+    correlationId: string;
+    status: 'ACK' | 'NACK';
+    reason: string;
+  };
 }
 
 export type SystemEventName<T extends string, P extends Record<T, any>> = keyof SystemEventMap<
