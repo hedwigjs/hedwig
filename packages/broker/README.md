@@ -461,6 +461,28 @@ Contract summary:
   `ready` (a promise the runtime awaits before sending), `onClose(cb)`
   (lets the runtime destroy the remote when the wire is gone).
 
+**Conformance.** `@hedwigjs/broker/conformance` is the list of checks
+every transport must pass — the built-ins run it in this package's own
+suite. Give it a factory that returns a *pair* (our end and the peer's
+end, wired to each other) and feed the cases to your test runner:
+
+```ts
+import { transportConformance, createMemoryTransportPair } from '@hedwigjs/broker/conformance';
+
+for (const c of transportConformance(() => myWiredPair())) test(c.name, c.run);
+```
+
+Cases: capability flags are well-typed; `ready` resolves; a frame arrives
+as a valid envelope with id, topic and data intact; a burst of 25 frames
+keeps its order; the reverse direction works when `duplex`; `send` on an
+inbound-only transport does not throw; `onMessage`'s unsubscribe stops
+delivery; `destroy` stops delivery, is idempotent and leaves `send`
+harmless; `onClose` fires when the pair's `close()` cuts the wire.
+`createMemoryTransportPair()` is the reference implementation and a handy
+stand-in for a real wire in unit tests.
+
+---
+
 ## Wire format
 
 Everything that crosses a transport is a **wire envelope v1** frame —

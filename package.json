@@ -26,7 +26,8 @@
     "test": "npm test -w @hedwigjs/client && npm test -w @hedwigjs/broker && npm test -w @hedwigjs/devtools && npm test -w @hedwigjs/react && npm test -w @hedwigjs/vue && npm test -w @hedwig-demo/backend",
     "dev:demo": "npm run dev -w @hedwig-demo/advanced",
     "stop:demo": "npm run stop -w @hedwig-demo/advanced",
-    "restart:demo": "npm run restart -w @hedwig-demo/advanced"
+    "restart:demo": "npm run restart -w @hedwig-demo/advanced",
+    "e2e": "npm run e2e -w @hedwig-demo/advanced"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^1.0.0",

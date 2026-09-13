@@ -287,6 +287,19 @@ step; it goes away once DevTools and the reference stand have moved.
   toasts via `useTopic`. The hand-written `useEffect` / `useRef` lifecycle
   code is gone.
 
+### Transport conformance kit and end-to-end suite (step 9)
+
+- `@hedwigjs/broker/conformance`: `transportConformance(factory)` returns
+  framework-agnostic `{ name, run }` cases (flags, `ready`, envelope
+  round trip, ordering, duplex, unsubscribe, idempotent destroy,
+  `onClose`); `createMemoryTransportPair()` is the reference pair. The
+  built-in MessagePort, BroadcastChannel and WebSocket transports pass it
+  in the broker's own suite; a deliberately broken transport fails it.
+- Reference stand: Playwright suite `examples/advanced/e2e` (cart and
+  retained state, ACL denials, SSE chat, WebSocket notification, request
+  to the backend, checkout iframe, cross-tab, DevTools) in Playwright's
+  own headless Chromium; `npm run e2e` boots the stand itself.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

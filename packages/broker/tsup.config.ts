@@ -6,7 +6,7 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 };
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: { index: 'src/index.ts', 'conformance/index': 'src/conformance/index.ts' },
   format: ['cjs', 'esm'],
   dts: {
     tsconfig: './tsconfig.build.json',
