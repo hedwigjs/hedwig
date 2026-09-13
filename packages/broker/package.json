@@ -1,6 +1,6 @@
 {
   "name": "@hedwigjs/broker",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Runtime broker for the Hedwig messaging toolkit. One API over any transport.",
   "publishConfig": {
     "access": "public"
@@ -47,7 +47,7 @@
     "bench:one": "node benchmarks/run-one.mjs"
   },
   "dependencies": {
-    "@hedwigjs/client": "^0.2.0"
+    "@hedwigjs/client": "^0.3.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.0",
