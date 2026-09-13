@@ -18,6 +18,8 @@ export type BrokerLogEvent =
   | 'debug.disabled'
   // Message routing
   | 'handler.failed'
+  | 'unicast.multiple_handlers'
+  | 'request.history_deprecated'
   // Hooks
   | 'hook.after_send.failed'
   | 'hook.failed'

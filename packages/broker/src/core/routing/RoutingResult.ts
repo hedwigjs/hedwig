@@ -11,6 +11,8 @@ export const RoutingReason = {
   BROKER_DESTROYED: 'BROKER_DESTROYED',
   /** `$debug.send` called on a broker booted without `debug: true`. */
   DEBUG_DISABLED: 'DEBUG_DISABLED',
+  /** `request()` — the recipient's handler did not settle within `timeout`. */
+  TIMEOUT: 'TIMEOUT',
 } as const;
 
 export type RoutingReasonType = (typeof RoutingReason)[keyof typeof RoutingReason];

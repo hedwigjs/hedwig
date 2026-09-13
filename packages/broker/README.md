@@ -201,10 +201,10 @@ Returned by `createClient(id)`.
 
 | Method                                              | Semantics                                                                                                                 |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `on(topic, handler, options?)`                      | Subscribe. Returns an unsubscribe function. Accepts `backpressure` and `replay` options. Throws if an `onSubscribe` hook rejects. |
+| `on(topic, handler, options?)`                      | Subscribe. Returns an unsubscribe function. Accepts `backpressure`, `replay` and `noLocal` (default `true`: your own emits are not delivered to you) options. Throws if an `onSubscribe` hook rejects. |
 | `off(topic)`                                        | Unsubscribe. No-op if not subscribed.                                                                                     |
 | `emit(topic, data, options?)`                       | Broadcast to every subscriber of `topic`. Resolves with the aggregated `RoutingResult`.                                    |
-| `request<K, R>(recipient, topic, data, options?)`   | Targeted call to one recipient. Resolves with `RoutingResult<R>` where `R` is the handler's return type.                   |
+| `request<K, R>(recipient, topic, data, options?)`   | Targeted call to one recipient. Resolves with `RoutingResult<R>` where `R` is the handler's return type. Answered by the recipient's first handler, bypassing its backpressure. `options.timeout` (ms) bounds the wait: `NACK TIMEOUT` on expiry, the handler keeps running. |
 | `reset()`                                           | Drop every subscription for this client; keep it registered. Used internally for HMR / re-mount.                          |
 | `destroy()`                                         | Unregister the client; the instance becomes inert.                                                                        |
 | `id`                                                | The client id passed to `createClient`.                                                                                   |
@@ -312,6 +312,7 @@ Every `emit` / `request` resolves with a `RoutingResult`:
 | `HANDLER_FAILED`    | The handler threw; the error is logged and the promise resolves NACK. |
 | `BROKER_DESTROYED`  | Emit called on a destroyed broker.                             |
 | `DEBUG_DISABLED`    | `$debug.send` called on a broker booted without `debug: true`. |
+| `TIMEOUT`           | Unicast — the handler did not settle within `options.timeout`. It is not cancelled. |
 
 The full enum is exported as `RoutingReason` for exhaustive `switch`
 statements.
@@ -464,6 +465,17 @@ Typical uses: role-based ACL on read paths, dev-time contract audits.
 
 ---
 
+### When a hook throws
+
+Guard hooks (`beforeSend`, `onSubscribe`) **fail closed** by default: a
+hook that throws counts as a denial, so a crashing ACL never lets
+traffic through. The message resolves `NACK HOOK_REJECTED` (subscribe
+throws), and a `hook.failed` system event plus a `hook.failed` log line
+say it was a crash, not a policy decision. Opt into the old behaviour
+with `initBroker({ hooks: { failMode: 'open' } })` — the throwing hook
+is then skipped. `afterSend` hooks are observers and are always
+isolated.
+
 ## Message history & replay
 
 The broker keeps an in-memory ring buffer. Enable it once in
@@ -519,6 +531,12 @@ in-memory. As a request/response mechanism — use `request()` for that.
 
 ## Backpressure
 
+Backpressure shapes **event** consumption only. `request()` always
+reaches the subscriber's original handler and is always answered — a
+throttled, debounced or rate-limited subscription still responds to
+every request immediately. (Before 0.2 a request to such a subscription
+resolved `ACK` with no data even when the strategy dropped it.)
+
 Per-subscription control over handler invocation rate. Three
 strategies, mutually exclusive:
 
@@ -573,6 +591,7 @@ user messages — infrastructure telemetry.
 | `subscription.removed`   | `{ clientId, topic }`                                      | `client.off(topic)` or reset/destroy.                                       |
 | `subscription.rejected`  | `{ clientId, topic, reason }`                              | An `onSubscribe` hook denied the subscription. Client also throws.          |
 | `message.rejected`       | `{ source, target, topic, reason }`                        | A `beforeSend` hook denied a message. Emit also resolves `NACK HOOK_REJECTED`. |
+| `hook.failed`            | `{ kind, failMode, error, topic?, messageId?, source?, clientId? }` | A hook threw. Guard hooks deny under `failMode: 'closed'` (default) and are skipped under `'open'`; `afterSend` is always skipped. |
 | `bridge.added`           | `{ bridgeId }`                                             | `broker.addBridge(id, …)`.                                                  |
 | `bridge.removed`         | `{ bridgeId }`                                             | Bridge remover called, or broker teardown.                                  |
 | `bridge.send.failed`     | `{ bridgeId, topic, messageId, error }`                    | A transport threw from `send()`. The message was delivered locally and the caller got a normal result — this is the only trace that the wire dropped it. |

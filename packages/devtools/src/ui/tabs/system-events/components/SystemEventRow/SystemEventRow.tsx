@@ -16,6 +16,7 @@ function facetOf(name: SystemEventLogEntry["name"]): EventFacet {
   if (name.startsWith("subscription.")) return "subscription";
   if (name.startsWith("message.")) return "message";
   if (name.startsWith("broker.")) return "broker";
+  if (name.startsWith("hook.")) return "broker";
   return "bridge";
 }
 
@@ -44,6 +45,19 @@ function summarize(entry: SystemEventLogEntry): string {
   const version = typeof p.version === "string" ? p.version : undefined;
   const copyVersion = typeof p.copyVersion === "string" ? p.copyVersion : undefined;
   const copies = typeof p.copies === "number" ? p.copies : undefined;
+
+  // hook.failed: which hook crashed and what the broker did about it.
+  const hookKind = typeof p.kind === "string" ? p.kind : undefined;
+  const failMode = typeof p.failMode === "string" ? p.failMode : undefined;
+  if (hookKind && failMode) {
+    const outcome =
+      hookKind === "afterSend"
+        ? "observer skipped"
+        : failMode === "closed"
+          ? "denied (fail-closed)"
+          : "skipped (fail-open)";
+    return `${hookKind} hook threw · ${outcome}${topic ? ` · ${topic}` : ""}`;
+  }
 
   // Realm-singleton diagnostics (broker.duplicate_copy).
   if (version !== undefined && copies !== undefined) {

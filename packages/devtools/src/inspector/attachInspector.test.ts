@@ -128,6 +128,7 @@ describe("attachInspector", () => {
         "bridge.removed",
         "bridge.send.failed",
         "broker.duplicate_copy",
+        "hook.failed",
       ]),
     );
   });

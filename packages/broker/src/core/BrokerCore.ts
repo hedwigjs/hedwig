@@ -22,12 +22,13 @@ import type {
   SubscriptionOptions,
   BrokerConfig,
   MessageOptions,
+  RequestOptions,
 } from './types';
 import type { BrokerLogger } from './logger/BrokerLogger.types';
 import type { BrokerClient } from './client/BrokerClient';
 import type { OnSubscribeHook, BeforeSendHook, AfterSendHook } from './hooks/HooksRegistry.types';
 import type { Bridge, BridgeConfig, ExternalMessageInjector } from './bridge/Bridge.types';
-import type { SystemEventsEmitter } from './events/SystemEvents.types';
+import type { SystemEventsEmitter, SystemEventPayload } from './events/SystemEvents.types';
 import type { MessageBroker } from './MessageBroker';
 
 /**
@@ -80,6 +81,9 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   readonly version: string = VERSION;
   #duplicateCopies = 0;
   #debugEnabled: boolean;
+  #requestTimeout: number | undefined;
+  /** Topics already warned about for `history: true` on a request. */
+  #warnedRequestHistory = new Set<string>();
 
   /**
    * Infrastructure logger configured via {@link BrokerConfig.logger}.
@@ -94,9 +98,15 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   constructor(config?: BrokerConfig) {
     this.logger = createSafeLogger(config?.logger ?? defaultLogger);
     this.#debugEnabled = config?.debug === true;
+    this.#requestTimeout = config?.request?.timeout;
 
-    this.#hooks = new HooksRegistry(this.logger);
+    // System events first: the hooks registry reports failures through them.
     this.#systemEvents = new SystemEvents(this.logger);
+    this.#hooks = new HooksRegistry(this.logger, {
+      failMode: config?.hooks?.failMode ?? 'closed',
+      onHookFailed: (failure) =>
+        this.#systemEvents.emit('hook.failed', failure as SystemEventPayload<T, P, 'hook.failed'>),
+    });
     this.#backpressure = new BackpressureHandler(this.logger);
     this.#router = new Router(this.#subscriptions, this.logger);
 
@@ -231,7 +241,9 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       options,
     );
 
-    this.#subscriptions.subscribe(clientId, topic, wrappedHandler, options, subscriptionId);
+    // The raw handler rides along so unicast can bypass the backpressure
+    // wrapper — a request must always be answered.
+    this.#subscriptions.subscribe(clientId, topic, wrappedHandler, options, subscriptionId, handler);
     this.#systemEvents.emit('subscription.added', { clientId, topic, options });
 
     if (options?.replay) {
@@ -314,8 +326,14 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     sender: ClientID,
     recipient: ClientID | '*',
     data: P[K],
-    options?: MessageOptions,
+    options?: RequestOptions,
   ): Promise<RoutingResult<R>> {
+    if (recipient !== '*' && options?.history === true && !this.#warnedRequestHistory.has(topic)) {
+      // Replaying a request re-runs a command with no requester to answer.
+      // Retention is an event concern; this option goes away for unicast.
+      this.#warnedRequestHistory.add(topic);
+      this.logger.warn('request.history_deprecated', { topic, recipient });
+    }
     return this.#runPipeline<K, R>(topic, sender, recipient, data, options, false, false);
   }
 
@@ -410,7 +428,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     sender: ClientID,
     recipient: ClientID | '*',
     data: P[K],
-    options: MessageOptions | undefined,
+    options: RequestOptions | undefined,
     fromExternal: boolean,
     synthetic: boolean,
   ): Promise<RoutingResult<R>> {
@@ -462,7 +480,11 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     const result: RoutingResult<R> =
       recipient === '*'
         ? ((await this.#router.multicast(frozenMessage, sender)) as RoutingResult<R>)
-        : await this.#router.unicast<K, R>(frozenMessage, recipient);
+        : await this.#router.unicast<K, R>(
+            frozenMessage,
+            recipient,
+            options?.timeout ?? this.#requestTimeout,
+          );
 
     // Stage 5: afterSend hooks
     this.#hooks.afterSend(frozenMessage, result);

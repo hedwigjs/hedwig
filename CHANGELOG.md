@@ -59,6 +59,26 @@ commit with a changeset; per-package notes will appear in
 - Reference stand loads DevTools through a dynamic `import()` in its
   own chunk and arms the debug channel explicitly.
 
+### Broker — hook failure mode, request semantics, `noLocal`
+
+- Guard hooks fail **closed** by default: a throwing `beforeSend` /
+  `onSubscribe` hook is a denial (`NACK HOOK_REJECTED`, subscribe
+  throws). `hooks: { failMode: 'open' }` restores the old skip. New
+  `hook.failed` system event for every throwing hook.
+- `request()` bypasses backpressure: the recipient's original handler
+  answers every request. A second handler on a unicast pair is warned
+  about once (`unicast.multiple_handlers`).
+- `request()` accepts `timeout` (ms) and `BrokerConfig.request.timeout`
+  sets a default; expiry resolves `NACK TIMEOUT`, the handler is not
+  cancelled.
+- `noLocal` subscription option (default `true`, the old behaviour);
+  `noLocal: false` delivers a client its own emits.
+- `history: true` on a request is deprecated (`request.history_deprecated`,
+  warned once per topic); it will be removed with topic classes.
+- Backpressure strategies isolate async handler rejections; `handler.failed`
+  and `backpressure.handler.failed` carry `messageId`, `topic`, `source`.
+- DevTools renders `hook.failed` in System Events.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

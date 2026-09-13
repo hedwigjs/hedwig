@@ -129,15 +129,16 @@ describe('BrokerCore - Backpressure Integration', () => {
         { backpressure: { throttle: 50 } },
       );
 
-      // Send via request (unicast)
+      // Send via request (unicast). Unicast bypasses backpressure: a request
+      // must always be answered, so every call reaches the raw handler.
       await sender.request('receiver', 'stock.price.v1', { symbol: 'AAPL', price: 100 });
       await sender.request('receiver', 'stock.price.v1', { symbol: 'AAPL', price: 101 });
       await sender.request('receiver', 'stock.price.v1', { symbol: 'AAPL', price: 102 });
 
-      expect(handlerCalls).toEqual([100]); // First only
+      expect(handlerCalls).toEqual([100, 101, 102]);
 
       jest.advanceTimersByTime(50);
-      expect(handlerCalls).toEqual([100, 102]); // Last pending
+      expect(handlerCalls).toEqual([100, 101, 102]); // nothing was pending
 
       jest.useRealTimers();
     });
@@ -397,12 +398,14 @@ describe('BrokerCore - Backpressure Integration', () => {
         { backpressure: { rateLimit: { max: 2, window: 1000 } } },
       );
 
-      // Send via request
+      // Send via request. Unicast bypasses backpressure: rateLimit never
+      // drops a request, every call is answered.
       await sender.request('receiver', 'analytics.track.v1', { event: 'event1' });
       await sender.request('receiver', 'analytics.track.v1', { event: 'event2' });
-      await sender.request('receiver', 'analytics.track.v1', { event: 'event3' }); // DROPPED
+      const third = await sender.request('receiver', 'analytics.track.v1', { event: 'event3' });
 
-      expect(handlerCalls).toEqual(['event1', 'event2']);
+      expect(handlerCalls).toEqual(['event1', 'event2', 'event3']);
+      expect(third.status).toBe('ACK');
     });
   });
 

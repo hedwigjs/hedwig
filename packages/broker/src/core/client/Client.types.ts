@@ -2,6 +2,7 @@ import type {
   ClientID,
   HandlerFn,
   MessageOptions,
+  RequestOptions,
   SubscriptionOptions,
 } from '../types';
 import type { RoutingResult } from '../routing/RoutingResult';
@@ -61,10 +62,16 @@ export interface Client<T extends string, P extends Record<T, any>> {
   /**
    * Send a targeted message to a specific recipient (unicast).
    *
+   * The recipient's FIRST handler on the topic answers; it is called
+   * directly, bypassing any backpressure configured on the subscription —
+   * a request is always answered, never throttled or dropped.
+   *
    * @typeParam R - Expected shape of the handler's return value, surfaced
    *   on `RoutingResult.data`. Defaults to `unknown` — caller must specify
    *   to get a typed response (e.g. `client.request<'user.fetch', User>(…)`).
    *   Not enforced against the handler signature; treated as a boundary cast.
+   * @param options - `timeout` (ms) bounds the wait: on expiry the result is
+   *   `NACK TIMEOUT` and the handler keeps running on its own.
    * @returns Promise resolving to the {@link RoutingResult} for that one
    *   recipient.
    */
@@ -72,7 +79,7 @@ export interface Client<T extends string, P extends Record<T, any>> {
     recipient: ClientID,
     topic: K,
     data: P[K],
-    options?: MessageOptions,
+    options?: RequestOptions,
   ): Promise<RoutingResult<R>>;
 
   /**

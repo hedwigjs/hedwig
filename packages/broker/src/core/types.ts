@@ -82,6 +82,20 @@ export interface MessageOptions {
 }
 
 /**
+ * Options for `request()` — everything from {@link MessageOptions} plus a
+ * per-call timeout.
+ */
+export interface RequestOptions extends MessageOptions {
+  /**
+   * Maximum time (ms) to wait for the recipient's handler. On expiry the
+   * request resolves `NACK TIMEOUT`; the handler is NOT cancelled and may
+   * still complete on its own. Overrides `BrokerConfig.request.timeout`.
+   * `undefined` = wait forever.
+   */
+  timeout?: number;
+}
+
+/**
  * Options for replaying historical messages
  */
 export interface ReplayOptions {
@@ -128,6 +142,19 @@ export interface SubscriptionOptions {
    * is never delivered twice (once live, once replayed).
    */
   replay?: ReplayOptions;
+
+  /**
+   * Exclude the subscriber's own emits from this subscription.
+   *
+   * `true` (default): a client never receives a multicast it emitted itself
+   * — the long-standing broker behaviour. `false`: the client's own emits
+   * are delivered to this handler too, like any other subscriber's. Same
+   * idea as MQTT 5 "No Local". Only affects `emit()`; `request()` to
+   * yourself always works.
+   *
+   * @default true
+   */
+  noLocal?: boolean;
 }
 
 // ========================================
@@ -197,4 +224,29 @@ export interface BrokerConfig {
    * @default false
    */
   debug?: boolean;
+
+  /**
+   * Behaviour of guard hooks (`beforeSend`, `onSubscribe`) when a hook
+   * throws instead of returning a result.
+   *
+   * - `'closed'` (default): the throwing hook counts as a denial — the
+   *   message resolves `NACK HOOK_REJECTED`, the subscription throws. A
+   *   crashing ACL must not let traffic through.
+   * - `'open'`: the error is logged and the hook is skipped (the behaviour
+   *   before 0.2).
+   *
+   * Either way a `hook.failed` system event and a `hook.failed` log line
+   * are produced. Observer hooks (`afterSend`) are always isolated.
+   */
+  hooks?: {
+    failMode?: 'open' | 'closed';
+  };
+
+  /**
+   * Defaults for `request()`.
+   */
+  request?: {
+    /** Default timeout (ms) for every request; see {@link RequestOptions.timeout}. */
+    timeout?: number;
+  };
 }

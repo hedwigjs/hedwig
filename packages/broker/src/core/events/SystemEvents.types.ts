@@ -72,6 +72,23 @@ export interface SystemEventMap<T extends string, P extends Record<T, any>> {
     reason: string;
   };
 
+  // ─── Hooks ────────────────────────────────────────────────────────────────
+
+  /**
+   * A hook threw. For guard hooks (`beforeSend`, `onSubscribe`) `failMode`
+   * says what the broker did: `'closed'` treated it as a denial,
+   * `'open'` skipped it. Observer hooks (`afterSend`) are always skipped.
+   */
+  'hook.failed': {
+    kind: 'beforeSend' | 'onSubscribe' | 'afterSend';
+    failMode: 'open' | 'closed';
+    error: unknown;
+    topic?: T;
+    messageId?: string;
+    source?: ClientID;
+    clientId?: ClientID;
+  };
+
   // ─── Send rejections (hook-driven) ────────────────────────────────────────
 
   /**

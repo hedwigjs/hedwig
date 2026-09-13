@@ -1,5 +1,12 @@
 import type { BrokerCore } from '../BrokerCore';
-import type { ClientID, HandlerFn, MessageHandler, SubscriptionOptions, MessageOptions } from '../types';
+import type {
+  ClientID,
+  HandlerFn,
+  MessageHandler,
+  SubscriptionOptions,
+  MessageOptions,
+  RequestOptions,
+} from '../types';
 import type { RoutingResult } from '../routing/RoutingResult';
 import type { Client } from './Client.types';
 
@@ -77,7 +84,7 @@ export class BrokerClient<T extends string, P extends Record<T, any>>
     recipient: ClientID,
     topic: K,
     data: P[K],
-    options?: MessageOptions,
+    options?: RequestOptions,
   ): Promise<RoutingResult<R>> {
     return this.#core.processMessage<K, R>(topic, this.id, recipient, data, options);
   }

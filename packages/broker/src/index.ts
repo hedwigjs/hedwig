@@ -33,6 +33,7 @@ export type {
   HandlerFn,
   MessageHandler,
   MessageOptions,
+  RequestOptions,
   SubscriptionOptions,
   ReplayOptions,
   ClientInfo,

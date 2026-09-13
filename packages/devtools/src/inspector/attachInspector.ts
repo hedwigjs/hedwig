@@ -111,6 +111,12 @@ export function attachInspector(
   const unsubDuplicateCopy = broker.$systemEvents.on("broker.duplicate_copy", (payload) => {
     store.pushSystemEvent("broker.duplicate_copy", payload);
   });
+  // A hook threw. With the default fail-closed mode a guard hook's failure
+  // is also a denial (the message shows as NACK HOOK_REJECTED); this event
+  // tells you it was a crash, not a policy decision.
+  const unsubHookFailed = broker.$systemEvents.on("hook.failed", (payload) => {
+    store.pushSystemEvent("hook.failed", payload);
+  });
 
   // Security signals — hook-driven rejections. `subscription.rejected` fires
   // when an `onSubscribe` hook denies a subscription (`client.on` throws too,
@@ -141,6 +147,7 @@ export function attachInspector(
     unsubBridgeRemoved();
     unsubBridgeSendFailed();
     unsubDuplicateCopy();
+    unsubHookFailed();
     unsubSubscriptionRejected();
     unsubMessageRejected();
     store.setAttached(false);

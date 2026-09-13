@@ -136,6 +136,7 @@ export const DEFAULT_MESSAGES_ROLLUP: MessagesRollupConfig = {
  */
 export type SystemEventName =
   | "broker.duplicate_copy"
+  | "hook.failed"
   | "client.registered"
   | "client.unregistered"
   | "subscription.added"
