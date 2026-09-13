@@ -7,10 +7,7 @@ receives fixes.
 
 | Package | Status |
 | --- | --- |
-| `@hedwigjs/broker` | Published (0.1.1) |
-| `@hedwigjs/devtools` | Published (0.1.1) |
-| `@hedwigjs/create-registry` | Published (0.1.1) |
-| `@hedwigjs/client`, `@hedwigjs/react`, `@hedwigjs/vue` | Not yet published |
+| `@hedwigjs/client`, `@hedwigjs/broker`, `@hedwigjs/devtools`, `@hedwigjs/react`, `@hedwigjs/vue`, `@hedwigjs/create-registry` | Published; the current version of each is on [npm](https://www.npmjs.com/org/hedwigjs) and in the package's `CHANGELOG.md`. Only the latest release receives fixes. |
 
 What the runtime enforces at each trust boundary — and what stays the
 application's job — is written down in

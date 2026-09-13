@@ -1,6 +1,6 @@
 # Support matrix
 
-Status: **Descriptive**, updated with every runtime release. Latest published runtime: `@hedwigjs/broker` 0.1.1; this page tracks `main` (unreleased changes included). Wire `v: 1`.
+Status: **Descriptive**, updated with every runtime release. This page tracks `main`; the published runtime version is on [npm](https://www.npmjs.com/package/@hedwigjs/broker). Wire `v: 1`.
 
 ## Built-in transports
 

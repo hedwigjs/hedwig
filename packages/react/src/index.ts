@@ -6,7 +6,7 @@
  *
  *   - `useClient(id)`               — a client for the component's lifetime
  *   - `useTopic(client, topic, fn)`  — subscribe while mounted, latest handler wins
- *   - `useStateTopic(client, topic)` — the retained value of a state topic, before first paint
+ *   - `useStateTopic(client, topic)` — the retained value of a state topic (before first paint when the runtime is already there)
  *   - `useRequest(client, to, topic)`— `send()` + `pending` / `result`, answer typed by the contract
  *   - `useRemoteClient(id, opts)`    — a remote client for the component's (or the options') lifetime
  *   - `useRuntimeReady()`            — whether the host's runtime is there yet
