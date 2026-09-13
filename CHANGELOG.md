@@ -337,6 +337,15 @@ step; it goes away once DevTools and the reference stand have moved.
   set the flag after the move to `state` topics; now it shows what a
   late subscriber would replay.
 
+### Bound hooks in the adapters
+
+- `@hedwigjs/react`: `bindHooks(bus)` returns `useTopic`, `useStateTopic`
+  and `useRequest` with the client closed over, so a module that owns one
+  client at module scope calls `useStateTopic('cart.snapshot.v1')` with
+  no client argument. `@hedwigjs/vue`: the same as `bindComposables`.
+  The stand's cart, menu and notifications MFEs export their bound hooks
+  from `clients/bus.ts`.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

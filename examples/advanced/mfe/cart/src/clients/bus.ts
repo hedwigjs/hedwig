@@ -1,4 +1,5 @@
 import { createClient } from '@hedwigjs/client';
+import { bindHooks } from '@hedwigjs/react';
 import type { Topic, TopicContracts, TopicPayloads } from '@hedwig-demo/contracts';
 
 /**
@@ -17,3 +18,9 @@ import type { Topic, TopicContracts, TopicPayloads } from '@hedwig-demo/contract
  */
 export const storeBus = createClient<Topic, TopicPayloads, TopicContracts>('cart-store');
 export const uiBus = createClient<Topic, TopicPayloads, TopicContracts>('cart-ui');
+
+/**
+ * Hooks with `uiBus` already filled in — views write
+ * `useStateTopic('cart.snapshot.v1')`, not `useStateTopic(uiBus, …)`.
+ */
+export const { useStateTopic, useTopic } = bindHooks(uiBus);

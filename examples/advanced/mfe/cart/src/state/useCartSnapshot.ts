@@ -1,7 +1,6 @@
-import { useStateTopic } from '@hedwigjs/react';
 import type { CartItem, TopicPayloads } from '@hedwig-demo/contracts';
 
-import { uiBus } from '../clients/bus';
+import { useStateTopic } from '../clients/bus';
 
 type Snapshot = TopicPayloads['cart.snapshot.v1'];
 
@@ -15,9 +14,10 @@ const EMPTY: Snapshot = { items: [] as CartItem[], totalItems: 0, totalPrice: 0 
  * paint and the runtime hands it the retained (last) snapshot synchronously,
  * so a late-mounted view shows the current cart on its first frame.
  *
- * Every mounted view registers its own handler on the shared `uiBus` client
- * — the broker holds N handlers per (client, topic) so this scales.
+ * `useStateTopic` here is the one from `clients/bus.ts`, pre-bound to the
+ * shared `uiBus` client (`bindHooks`). Every mounted view registers its own
+ * handler on it — the broker holds N handlers per (client, topic).
  */
 export function useCartSnapshot(): Snapshot {
-  return useStateTopic(uiBus, 'cart.snapshot.v1', EMPTY);
+  return useStateTopic('cart.snapshot.v1', EMPTY);
 }

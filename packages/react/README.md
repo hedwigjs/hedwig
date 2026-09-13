@@ -58,6 +58,36 @@ function CheckoutModal({ iframeWindow }: { iframeWindow: Window | null }) {
 | `useRequest(client, recipient, topic, options?)` | `{ send, pending, result, reset }` | Answer type from the contract. Results arriving after unmount are dropped. `send` before the client exists resolves `NACK RUNTIME_NOT_READY`. |
 | `useRemoteClient(id, options \| null, deps?)` | `RemoteClient \| null` | Created when options are present, recreated when `deps` change, destroyed on cleanup (transport closed, pending requests `REMOTE_GONE`). |
 | `useRuntimeReady()` | `boolean` | Whether the host's runtime exists yet. |
+| `bindHooks(client)` | `{ client, useTopic, useStateTopic, useRequest }` | The three data hooks with `client` filled in — see below. |
+
+## Bound hooks: skip the client argument
+
+Most modules have one client for their whole lifetime, created once at
+module scope. Passing it to every hook is noise. `bindHooks` closes over
+the client (plain partial application) and returns the same hooks
+without the first argument; the types are unchanged.
+
+```ts
+// clients/bus.ts — once per module
+import { createClient } from '@hedwigjs/client';
+import { bindHooks } from '@hedwigjs/react';
+
+export const bus = createClient<Topic, TopicPayloads, TopicContracts>('menu');
+export const { useStateTopic, useTopic, useRequest } = bindHooks(bus);
+```
+
+```tsx
+// any component of the module
+import { useStateTopic, useRequest } from '../clients/bus';
+
+const snapshot = useStateTopic('cart.snapshot.v1');                        // no client argument
+const status = useRequest('notifications-backend', 'notification.status.v1');
+```
+
+Every member of the returned object is a real hook (call it at the top
+level of a component). Use the bound form for module-scope clients; a
+client owned by a component through `useClient` changes with the
+component, so keep passing it to the unbound hooks there.
 
 ## Lifecycle rules
 

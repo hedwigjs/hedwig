@@ -7,7 +7,7 @@ import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
 import { ABI, MIN_RUNTIME, RUNTIME_KEY, RUNTIME_READY_EVENT } from '@hedwigjs/client';
 import type { Client, RuntimeHandle, RemoteClient, RoutingResult } from '@hedwigjs/client';
-import { useClient, useRemoteClient, useRequest, useRuntimeReady, useStateTopic, useTopic } from './index';
+import { bindHooks, useClient, useRemoteClient, useRequest, useRuntimeReady, useStateTopic, useTopic } from './index';
 
 /**
  * The hooks are tested against a fake runtime handle (the SDK's contract),
@@ -287,4 +287,41 @@ test('hooks accept a module-scope client too (useState-owned here for the test)'
   state.retained.set('cart.snapshot.v1', { items: 9 });
   act(() => root.render(<Consumer />));
   expect(container.textContent).toBe('items:9');
+});
+
+describe('bindHooks', () => {
+  type T = 'cart.snapshot.v1' | 'status.v1';
+  type P = { 'cart.snapshot.v1': { items: number }; 'status.v1': { includeLang: boolean } };
+  type C = { 'status.v1': { kind: 'request'; response: { echoed: { includeLang: boolean } } } };
+
+  test('hooks bound to a module-scope client take no client argument and keep the types', async () => {
+    state.retained.set('cart.snapshot.v1', { items: 3 });
+    const bus = (globalThis as any)[RUNTIME_KEY].createClient('module-bus', undefined, { sdkVersion: 'x', abi: 1 }) as Client<T, P, C>;
+    const { client, useStateTopic: useCartState, useTopic: useCartTopic, useRequest: useStatus } = bindHooks(bus);
+    expect(client).toBe(bus);
+
+    const seen: number[] = [];
+    let status: ReturnType<typeof useStatus<'status.v1'>> | null = null;
+    function View() {
+      const snapshot = useCartState('cart.snapshot.v1', { items: 0 });
+      useCartTopic('cart.snapshot.v1', (m) => void seen.push(m.data.items));
+      status = useStatus('backend', 'status.v1');
+      return <span>{`items:${snapshot.items}`}</span>;
+    }
+    act(() => root.render(<View />));
+    expect(container.textContent).toBe('items:3');
+    act(() => live()[0]!.push('cart.snapshot.v1', { items: 4 }));
+    expect(container.textContent).toBe('items:4');
+    expect(seen).toEqual([3, 4]);
+
+    const result = await status!.send({ includeLang: true });
+    expect(result.data?.echoed.includeLang).toBe(true);
+    expect(live()[0]!.requests).toEqual([{ recipient: 'backend', topic: 'status.v1', data: { includeLang: true } }]);
+
+    act(() => root.unmount());
+    root = createRoot(container);
+    // The module-scope client is not owned by the component: it stays.
+    expect(live()).toHaveLength(1);
+    expect(live()[0]!.handlers.get('cart.snapshot.v1')?.size ?? 0).toBe(0);
+  });
 });

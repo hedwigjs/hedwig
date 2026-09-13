@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { useTopic } from '@hedwigjs/react';
 import type { TopicPayloads } from '@hedwig-demo/contracts';
 
-import { toastBus } from '../clients/bus';
+import { useTopic } from '../clients/bus';
 
 export type ToastItem = TopicPayloads['notification.show.v1'] & {
   id: string;
@@ -35,7 +34,7 @@ export function useToastQueue() {
   }, []);
 
   // Subscribed while mounted; the handler below is always the latest one.
-  useTopic(toastBus, 'notification.show.v1', (msg) => {
+  useTopic('notification.show.v1', (msg) => {
     const payload = msg.data;
     const id = `n_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
     setToasts((prev) => [...prev, { id, ...payload }].slice(-MAX_TOASTS));

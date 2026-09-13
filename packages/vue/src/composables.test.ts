@@ -5,7 +5,7 @@ import { createApp, defineComponent, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
 import { ABI, MIN_RUNTIME, RUNTIME_KEY, RUNTIME_READY_EVENT } from '@hedwigjs/client';
 import type { Client, RemoteClient, RoutingResult, RuntimeHandle } from '@hedwigjs/client';
-import { useClient, useRemoteClient, useRequest, useRuntimeReady, useStateTopic, useTopic } from './index';
+import { bindComposables, useClient, useRemoteClient, useRequest, useRuntimeReady, useStateTopic, useTopic } from './index';
 
 type Handler = (m: { topic: string; data: unknown; replayed?: boolean }) => unknown;
 
@@ -186,4 +186,34 @@ test('useRuntimeReady flips once the runtime appears', async () => {
   installHandle();
   await new Promise((r) => setTimeout(r, 80));
   expect(ready!.value).toBe(true);
+});
+
+test('bindComposables: composables bound to a module-scope client take no client argument', async () => {
+  type T = 'cart.snapshot.v1' | 'status.v1';
+  type P = { 'cart.snapshot.v1': { items: number }; 'status.v1': { includeLang: boolean } };
+  type C = { 'status.v1': { kind: 'request'; response: { echoed: { includeLang: boolean } } } };
+  state.retained.set('cart.snapshot.v1', { items: 2 });
+  const bus = (globalThis as any)[RUNTIME_KEY].createClient('module-bus') as Client<T, P, C>;
+  const { client, useStateTopic: useCartState, useRequest: useStatus } = bindComposables(bus);
+  expect(client).toBe(bus);
+
+  let snapshotRef: { value: { items: number } } | null = null;
+  let status: ReturnType<typeof useStatus<'status.v1'>> | null = null;
+  mount(() => {
+    snapshotRef = useCartState('cart.snapshot.v1', { items: 0 });
+    status = useStatus('backend', 'status.v1');
+  });
+  expect(snapshotRef!.value).toEqual({ items: 2 });
+  live()[0]!.push('cart.snapshot.v1', { items: 5 });
+  await nextTick();
+  expect(snapshotRef!.value).toEqual({ items: 5 });
+
+  const result = await status!.send({ includeLang: true });
+  expect(result.data?.echoed.includeLang).toBe(true);
+  expect(live()[0]!.requests).toEqual([{ recipient: 'backend', topic: 'status.v1', data: { includeLang: true } }]);
+
+  app!.unmount();
+  app = null;
+  expect(live()).toHaveLength(1); // module-scope client is not owned by the scope
+  expect(live()[0]!.handlers.get('cart.snapshot.v1')?.size ?? 0).toBe(0);
 });

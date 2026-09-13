@@ -1,14 +1,12 @@
 import { useCallback, useMemo } from 'react';
 
-import { useStateTopic } from '@hedwigjs/react';
-
 import type { MenuItem } from '@hedwig-demo/contracts';
 import type {
   CartAddItemResponse,
   CartDecrementResponse,
 } from '@hedwig-demo/contracts';
 
-import { bus } from '../clients/bus';
+import { bus, useStateTopic } from '../clients/bus';
 
 /**
  * Menu MFE's read-only view of cart quantities.
@@ -26,7 +24,7 @@ import { bus } from '../clients/bus';
  * shows the right quantities on its first frame.
  */
 export function useLocalCartQuantities() {
-  const snapshot = useStateTopic(bus, 'cart.snapshot.v1');
+  const snapshot = useStateTopic('cart.snapshot.v1');
   const qtyById = useMemo(() => {
     const next: Record<number, number> = {};
     for (const item of snapshot?.items ?? []) {

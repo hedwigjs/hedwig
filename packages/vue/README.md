@@ -43,6 +43,33 @@ useRemoteClient('checkout-iframe', () =>
 | `useRequest(client, recipient, topic, options?)` | `{ send, pending, result, reset }` | `pending` and `result` are refs; answer type from the contract; `send` never rejects. |
 | `useRemoteClient(id, options)` | `ShallowRef<RemoteClient \| null>` | `options` is a ref or getter; `null` means no remote. Recreated on change, destroyed on `null` and on dispose. |
 | `useRuntimeReady()` | `Ref<boolean>` | Whether the host's runtime exists yet. |
+| `bindComposables(client)` | `{ client, useTopic, useStateTopic, useRequest }` | The three data composables with `client` filled in — see below. |
+
+## Bound composables: skip the client argument
+
+A module with one client for its whole lifetime creates it once at module
+scope and binds the composables to it; components then call them without
+the client. Plain partial application, types unchanged.
+
+```ts
+// clients/bus.ts
+import { createClient } from '@hedwigjs/client';
+import { bindComposables } from '@hedwigjs/vue';
+
+export const bus = createClient<Topic, TopicPayloads, TopicContracts>('menu');
+export const { useStateTopic, useTopic, useRequest } = bindComposables(bus);
+```
+
+```vue
+<script setup lang="ts">
+import { useStateTopic, useRequest } from '../clients/bus';
+const snapshot = useStateTopic('cart.snapshot.v1');
+const status = useRequest('notifications-backend', 'notification.status.v1');
+</script>
+```
+
+For a client owned by the scope (`useClient`) keep the unbound
+composables and pass the client.
 
 Works inside components and inside `effectScope()`; everything is released
 with `onScopeDispose`.

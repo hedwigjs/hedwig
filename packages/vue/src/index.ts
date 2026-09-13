@@ -10,6 +10,7 @@
  *   - `useRequest(client, to, topic)`— `send()` + `pending` / `result` refs, answer typed by the contract
  *   - `useRemoteClient(id, opts)`    — a remote client that follows a reactive options source
  *   - `useRuntimeReady()`            — whether the host's runtime is there yet
+ *   - `bindComposables(client)`      — the three data composables with the client filled in
  */
 
 import { onScopeDispose, ref, shallowRef, toValue, watch } from 'vue';
@@ -213,4 +214,48 @@ export function useRuntimeReady(): Ref<boolean> {
     );
   }
   return ready;
+}
+
+/**
+ * The data composables with the client already filled in. Produced by
+ * `bindComposables(client)`.
+ */
+export interface BoundComposables<T extends string, P extends Record<T, any>, C extends TopicContractsMap<T>> {
+  /** The client every composable here is bound to. */
+  readonly client: Client<T, P, C>;
+  useTopic<K extends T>(topic: K, handler: HandlerFn<K, P[K]>, options?: SubscriptionOptions): void;
+  useStateTopic<K extends T>(topic: K, initial: P[K]): ShallowRef<P[K]>;
+  useStateTopic<K extends T>(topic: K): ShallowRef<P[K] | undefined>;
+  useRequest<K extends T & RequestTopic<T, C>>(
+    recipient: string,
+    topic: K,
+    options?: RequestOptions,
+  ): RequestHandle<P[K], ResponseOf<C, K>>;
+}
+
+/**
+ * Bind the composables to one client, once, at module scope — then
+ * components call `useStateTopic('cart.snapshot.v1')` instead of passing
+ * the client each time. Partial application: the client lives in a
+ * closure, the signatures lose their first argument, the types stay.
+ *
+ * ```ts
+ * // clients/bus.ts
+ * export const bus = createClient<Topic, TopicPayloads, TopicContracts>('menu');
+ * export const { useStateTopic, useTopic, useRequest } = bindComposables(bus);
+ * ```
+ *
+ * Meant for module-scope clients. A client owned by a component
+ * (`useClient`) is per scope — keep passing it to the unbound composables.
+ */
+export function bindComposables<T extends string, P extends Record<T, any>, C extends TopicContractsMap<T>>(
+  client: Client<T, P, C>,
+): BoundComposables<T, P, C> {
+  const useBoundStateTopic = <K extends T>(topic: K, initial?: P[K]) => useStateTopic(client, topic, initial as P[K]);
+  return {
+    client,
+    useTopic: (topic, handler, options) => useTopic(client, topic, handler, options),
+    useStateTopic: useBoundStateTopic as BoundComposables<T, P, C>['useStateTopic'],
+    useRequest: (recipient, topic, options) => useRequest(client, recipient, topic, options),
+  };
 }
