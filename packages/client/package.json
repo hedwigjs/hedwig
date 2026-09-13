@@ -1,6 +1,6 @@
 {
   "name": "@hedwigjs/client",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "SDK for modules that talk to a Hedwig runtime: createClient, createRemoteClient, and every type a module can see. No runtime dependency.",
   "publishConfig": {
     "access": "public"

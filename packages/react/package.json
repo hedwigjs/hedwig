@@ -1,6 +1,6 @@
 {
   "name": "@hedwigjs/react",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "React hooks for Hedwig: clients, topics, retained state, requests and remote clients bound to the component lifecycle.",
   "publishConfig": {
     "access": "public"
@@ -34,7 +34,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hedwigjs/client": "^0.2.0"
+    "@hedwigjs/client": "^0.3.0"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0"

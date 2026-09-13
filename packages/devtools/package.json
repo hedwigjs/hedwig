@@ -1,6 +1,6 @@
 {
   "name": "@hedwigjs/devtools",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "DevTools panel for @hedwigjs/broker — message flow, clients, and observability inspector.",
   "publishConfig": {
     "access": "public"
@@ -34,7 +34,7 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@hedwigjs/broker": "^0.2.0",
+    "@hedwigjs/broker": "^0.3.0",
     "react": "^18.2.0 || ^19.0.0",
     "react-dom": "^18.2.0 || ^19.0.0"
   },

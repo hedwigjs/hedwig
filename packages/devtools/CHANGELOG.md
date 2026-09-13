@@ -1,5 +1,12 @@
 # @hedwigjs/devtools
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [[`4c76703`](https://github.com/hedwigjs/hedwig/commit/4c767036d5f5d6422e3780b2857435f75c1fd6cf)]:
+  - @hedwigjs/broker@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes
