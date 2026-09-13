@@ -92,17 +92,18 @@ describe('PostMessageTransport', () => {
       expect(postMessage).toHaveBeenCalledWith({ hello: 'world' }, TRUSTED);
     });
 
-    test('logs and swallows errors thrown by target.postMessage', () => {
-      const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    test('propagates errors thrown by target.postMessage; silent after destroy', () => {
       const { fake, postMessage } = makeFakeTargetWindow();
       postMessage.mockImplementation(() => {
         throw new Error('detached frame');
       });
       const transport = trusted(fake);
 
+      // The runtime turns this throw into `remote.send.failed`.
+      expect(() => transport.send({ a: 1 })).toThrow('detached frame');
+
+      transport.destroy();
       expect(() => transport.send({ a: 1 })).not.toThrow();
-      expect(spy).toHaveBeenCalledWith('[PostMessageTransport] Failed to send:', expect.any(Error));
-      spy.mockRestore();
     });
   });
 

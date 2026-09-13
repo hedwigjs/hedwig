@@ -163,20 +163,24 @@ describe('BroadcastChannelTransport', () => {
   });
 
   describe('send — error handling', () => {
-    test('errors thrown by channel.postMessage are swallowed and logged', () => {
-      const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    test('send after destroy is a silent no-op; any other postMessage failure propagates', () => {
       const transport = track(new BroadcastChannelTransport(uniqueName()));
 
-      // Close the channel → subsequent postMessage throws in our stub.
+      // Closed channel: the stub's postMessage would throw, the transport
+      // does not even call it.
       transport.destroy();
-
       expect(() => transport.send({ oops: true })).not.toThrow();
-      expect(spy).toHaveBeenCalledTimes(1);
-      expect(spy).toHaveBeenCalledWith(
-        '[BroadcastChannelTransport] Failed to send:',
-        expect.anything(),
-      );
-      spy.mockRestore();
+
+      // A live channel whose postMessage throws (e.g. a non-cloneable
+      // payload) surfaces the error — the runtime reports remote.send.failed.
+      const live = track(new BroadcastChannelTransport(uniqueName()));
+      const boom = jest
+        .spyOn(InMemoryBroadcastChannel.prototype, 'postMessage')
+        .mockImplementationOnce(() => {
+          throw new Error('DataCloneError');
+        });
+      expect(() => live.send({ a: 1 })).toThrow('DataCloneError');
+      boom.mockRestore();
     });
   });
 

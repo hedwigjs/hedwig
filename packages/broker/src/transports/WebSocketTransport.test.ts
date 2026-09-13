@@ -82,64 +82,56 @@ describe('WebSocketTransport', () => {
       expect(sock.send).toHaveBeenCalledWith(JSON.stringify({ action: 'ping', n: 1 }));
     });
 
-    test('does NOT send when socket is CONNECTING — warns instead', () => {
-      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    // A failed send is thrown, not logged: the runtime turns the throw into
+    // `remote.send.failed`, which is the only way the caller and DevTools
+    // ever learn about it.
+    test('throws when the socket is CONNECTING', () => {
       const sock = new FakeSocket();
       sock.readyState = CONNECTING;
       const transport = new WebSocketTransport(sock.asWebSocket());
 
-      transport.send({ a: 1 });
-
+      expect(() => transport.send({ a: 1 })).toThrow(/not open/);
       expect(sock.send).not.toHaveBeenCalled();
-      expect(warn).toHaveBeenCalledWith(
-        '[WebSocketTransport] Cannot send: socket not open',
-      );
-      warn.mockRestore();
     });
 
-    test('does NOT send when socket is CLOSED — warns instead', () => {
-      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    test('throws when the socket is CLOSED', () => {
       const sock = new FakeSocket();
       sock.readyState = CLOSED;
       const transport = new WebSocketTransport(sock.asWebSocket());
 
-      transport.send({ a: 1 });
-
+      expect(() => transport.send({ a: 1 })).toThrow(/not open/);
       expect(sock.send).not.toHaveBeenCalled();
-      warn.mockRestore();
     });
 
-    test('swallows and logs errors thrown by socket.send', () => {
-      const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+    test('propagates errors thrown by socket.send', () => {
       const sock = new FakeSocket();
       sock.send.mockImplementation(() => {
         throw new Error('network down');
       });
       const transport = new WebSocketTransport(sock.asWebSocket());
 
-      expect(() => transport.send({ x: 1 })).not.toThrow();
-      expect(err).toHaveBeenCalledWith(
-        '[WebSocketTransport] Failed to send:',
-        expect.any(Error),
-      );
-      err.mockRestore();
+      expect(() => transport.send({ x: 1 })).toThrow('network down');
     });
 
-    test('propagates JSON-serialization errors via the catch (circular refs)', () => {
-      const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+    test('propagates JSON-serialization errors (circular refs)', () => {
       const sock = new FakeSocket();
       const transport = new WebSocketTransport(sock.asWebSocket());
 
       const circular: any = {};
       circular.self = circular;
 
-      expect(() => transport.send(circular)).not.toThrow();
+      expect(() => transport.send(circular)).toThrow();
       expect(sock.send).not.toHaveBeenCalled();
-      expect(err).toHaveBeenCalledWith(
-        '[WebSocketTransport] Failed to send:',
-        expect.any(Error),
-      );
-      err.mockRestore();
+    });
+
+    test('send after destroy is a silent no-op (conformance contract)', () => {
+      const sock = new FakeSocket();
+      sock.readyState = CLOSED;
+      const transport = new WebSocketTransport(sock.asWebSocket());
+      transport.destroy();
+
+      expect(() => transport.send({ a: 1 })).not.toThrow();
+      expect(sock.send).not.toHaveBeenCalled();
     });
   });
 
@@ -150,10 +142,12 @@ describe('WebSocketTransport', () => {
       const cb = jest.fn();
       transport.onMessage(cb);
 
-      sock.dispatch(JSON.stringify({ kind: 'hello', n: 7 }));
+      const text = JSON.stringify({ kind: 'hello', n: 7 });
+      sock.dispatch(text);
 
       expect(cb).toHaveBeenCalledTimes(1);
-      expect(cb).toHaveBeenCalledWith({ kind: 'hello', n: 7 });
+      // The wire length rides along so the runtime can apply `maxBytes`.
+      expect(cb).toHaveBeenCalledWith({ kind: 'hello', n: 7 }, { bytes: text.length });
     });
 
     test('forwards non-string frames (object, Blob-like) as-is without parsing', () => {

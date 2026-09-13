@@ -1,7 +1,7 @@
 import type { ClientID, Message } from '../types';
 import type { BrokerLogger } from '../logger/BrokerLogger.types';
 import type { HookResult } from '../hooks/HooksRegistry.types';
-import type { Transport } from '../transport/Transport.types';
+import type { Transport, TransportFrameMeta } from '../transport/Transport.types';
 import type {
   RemoteClient,
   RemoteClientOptions,
@@ -30,6 +30,7 @@ export interface RemoteHost {
     target: string,
     data: unknown,
     wire: { wireId?: string; ext?: WireExt },
+    options?: { timeout?: number },
   ): Promise<RoutingResult>;
   /** Policy check for `forward()`. */
   onSubscribe(topic: string, clientId: ClientID): HookResult;
@@ -66,6 +67,18 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
  * `BrokerCore.createRemoteClient`; never constructed by user code.
  * @internal
  */
+
+/** Size of an inbound frame for `maxBytes`: what the transport measured, else the JSON text length. */
+function frameSize(raw: unknown, meta?: TransportFrameMeta): number {
+  if (meta?.bytes !== undefined) return meta.bytes;
+  if (typeof raw === 'string') return raw.length;
+  try {
+    return JSON.stringify(raw)?.length ?? 0;
+  } catch {
+    return 0; // not JSON-encodable: the structural check rejects it as MALFORMED
+  }
+}
+
 export class RemoteClientImpl implements RemoteClient {
   readonly id: string;
   readonly kind: string;
@@ -117,7 +130,7 @@ export class RemoteClientImpl implements RemoteClient {
     // Observed lazily by send(); don't let it surface as unhandled here.
     this.ready.catch(() => {});
 
-    this.#unsubscribe = transport.onMessage((raw) => this.#handleIncoming(raw));
+    this.#unsubscribe = transport.onMessage((raw, meta) => this.#handleIncoming(raw, meta));
     this.#offClose = transport.onClose?.(() => this.destroy()) ?? null;
   }
 
@@ -329,11 +342,28 @@ export class RemoteClientImpl implements RemoteClient {
    * `correlationId` cannot be answered; it is still routed.
    */
   async #handleRequest(frame: ParsedWireMessage, source: string, ext: WireExt | undefined): Promise<void> {
-    const result = await this.#host.inject(this.id, frame.topic, source, frame.target, frame.data, {
-      wireId: frame.id,
-      ext,
-    });
+    // The sender's deadline bounds how long the local handler may run.
+    // Measured as a duration in the sender's own clock (deadline − the
+    // frame's timestamp), so a clock offset between the two sides does not
+    // turn every request into an instant timeout.
+    const budget =
+      frame.deadline !== undefined && frame.timestamp !== undefined ? frame.deadline - frame.timestamp : undefined;
     const correlationId = frame.correlationId ?? frame.id;
+
+    let result: RoutingResult;
+    if (budget !== undefined && budget <= 0) {
+      result = RoutingResult.create('NACK', RoutingReason.TIMEOUT, 'Request deadline had already passed on arrival');
+    } else {
+      result = await this.#host.inject(
+        this.id,
+        frame.topic,
+        source,
+        frame.target,
+        frame.data,
+        { wireId: frame.id, ext },
+        budget !== undefined ? { timeout: budget } : undefined,
+      );
+    }
     if (correlationId === undefined || this.#destroyed) return;
 
     let status = result.status;
@@ -368,10 +398,14 @@ export class RemoteClientImpl implements RemoteClient {
 
   // ── inbound ────────────────────────────────────────────────────────────
 
-  #handleIncoming(raw: unknown): void {
+  #handleIncoming(raw: unknown, meta?: TransportFrameMeta): void {
     if (this.#destroyed) return;
 
-    if (this.#maxBytes !== undefined && typeof raw === 'string' && raw.length > this.#maxBytes) {
+    // `maxBytes` applies to every transport: text transports report the
+    // wire length, structured-clone ones (postMessage, BroadcastChannel,
+    // MessagePort) are measured as JSON text here — only when the limit is
+    // configured, so nobody pays for it otherwise.
+    if (this.#maxBytes !== undefined && frameSize(raw, meta) > this.#maxBytes) {
       this.#host.frameRejected(this.id, 'TOO_LARGE', {});
       return;
     }

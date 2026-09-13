@@ -19,9 +19,19 @@
  * - `onClose(cb)` — optional notification that the pipe is gone; the
  *   runtime destroys the remote client on it.
  */
+/**
+ * What a transport knows about an inbound frame beyond the frame itself.
+ * Built-in transports that receive text (WebSocket, SSE) report `bytes`,
+ * the length of the JSON text, so `maxBytes` can be checked before any
+ * parsing cost matters. Transports that receive structured clones do not.
+ */
+export interface TransportFrameMeta {
+  bytes?: number;
+}
+
 export interface Transport {
   send(frame: unknown): void;
-  onMessage(callback: (frame: unknown) => void): () => void;
+  onMessage(callback: (frame: unknown, meta?: TransportFrameMeta) => void): () => void;
   destroy(): void;
   readonly duplex?: boolean;
   readonly fanout?: boolean;

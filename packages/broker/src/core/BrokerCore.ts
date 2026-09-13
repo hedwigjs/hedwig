@@ -739,8 +739,8 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     const remote = new RemoteClientImpl(id, kind, transport, options, {
       logger: this.logger,
       origin: this.#sessionId,
-      inject: (remoteId, topic, source, target, data, wire) =>
-        this.#runPipeline(topic as T, source, target, data as P[T], undefined, true, false, remoteId, wire),
+      inject: (remoteId, topic, source, target, data, wire, options) =>
+        this.#runPipeline(topic as T, source, target, data as P[T], options, true, false, remoteId, wire),
       onSubscribe: (topic, clientId) => this.#hooks.onSubscribe(topic as T, clientId),
       subscriptionAdded: (clientId, topic) =>
         this.#systemEvents.emit('subscription.added', { clientId, topic: topic as T }),

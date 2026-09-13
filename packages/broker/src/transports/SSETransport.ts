@@ -48,7 +48,7 @@ export class SSETransport implements Transport {
   #eventSource: EventSource;
   #eventName: string;
   #messageHandler: ((e: MessageEvent) => void) | null = null;
-  #messageCallback: ((data: unknown) => void) | null = null;
+  #messageCallback: ((data: unknown, meta?: { bytes?: number }) => void) | null = null;
 
   constructor(config: SSETransportConfig) {
     this.#eventName = config.eventName ?? 'message';
@@ -78,13 +78,16 @@ export class SSETransport implements Transport {
    * Subscribe to incoming SSE messages. Parses JSON payloads before
    * handing them to the remote client.
    */
-  onMessage(callback: (data: unknown) => void): () => void {
+  onMessage(callback: (data: unknown, meta?: { bytes?: number }) => void): () => void {
     this.#messageCallback = callback;
 
     this.#messageHandler = (e: MessageEvent) => {
       try {
-        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-        this.#messageCallback?.(data);
+        if (typeof e.data === 'string') {
+          this.#messageCallback?.(JSON.parse(e.data), { bytes: e.data.length });
+        } else {
+          this.#messageCallback?.(e.data);
+        }
       } catch (error) {
         console.error('[SSETransport] Failed to parse message:', error);
       }

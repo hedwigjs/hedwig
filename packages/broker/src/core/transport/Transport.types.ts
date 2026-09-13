@@ -4,7 +4,7 @@
  */
 import type { TransportDescriptor } from '@hedwigjs/client';
 
-export type { Transport, TransportDescriptor, TransportKind } from '@hedwigjs/client';
+export type { Transport, TransportDescriptor, TransportFrameMeta, TransportKind } from '@hedwigjs/client';
 
 export function isTransportDescriptor(value: unknown): value is TransportDescriptor {
   return (

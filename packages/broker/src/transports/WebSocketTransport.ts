@@ -16,7 +16,8 @@ export class WebSocketTransport implements Transport {
   /** Resolves once the socket is OPEN; rejects if it closes first. */
   readonly ready: Promise<void>;
   #socket: WebSocket;
-  #messageCallback: ((data: unknown) => void) | null = null;
+  #messageCallback: ((data: unknown, meta?: { bytes?: number }) => void) | null = null;
+  #destroyed = false;
   #messageHandler: ((e: MessageEvent) => void) | null = null;
 
   /**
@@ -61,28 +62,30 @@ export class WebSocketTransport implements Transport {
    * Send data to server via WebSocket
    */
   send(data: unknown): void {
+    // After destroy() a send is a documented no-op (conformance: "send
+    // after destroy must not throw"). Any other failure is thrown: the
+    // runtime turns it into `remote.send.failed` so the caller and DevTools
+    // see it, instead of a console line nobody reads.
+    if (this.#destroyed) return;
     if (this.#socket.readyState !== WebSocket.OPEN) {
-      console.warn('[WebSocketTransport] Cannot send: socket not open');
-      return;
+      throw new Error(`[WebSocketTransport] socket is not open (readyState ${this.#socket.readyState})`);
     }
-
-    try {
-      this.#socket.send(JSON.stringify(data));
-    } catch (error) {
-      console.error('[WebSocketTransport] Failed to send:', error);
-    }
+    this.#socket.send(JSON.stringify(data));
   }
 
   /**
    * Subscribe to messages from server
    */
-  onMessage(callback: (data: unknown) => void): () => void {
+  onMessage(callback: (data: unknown, meta?: { bytes?: number }) => void): () => void {
     this.#messageCallback = callback;
 
     this.#messageHandler = (e: MessageEvent) => {
       try {
-        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-        this.#messageCallback?.(data);
+        if (typeof e.data === 'string') {
+          this.#messageCallback?.(JSON.parse(e.data), { bytes: e.data.length });
+        } else {
+          this.#messageCallback?.(e.data);
+        }
       } catch (error) {
         console.error('[WebSocketTransport] Failed to parse message:', error);
       }
@@ -97,6 +100,7 @@ export class WebSocketTransport implements Transport {
    * Cleanup: remove listener (does NOT close socket)
    */
   destroy(): void {
+    this.#destroyed = true;
     if (this.#messageHandler) {
       this.#socket.removeEventListener('message', this.#messageHandler);
       this.#messageHandler = null;
