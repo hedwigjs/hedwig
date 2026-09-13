@@ -93,7 +93,10 @@ jobs:
 
   changesets:
     name: Changeset present
-    if: github.event_name == 'pull_request'
+    # Dependabot only touches dependency ranges and never adds changesets;
+    # a version bump that matters to consumers gets its changeset from the
+    # human who merges it (`npx changeset add`).
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
