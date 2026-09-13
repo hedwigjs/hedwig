@@ -38,6 +38,9 @@ const CLOSED = 3;
 class FakeSocket {
   readyState: number = OPEN;
   send = jest.fn<void, [string]>();
+  close = jest.fn(() => {
+    this.readyState = CLOSED;
+  });
 
   #listeners = new Map<string, Set<(e: any) => void>>();
 
@@ -195,15 +198,25 @@ describe('WebSocketTransport', () => {
       expect(sock.listenerCount('message')).toBe(0);
     });
 
-    test('does NOT close the underlying socket (socket is managed externally)', () => {
+    test('closes a still-open socket — the remote client owns its transport', () => {
       const sock = new FakeSocket();
-      (sock as any).close = jest.fn();
       const transport = new WebSocketTransport(sock.asWebSocket());
       transport.onMessage(jest.fn());
 
       transport.destroy();
 
-      expect((sock as any).close).not.toHaveBeenCalled();
+      expect(sock.close).toHaveBeenCalledTimes(1);
+    });
+
+    test('leaves an already-closed socket alone', () => {
+      const sock = new FakeSocket();
+      sock.readyState = CLOSED;
+      const transport = new WebSocketTransport(sock.asWebSocket());
+      transport.onMessage(jest.fn());
+
+      transport.destroy();
+
+      expect(sock.close).not.toHaveBeenCalled();
     });
 
     test('post-destroy messages do not reach the callback', () => {

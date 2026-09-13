@@ -3,6 +3,7 @@ import type {
   RoutingResult,
   SubscriptionOptions,
   HistoryEntry,
+  HistoryStats,
   SystemEventsEmitter,
   Inspector,
 } from "@hedwigjs/broker";
@@ -14,17 +15,30 @@ import type {
  * - `useBeforeSendHook` / `useAfterSendHook`: extension hooks the inspector uses
  *   to record the live message feed (topic, result, latency).
  * - `$systemEvents`: broker-internal push channel of lifecycle events
- *   (client.*, subscription.*, bridge.*) — keeps the client tree in sync.
+ *   (client.*, subscription.*, remote.*) — keeps the client tree in sync.
  *   The `$` prefix signals this is a tooling-only API.
- * - `inspect`: pull API for point-in-time state snapshots (clients, history,
- *   bridges). Used for initial hydration without races.
+ * - `inspect`: pull API for point-in-time state snapshots (clients incl.
+ *   remote ones, history). Used for initial hydration without races.
  */
 export interface MessageBrokerForDevTools {
+  /**
+   * Package version of the core. Compared on attach with the
+   * `@hedwigjs/broker` version this panel resolved at build time (same
+   * minor before 1.0, same major after); an incompatible core is shown as
+   * a header badge instead of failing silently in the renderers.
+   * Optional so panels can still attach to cores that predate the field.
+   */
+  readonly version?: string;
   useBeforeSendHook(hook: (message: Readonly<Message>) => { allowed: true } | { allowed: false; message: string }): () => void;
   useAfterSendHook(hook: (message: Readonly<Message>, result: RoutingResult) => void): () => void;
   $systemEvents: SystemEventsEmitter<string, Record<string, any>>;
   inspect: Inspector<string, Record<string, any>>;
   $debug: {
+    /**
+     * `initBroker({ debug: true })` was set. Optional so the panel can
+     * attach to cores that predate the gate (treated as enabled).
+     */
+    readonly enabled?: boolean;
     send(
       source: string,
       topic: string,
@@ -34,7 +48,10 @@ export interface MessageBrokerForDevTools {
   };
 }
 
-export type { HistoryEntry };
+export type { HistoryEntry, HistoryStats };
+
+/** `inspect.getHistoryStats()`: every retaining topic with its limit and fill. */
+export type RetentionSnapshot = HistoryStats & { enabled: boolean };
 
 export type LogStatus = "pending" | "delivered" | "failed";
 
@@ -54,6 +71,12 @@ export interface MessageLogEntry {
   subscriberCount?: number;
   replayed?: boolean;
   fromExternal?: boolean;
+  /** Id of the remote client whose transport delivered the message. */
+  via?: string;
+  /** The producer's frame id when the message came over a wire (`(source, wireId)` correlates across realms). */
+  wireId?: string;
+  /** Opaque `ext` block carried by the wire frame (`traceparent`, `hedwig.*`, …). */
+  ext?: unknown;
   /** Message was fired via `broker.$debug.send` (DevTools spoof / test). */
   synthetic?: boolean;
   dataPreview?: string;
@@ -117,19 +140,28 @@ export const DEFAULT_MESSAGES_ROLLUP: MessagesRollupConfig = {
 
 /**
  * One system event surfaced by `broker.$systemEvents`. These are broker
- * infrastructure signals (client / subscription / bridge lifecycle) —
+ * infrastructure signals (client / subscription / remote-client lifecycle) —
  * NOT user message topics. DevTools shows them in a dedicated tab so
  * they don't drown out (or get drowned by) the user-message feed.
  */
 export type SystemEventName =
+  | "broker.duplicate_copy"
+  | "hook.failed"
   | "client.registered"
   | "client.unregistered"
   | "subscription.added"
   | "subscription.removed"
   | "subscription.rejected"
   | "message.rejected"
-  | "bridge.added"
-  | "bridge.removed";
+  | "remote.created"
+  | "remote.destroyed"
+  | "remote.frame.rejected"
+  | "remote.send.failed"
+  | "request.forwarded"
+  | "response.received"
+  | "request.timeout"
+  | "response.sent"
+  | "state.retained";
 
 export interface SystemEventLogEntry {
   /** Monotonic local id, assigned by the store on ingestion. */
@@ -150,9 +182,31 @@ export interface ClientSubscriptionEntry {
   lastReceivedAt: number | null;
 }
 
+/**
+ * Remote-side details of a client that lives behind a transport
+ * (`broker.createRemoteClient`). Mirrors the broker's `RemoteClientInfo`.
+ */
+export interface RemoteClientEntry {
+  /** Transport kind: a built-in (`websocket`, `sse`, …) or `custom`. */
+  kind: string;
+  identity: "fixed" | "allow" | "prefix";
+  duplex: boolean;
+  fanout: boolean;
+  /** `duplex && !fanout` — the remote may be the recipient of a request. */
+  requests: boolean;
+  /** Topics the remote may inject. */
+  accepts: ReadonlyArray<string>;
+  /** Requests in flight to the remote. */
+  pending: number;
+}
+
 export interface ClientEntry {
   id: string;
   connectedAt: number;
+  /** Present for remote clients; its `subscriptions` are `forward` patterns. */
+  remote?: RemoteClientEntry;
+  /** Version of `@hedwigjs/client` that created the client; absent for host-created ones. */
+  sdkVersion?: string;
   /** Unix ms of the last message sent or received by this client. Null if none. */
   lastActiveAt: number | null;
   /** Messages sent by this client visible in the current ring buffer. */
@@ -162,31 +216,18 @@ export interface ClientEntry {
   subscriptions: ClientSubscriptionEntry[];
 }
 
-// ─── Bridge snapshot ────────────────────────────────────────────────────────
+// ─── Version handshake ────────────────────────────────────────────────────────
 
-export interface BridgeEntry {
-  id: string;
-  forwardPatterns: ReadonlyArray<string>;
-  /**
-   * Transport class name (`WebSocket`, `SSE`, `PostMessage`,
-   * `BroadcastChannel`, or a custom class name). Populated by the broker
-   * from the transport's constructor; may be `undefined` for anonymous
-   * transports.
-   */
-  transportKind?: string;
-  /**
-   * Approx. count of local emits whose topic matches this bridge's
-   * forward patterns — i.e. messages that WOULD have been sent out
-   * through this transport. Broker doesn't expose per-bridge attribution
-   * directly, so this is a heuristic over the message log.
-   */
-  sentThroughCount: number;
-  /**
-   * Approx. count of `fromExternal=true` messages matching this bridge's
-   * forward patterns — i.e. messages injected FROM this transport. Same
-   * heuristic caveat as above.
-   */
-  receivedFromCount: number;
+/**
+ * Result of comparing the attached core's `version` with the
+ * `@hedwigjs/broker` version this panel was built against. `actual` is
+ * `undefined` before attach or when the core predates the field.
+ */
+export interface VersionStatus {
+  expected: string;
+  actual: string | undefined;
+  /** True only when both sides are known and incompatible (semver rule). */
+  mismatch: boolean;
 }
 
 // ─── Inspector snapshot ───────────────────────────────────────────────────────
@@ -196,14 +237,15 @@ export interface InspectorSnapshot {
   entries: ReadonlyArray<MessageLogEntry>;
   totalSeen: number;
   attached: boolean;
+  version: VersionStatus;
   clients: ReadonlyArray<ClientEntry>;
   messagesFilter: MessagesFilter;
-  /** Current contents of the broker's replay buffer (oldest → newest). */
+  /** Every retained message (oldest → newest): events with `retention` and the last value of each `state` topic. */
   historyEntries: ReadonlyArray<HistoryEntry>;
+  /** What the registry declared: each retaining topic, its limit and current fill. */
+  historyStats: RetentionSnapshot;
   /** Recent system events (oldest → newest). Ring-buffered by `maxEvents`. */
   systemEvents: ReadonlyArray<SystemEventLogEntry>;
-  /** Registered bridges with cached forward patterns and derived counters. */
-  bridges: ReadonlyArray<BridgeEntry>;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -222,21 +264,23 @@ function snapshotFrom(
   list: MessageLogEntry[],
   totalSeen: number,
   attached: boolean,
+  version: VersionStatus,
   clients: ClientEntry[],
   messagesFilter: MessagesFilter,
   historyEntries: ReadonlyArray<HistoryEntry>,
+  historyStats: RetentionSnapshot,
   systemEvents: ReadonlyArray<SystemEventLogEntry>,
-  bridges: ReadonlyArray<BridgeEntry>,
 ): InspectorSnapshot {
   return {
     entries: list,
     totalSeen,
     attached,
+    version,
     clients,
     messagesFilter,
     historyEntries,
+    historyStats,
     systemEvents,
-    bridges,
   };
 }
 

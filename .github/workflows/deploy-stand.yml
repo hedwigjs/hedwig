@@ -10,8 +10,10 @@ on:
     branches: [main]
     paths:
       - "examples/advanced/**"
+      - "packages/client/**"
       - "packages/broker/**"
       - "packages/devtools/**"
+      - "packages/react/**"
       - ".github/workflows/deploy-stand.yml"
   workflow_dispatch:
 
@@ -43,10 +45,10 @@ jobs:
       - name: Install dependencies (workspaces)
         run: npm ci
 
-      - name: Build @hedwigjs/broker + devtools (workspace deps)
-        run: |
-          npm run build -w @hedwigjs/broker
-          npm run build -w @hedwigjs/devtools
+      - name: Build @hedwigjs/client + broker + devtools + react (workspace deps)
+        # The shell bundles broker + devtools, every MFE bundles client +
+        # react; all four must be built before webpack runs.
+        run: npm run build
 
       - name: Build shell (with prod remotes + WS URL)
         working-directory: examples/advanced/shell

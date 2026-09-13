@@ -1,9 +1,9 @@
 /**
  * 10 · Replay cost on subscribe
  *
- * `client.on(topic, h, { replay: { limit: N } })` filters the history buffer
- * for matching messages and dispatches them to the new handler on the
- * microtask queue. Cost scales with the query + delivery loop.
+ * `client.on(topic, h, { replay: { limit: N } })` reads the topic's retained
+ * messages (`retention: { last: N }` in its contract) and hands them to the
+ * new handler synchronously. Cost scales with the query + delivery loop.
  *
  * We measure the "subscribe + wait for replay done" cycle at different
  * buffer / replay-limit sizes.
@@ -19,35 +19,29 @@ async function run() {
   const bench = newBench({ time: 1200 });
 
   for (const n of [10, 100, 1_000]) {
-    bench.add(`replay ${n} historical messages`, async () => {
+    bench.add(`replay ${n} retained messages`, () => {
+      // Synchronous: every retained entry reaches the handler before on() returns.
       const c = createClient<T, P>('replayer');
       let seen = 0;
-      const off = c.on(
+      c.on(
         'm.evt.v1',
         () => {
           seen++;
         },
         { replay: { limit: n } },
       );
-      // Replay is queueMicrotask'd — wait a microtask tick
-      await Promise.resolve();
-      // Guarantee full replay in a light spin (up to 20 microtasks)
-      let spins = 0;
-      while (seen < n && spins++ < 20) await Promise.resolve();
-      off();
+      if (seen !== n) throw new Error(`replayed ${seen} of ${n}`);
+      c.destroy();
     }, {
       beforeAll: () => {
         destroyBroker();
-        // Silent logger: iteration re-creates the same `replayer` client id
-        // to force replay each time — that raises an expected
-        // `facade.createClient.reset` warn on every iteration.
         initBroker<T, P>({
-          history: { enabled: true, maxSize: n },
+          topics: { 'm.evt.v1': { kind: 'event', retention: { last: n } } },
           logger: SILENT_LOGGER,
         });
         const s = createClient<T, P>('sender');
         for (let i = 0; i < n; i++) {
-          void s.emit('m.evt.v1', { i }, { history: true });
+          void s.emit('m.evt.v1', { i });
         }
       },
       afterAll: () => destroyBroker(),

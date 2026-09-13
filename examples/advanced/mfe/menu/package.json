@@ -2,14 +2,15 @@
   "name": "@hedwig-demo/menu",
   "version": "0.0.0",
   "private": true,
-  "description": "Menu MFE — dish grid, add-to-cart",
+  "description": "Menu MFE \u2014 dish grid, add-to-cart",
   "scripts": {
     "dev": "webpack serve",
     "build": "webpack --mode production"
   },
   "dependencies": {
     "@hedwig-demo/contracts": "*",
-    "@hedwigjs/broker": "*",
+    "@hedwigjs/client": "*",
+    "@hedwigjs/react": "*",
     "react": "19.1.1",
     "react-dom": "19.1.1"
   },

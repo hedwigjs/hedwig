@@ -1,53 +1,6 @@
 import type { Message, MessageHandler } from '../types';
 
-/**
- * Backpressure strategies to control message processing rate
- *
- * Control how messages are processed to prevent UI freezing and optimize performance.
- * All strategies are mutually exclusive - only one can be used per subscription.
- */
-export interface BackpressureOptions {
-  /**
-   * Throttle: Limit handler calls to once per `throttle` milliseconds
-   *
-   * First call executes immediately, subsequent calls are delayed.
-   * Guarantees maximum call rate without losing the last message.
-   *
-   * Use case: Real-time charts, high-frequency updates
-   */
-  throttle?: number;
-
-  /**
-   * Debounce: Delay handler execution until `debounce` milliseconds of silence
-   *
-   * Resets timer on each new message. Only the last message is processed.
-   *
-   * Use case: Search autocomplete, input validation
-   */
-  debounce?: number;
-
-  /**
-   * Rate limiting: Drop messages exceeding rate limit
-   *
-   * Allows maximum `max` messages per `window` milliseconds.
-   * Messages exceeding the limit are dropped (lost permanently).
-   *
-   * Use case: Prevent flooding, protect from bursts, spam protection
-   */
-  rateLimit?: {
-    /** Maximum number of messages allowed */
-    max: number;
-    /** Time window in milliseconds */
-    window: number;
-  };
-
-  /**
-   * Callback when messages are dropped (rate limiting only)
-   *
-   * @param droppedCount - Number of messages dropped so far
-   */
-  onDrop?: (droppedCount: number) => void;
-}
+export type { BackpressureOptions } from '@hedwigjs/client';
 
 /**
  * Base interface for backpressure strategies

@@ -57,7 +57,8 @@ module.exports = {
       shared: {
         react: { singleton: true, requiredVersion: '19.1.1' },
         'react-dom': { singleton: true, requiredVersion: '19.1.1' },
-        '@hedwigjs/broker': { singleton: true, requiredVersion: '^0.1.0' },
+        // `@hedwigjs/broker` is NOT shared: the runtime is private to the
+        // host. This module bundles `@hedwigjs/client` (stateless, tiny).
       },
     }),
     new HtmlWebpackPlugin({

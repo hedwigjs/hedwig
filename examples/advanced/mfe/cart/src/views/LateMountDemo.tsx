@@ -1,8 +1,8 @@
 import type { FC } from 'react';
 import React, { useEffect, useState } from 'react';
 
-import { createClient } from '@hedwigjs/broker';
-import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
+import { useClient, useStateTopic } from '@hedwigjs/react';
+import type { Topic, TopicContracts, TopicPayloads } from '@hedwig-demo/contracts';
 
 import { getLang, t } from '../../../../shared/i18n/useLang';
 
@@ -14,14 +14,14 @@ const T = {
   en: {
     title: 'Late mount',
     badge: 'replay demo',
-    intro: 'History-buffer demo. The module mounts on demand — after items are in the cart — and asks the broker for the latest',
-    outro: 'message. The producer re-emits nothing; state comes from the buffer.',
+    intro: 'State-topic demo. The module mounts on demand — after items are in the cart — and simply subscribes to',
+    outro: '. The producer re-emits nothing: the runtime retains the last value of a state topic and hands it over inside on().',
     mount: 'Mount',
     unmount: 'Unmount',
     waiting: 'Waiting for message…',
     waitingHint: 'Subscription established, buffer empty or replay pending.',
     received: 'received',
-    fromBuffer: 'from buffer',
+    fromBuffer: 'retained',
     positions: 'total items',
     unique: 'unique',
     sum: 'total',
@@ -29,14 +29,14 @@ const T = {
   ru: {
     title: 'Отложенный маунт',
     badge: 'replay demo',
-    intro: 'Демонстрация буфера истории. Модуль монтируется по кнопке уже после того, как в корзине что-то есть, и просит брокер отдать последнее сообщение',
-    outro: '. Продюсер не переотправляет ничего; состояние приходит из буфера.',
+    intro: 'Демонстрация топика-состояния. Модуль монтируется по кнопке уже после того, как в корзине что-то есть, и просто подписывается на',
+    outro: '. Продюсер ничего не переотправляет: рантайм хранит последнее значение state-топика и отдаёт его внутри on().',
     mount: 'Смонтировать',
     unmount: 'Размонтировать',
     waiting: 'Ждём сообщение…',
     waitingHint: 'Подписка установлена, буфер пуст либо реплей ещё не отработал.',
     received: 'получено',
-    fromBuffer: 'из буфера',
+    fromBuffer: 'retained',
     positions: 'позиций',
     unique: 'уникальных',
     sum: 'сумма',
@@ -49,35 +49,19 @@ function currency(): Intl.NumberFormat {
 
 /**
  * Actual late-joining consumer. Mounted / unmounted on demand by the parent.
- * Every mount creates its own client and asks the broker for the LAST
- * recorded `cart.snapshot.v1` from the replay buffer via
- * `on(..., { replay: { limit: 1 } })`.
- *
- * `cart-store` records every snapshot with `{ history: true }` (see
- * `cartStore.ts`) so this component receives the latest state the moment
- * it subscribes — no live emit required.
+ * `useClient` gives it a client for exactly its lifetime; `useStateTopic`
+ * subscribes to `cart.snapshot.v1` before paint. It is a `state` topic, so
+ * the runtime hands over the retained (last) snapshot inside `on()` — no
+ * live emit, no replay option, no `useEffect` bookkeeping here.
  */
 const LateJoiningConsumer: FC = () => {
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const client = useClient<Topic, TopicPayloads, TopicContracts>('late-mount-demo');
+  const snapshot: Snapshot | undefined = useStateTopic(client, 'cart.snapshot.v1');
   const [receivedAt, setReceivedAt] = useState<string | null>(null);
 
   useEffect(() => {
-    const client = createClient<Topic, TopicPayloads>('late-mount-demo');
-    const off = client.on(
-      'cart.snapshot.v1',
-      (msg) => {
-        setSnapshot(msg.data);
-        setReceivedAt(
-          new Date().toLocaleTimeString(getLang() === 'en' ? 'en-US' : 'ru-RU'),
-        );
-      },
-      { replay: { limit: 1 } },
-    );
-    return () => {
-      off();
-      client.destroy();
-    };
-  }, []);
+    if (snapshot) setReceivedAt(new Date().toLocaleTimeString(getLang() === 'en' ? 'en-US' : 'ru-RU'));
+  }, [snapshot]);
 
   if (!snapshot) {
     return (
@@ -114,9 +98,9 @@ const LateJoiningConsumer: FC = () => {
 
 /**
  * Demo card: a separately-mounted MFE that reads the current cart state
- * from the broker's replay buffer instead of live traffic. Purpose is to
+ * from the runtime's retained value instead of live traffic. Purpose is to
  * show that a late-joining module doesn't need the producer to re-emit —
- * it asks for the last snapshot via `replay: { limit: 1 }` and gets it.
+ * a `state` topic's last value comes with the subscription.
  */
 export const LateMountDemo: FC = () => {
   const [mounted, setMounted] = useState(false);
@@ -128,8 +112,7 @@ export const LateMountDemo: FC = () => {
         <span className={styles.badge}>{t(T, 'badge')}</span>
       </header>
       <p className={styles.description}>
-        {t(T, 'intro')} <code>cart.snapshot.v1</code> —{' '}
-        <code>on(topic, h, {'{'} replay: {'{'} limit: 1 {'}'} {'}'})</code>
+        {t(T, 'intro')} <code>cart.snapshot.v1</code>
         {t(T, 'outro')}
       </p>
       <button

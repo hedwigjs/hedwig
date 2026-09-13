@@ -593,26 +593,6 @@ describe('BrokerCore v2', () => {
       warnSpy.mockRestore();
     });
 
-    test('should ignore addBridge after destroy', () => {
-      const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
-      core.destroy();
-
-      const transport = {
-        send: jest.fn(),
-        onMessage: jest.fn().mockReturnValue(jest.fn()),
-        destroy: jest.fn(),
-      };
-      const removeBridge = core.addBridge('late-bridge', { transport, forward: ['user.*'] });
-
-      expect(typeof removeBridge).toBe('function');
-      expect(core.inspect.getBridges()).toHaveLength(0);
-      expect(warnSpy).toHaveBeenCalledWith(
-        '[broker] broker.bridge.add.after_destroy',
-        { bridgeId: 'late-bridge' },
-      );
-      warnSpy.mockRestore();
-    });
-
     test('should be idempotent on double destroy', () => {
       const client = new BrokerClient('client1', core);
       client.on('user.created.v1', jest.fn());
@@ -766,7 +746,7 @@ describe('BrokerCore v2', () => {
     });
   });
 
-  describe('Idempotent createClient', () => {
+  describe('createClient conflicts', () => {
     let broker: ReturnType<typeof initBroker<TestEventType, TestEventPayloads>>;
 
     beforeEach(() => {
@@ -777,9 +757,15 @@ describe('BrokerCore v2', () => {
       destroyBroker();
     });
 
-    test('should return same instance when creating client with existing ID', () => {
+    test('a duplicate id throws CLIENT_ID_TAKEN by default', () => {
+      createClient('cart');
+      expect(() => createClient('cart')).toThrow(expect.objectContaining({ code: 'CLIENT_ID_TAKEN' }));
+      expect(broker.inspect.getClients()).toHaveLength(1);
+    });
+
+    test('should return same instance when creating client with existing ID and onConflict: reset', () => {
       const client1 = createClient('cart');
-      const client2 = createClient('cart');
+      const client2 = createClient('cart', { onConflict: 'reset' });
 
       expect(client1).toBe(client2);
     });
@@ -790,7 +776,7 @@ describe('BrokerCore v2', () => {
       initBroker({ logger: { warn, error: jest.fn() } });
 
       createClient('cart');
-      createClient('cart');
+      createClient('cart', { onConflict: 'reset' });
 
       expect(warn).toHaveBeenCalledWith('facade.createClient.reset', { clientId: 'cart' });
     });
@@ -802,7 +788,7 @@ describe('BrokerCore v2', () => {
       const oldHandler = jest.fn();
       receiver.on('user.created.v1', oldHandler);
 
-      const receiverAgain = createClient('receiver');
+      const receiverAgain = createClient('receiver', { onConflict: 'reset' });
       const newHandler = jest.fn();
       receiverAgain.on('user.created.v1', newHandler);
 
@@ -814,8 +800,8 @@ describe('BrokerCore v2', () => {
 
     test('should not duplicate clients in registry on idempotent createClient', () => {
       createClient('cart');
-      createClient('cart');
-      createClient('cart');
+      createClient('cart', { onConflict: 'reset' });
+      createClient('cart', { onConflict: 'reset' });
 
       expect(broker.inspect.getClients()).toHaveLength(1);
     });
@@ -827,107 +813,12 @@ describe('BrokerCore v2', () => {
       const headerHandler = jest.fn();
       header.on('user.created.v1', headerHandler);
 
-      createClient('cart');
+      createClient('cart', { onConflict: 'reset' });
 
       const sender = createClient('sender');
       await sender.emit('user.created.v1', { userId: '1', email: 'a@b.com' });
 
       expect(headerHandler).toHaveBeenCalled();
-    });
-  });
-
-  describe('Idempotent addBridge', () => {
-    let broker: ReturnType<typeof initBroker<TestEventType, TestEventPayloads>>;
-
-    beforeEach(() => {
-      broker = initBroker<TestEventType, TestEventPayloads>();
-    });
-
-    afterEach(() => {
-      destroyBroker();
-    });
-
-    test('should destroy old bridge when adding bridge with same id', () => {
-      const destroy1 = jest.fn();
-      const destroy2 = jest.fn();
-
-      const transport1 = {
-        send: jest.fn(),
-        onMessage: jest.fn().mockReturnValue(jest.fn()),
-        destroy: destroy1,
-      };
-      const transport2 = {
-        send: jest.fn(),
-        onMessage: jest.fn().mockReturnValue(jest.fn()),
-        destroy: destroy2,
-      };
-
-      broker.addBridge('cross-tab', { transport: transport1, forward: ['user.*'] });
-      broker.addBridge('cross-tab', { transport: transport2, forward: ['user.*'] });
-
-      expect(destroy1).toHaveBeenCalled();
-      expect(destroy2).not.toHaveBeenCalled();
-    });
-
-    test('should not duplicate bridges with same id', async () => {
-      const sendFn = jest.fn();
-
-      const createTransport = () => ({
-        send: sendFn,
-        onMessage: jest.fn().mockReturnValue(jest.fn()),
-        destroy: jest.fn(),
-      });
-
-      broker.addBridge('cross-tab', { transport: createTransport(), forward: ['user.*'] });
-      broker.addBridge('cross-tab', { transport: createTransport(), forward: ['user.*'] });
-      broker.addBridge('cross-tab', { transport: createTransport(), forward: ['user.*'] });
-
-      const sender = createClient('sender');
-      await sender.emit('user.created.v1', { userId: '1', email: 'a@b.com' });
-
-      expect(sendFn).toHaveBeenCalledTimes(1);
-    });
-
-    test('should keep bridges with different ids independent', async () => {
-      const send1 = jest.fn();
-      const send2 = jest.fn();
-
-      const transport1 = {
-        send: send1,
-        onMessage: jest.fn().mockReturnValue(jest.fn()),
-        destroy: jest.fn(),
-      };
-      const transport2 = {
-        send: send2,
-        onMessage: jest.fn().mockReturnValue(jest.fn()),
-        destroy: jest.fn(),
-      };
-
-      broker.addBridge('cross-tab', { transport: transport1, forward: ['user.*'] });
-      broker.addBridge('iframe-checkout', { transport: transport2, forward: ['user.*'] });
-
-      const sender = createClient('sender');
-      await sender.emit('user.created.v1', { userId: '1', email: 'a@b.com' });
-
-      expect(send1).toHaveBeenCalledTimes(1);
-      expect(send2).toHaveBeenCalledTimes(1);
-    });
-
-    test('should remove bridge via returned cleanup function', async () => {
-      const sendFn = jest.fn();
-      const transport = {
-        send: sendFn,
-        onMessage: jest.fn().mockReturnValue(jest.fn()),
-        destroy: jest.fn(),
-      };
-
-      const removeBridge = broker.addBridge('cross-tab', { transport, forward: ['user.*'] });
-      removeBridge();
-
-      const sender = createClient('sender');
-      await sender.emit('user.created.v1', { userId: '1', email: 'a@b.com' });
-
-      expect(sendFn).not.toHaveBeenCalled();
     });
   });
 });
@@ -966,10 +857,11 @@ describe('Facade API', () => {
     expect(getBroker()).toBe(broker);
   });
 
-  test('createClient is idempotent', () => {
+  test('createClient refuses a duplicate id unless asked to reset', () => {
     initBroker();
     const client1 = createClient('cart');
-    const client2 = createClient('cart');
+    expect(() => createClient('cart')).toThrow(/already exists/);
+    const client2 = createClient('cart', { onConflict: 'reset' });
     expect(client1).toBe(client2);
   });
 

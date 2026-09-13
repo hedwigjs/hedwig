@@ -34,6 +34,11 @@
   color: #e5e7eb;
 }
 
+.pillVia {
+  background: #0b3b0f;
+  color: #86efac;
+}
+
 .pillSynthetic {
   background: #4c1d95;
   color: #ddd6fe;
@@ -49,6 +54,15 @@
   color: #67e8f9;
   font-weight: 600;
   letter-spacing: 0.03em;
+}
+
+/* A state topic: the runtime keeps its last value. */
+.kindState {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #3f3f0b;
+  color: #fde68a;
 }
 
 .kindUnicast {

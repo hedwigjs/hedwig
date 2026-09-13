@@ -1,6 +1,7 @@
 import type { Message, MessageHandler } from '../../types';
 import type { BackpressureStrategy } from '../BackpressureHandler.types';
 import type { BrokerLogger } from '../../logger/BrokerLogger.types';
+import { invokeIsolated } from './invokeIsolated';
 
 /**
  * ThrottleStrategy - Limits handler calls to once per throttle period
@@ -75,11 +76,7 @@ export class ThrottleStrategy implements BackpressureStrategy {
    */
   #execute(message: Message, handler: MessageHandler): void {
     this.#lastExecutionTime = Date.now();
-    try {
-      handler(message);
-    } catch (error) {
-      this.#logger.error('backpressure.handler.failed', { strategy: 'throttle', error });
-    }
+    invokeIsolated(handler, message, this.#logger, 'throttle');
   }
 
   /**

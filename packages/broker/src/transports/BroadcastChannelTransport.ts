@@ -1,4 +1,4 @@
-import type { BridgeTransport } from '../core/bridge/Bridge.types';
+import type { Transport } from '../core/transport/Transport.types';
 
 /**
  * BroadcastChannelTransport - Transport for cross-tab communication
@@ -11,7 +11,10 @@ import type { BridgeTransport } from '../core/bridge/Bridge.types';
  * - Sync theme/locale preferences
  * - Broadcast notifications to all tabs
  */
-export class BroadcastChannelTransport implements BridgeTransport {
+export class BroadcastChannelTransport implements Transport {
+  readonly duplex = true;
+  /** One `send` reaches every other tab; inbound may come from any of them. */
+  readonly fanout = true;
   #channel: BroadcastChannel;
   #messageCallback: ((data: unknown) => void) | null = null;
 

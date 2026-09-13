@@ -10,7 +10,6 @@ export type DevToolsPanelPosition = "top" | "bottom" | "left" | "right";
 export type DevToolsTabId =
   | "messages"
   | "clients"
-  | "bridges"
   | "replay-buffer"
   | "system-events"
   | "debug";

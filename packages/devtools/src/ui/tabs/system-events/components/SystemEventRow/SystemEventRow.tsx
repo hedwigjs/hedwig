@@ -8,21 +8,36 @@ interface SystemEventRowProps {
   entry: SystemEventLogEntry;
 }
 
-type EventFacet = "client" | "subscription" | "bridge" | "message";
-type EventVerb = "added" | "removed" | "rejected";
+type EventFacet = "client" | "subscription" | "remote" | "state" | "message" | "broker";
+type EventVerb = "added" | "removed" | "rejected" | "failed" | "warning" | "sent" | "received";
 
 function facetOf(name: SystemEventLogEntry["name"]): EventFacet {
   if (name.startsWith("client.")) return "client";
   if (name.startsWith("subscription.")) return "subscription";
   if (name.startsWith("message.")) return "message";
-  return "bridge";
+  if (name.startsWith("broker.")) return "broker";
+  if (name.startsWith("hook.")) return "broker";
+  if (name.startsWith("remote.")) return "remote";
+  if (name.startsWith("request.") || name.startsWith("response.")) return "remote";
+  if (name.startsWith("state.")) return "state";
+  return "broker";
 }
 
 function verbOf(name: SystemEventLogEntry["name"]): EventVerb {
   // client.registered / .unregistered map to added / removed for UI purposes.
   if (name.endsWith("rejected")) return "rejected";
+  if (name.endsWith("invalid")) return "rejected";
+  if (name.endsWith("failed")) return "failed";
+  if (name.endsWith("timeout")) return "failed";
+  if (name === "request.forwarded" || name === "response.sent") return "sent";
+  if (name === "response.received") return "received";
+  // Realm-singleton diagnostics: nothing broke, but the page is not what
+  // the author assumed (library bundled twice / two protocol versions).
+  if (name.startsWith("broker.")) return "warning";
   if (name.endsWith("registered") && !name.endsWith("unregistered")) return "added";
   if (name.endsWith("added")) return "added";
+  if (name.endsWith("created")) return "added";
+  if (name.endsWith("retained")) return "added";
   return "removed";
 }
 
@@ -33,11 +48,59 @@ function summarize(entry: SystemEventLogEntry): string {
   const source = typeof p.source === "string" ? p.source : undefined;
   const target = typeof p.target === "string" ? p.target : undefined;
   const topic = typeof p.topic === "string" ? p.topic : undefined;
-  const bridgeId = typeof p.bridgeId === "string" ? p.bridgeId : undefined;
+  const remoteId = typeof p.remoteId === "string" ? p.remoteId : undefined;
+  const transportKind = typeof p.kind === "string" && remoteId ? p.kind : undefined;
+  const identity = typeof p.identity === "string" ? p.identity : undefined;
   const reason = typeof p.reason === "string" ? p.reason : undefined;
+  const messageId = typeof p.messageId === "string" ? p.messageId : undefined;
+  const version = typeof p.version === "string" ? p.version : undefined;
+  const copyVersion = typeof p.copyVersion === "string" ? p.copyVersion : undefined;
+  const copies = typeof p.copies === "number" ? p.copies : undefined;
 
-  if (bridgeId) return bridgeId;
+  // request.* / response.*: the wire-level trace of a request.
+  const correlationId = typeof p.correlationId === "string" ? p.correlationId : undefined;
+  const latencyMs = typeof p.latencyMs === "number" ? p.latencyMs : undefined;
+  const timeoutMs = typeof p.timeout === "number" ? p.timeout : undefined;
+  const status = typeof p.status === "string" ? p.status : undefined;
+  if (remoteId && correlationId) {
+    const outcome = status && reason ? ` · ${status} ${reason}` : "";
+    const timing = latencyMs !== undefined ? ` · ${latencyMs} ms` : timeoutMs !== undefined ? ` · after ${timeoutMs} ms` : "";
+    return `${remoteId} · ${topic ?? ""} · ${correlationId}${outcome}${timing}`;
+  }
+
+  // remote.*: created (kind + identity), frame.rejected (reason + what the
+  // frame claimed), send.failed (topic + reason), destroyed (id only).
+  if (remoteId) {
+    if (transportKind && identity) return `${remoteId} · ${transportKind} · identity ${identity}`;
+    if (reason && topic && messageId) return `${remoteId} · ${topic} · ${messageId} · ${reason}`;
+    if (reason) {
+      return `${remoteId} · ${reason}${source ? ` · claimed source ${source}` : ""}${topic ? ` · ${topic}` : ""}`;
+    }
+    return remoteId;
+  }
+
+  // hook.failed: which hook crashed and what the broker did about it.
+  const hookKind = typeof p.kind === "string" ? p.kind : undefined;
+  const failMode = typeof p.failMode === "string" ? p.failMode : undefined;
+  if (hookKind && failMode) {
+    const outcome =
+      hookKind === "afterSend"
+        ? "observer skipped"
+        : failMode === "closed"
+          ? "denied (fail-closed)"
+          : "skipped (fail-open)";
+    return `${hookKind} hook threw · ${outcome}${topic ? ` · ${topic}` : ""}`;
+  }
+
+  // Realm-singleton diagnostics (broker.duplicate_copy).
+  if (version !== undefined && copies !== undefined) {
+    const who = copyVersion && copyVersion !== version ? ` (latest copy ${copyVersion})` : "";
+    return `broker ${version} · ${copies} extra ${copies === 1 ? "copy" : "copies"} of @hedwigjs/broker on this page${who}`;
+  }
+
   if (source && target && topic) return `${source} → ${target} · ${topic}${reason ? ` · ${reason}` : ""}`;
+  // state.retained: topic + message id.
+  if (topic && messageId) return `${topic} · ${messageId}`;
   if (clientId && topic) return `${clientId} · ${topic}${reason ? ` · ${reason}` : ""}`;
   if (clientId) return clientId;
   return "";
@@ -46,14 +109,20 @@ function summarize(entry: SystemEventLogEntry): string {
 const FACET_CLASS: Record<EventFacet, string> = {
   client: styles.facetClient,
   subscription: styles.facetSubscription,
-  bridge: styles.facetBridge,
+  remote: styles.facetRemote,
+  state: styles.facetState,
   message: styles.facetMessage,
+  broker: styles.facetBroker,
 };
 
 const VERB_CLASS: Record<EventVerb, string> = {
   added: styles.verbAdded,
   removed: styles.verbRemoved,
   rejected: styles.verbRejected,
+  failed: styles.verbFailed,
+  warning: styles.verbWarning,
+  sent: styles.verbSent,
+  received: styles.verbReceived,
 };
 
 export function SystemEventRow({ entry }: SystemEventRowProps): ReactNode {

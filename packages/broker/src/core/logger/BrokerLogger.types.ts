@@ -6,19 +6,24 @@
  */
 export type BrokerLogEvent =
   // Broker lifecycle
+  | 'broker.duplicate_copy'
+  | 'broker.version_incompatible'
   | 'broker.subscribe.after_destroy'
-  | 'broker.bridge.add.after_destroy'
-  | 'broker.bridge.replaced'
   | 'broker.client.register.after_destroy'
-  | 'broker.replay.history_disabled'
+  | 'broker.replay.no_retention'
   | 'facade.createClient.reset'
+  // Debug channel
+  | 'debug.disabled'
   // Message routing
   | 'handler.failed'
+  | 'unicast.multiple_handlers'
   // Hooks
   | 'hook.after_send.failed'
   | 'hook.failed'
-  // Bridge
-  | 'bridge.message.parse_failed'
+  // Remote clients
+  | 'remote.frame.rejected'
+  | 'remote.send.failed'
+  | 'remote.transport.destroy_failed'
   // Backpressure
   | 'backpressure.handler.failed'
   | 'backpressure.on_drop.failed'

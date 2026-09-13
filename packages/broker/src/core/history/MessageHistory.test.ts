@@ -1,594 +1,292 @@
 import { MessageHistory } from './MessageHistory';
 import type { Message } from '../types';
-import type { HistoryConfig } from './MessageHistory.types';
 
-// Helper to create mock message
-let mockCounter = 0;
-const createMockEvent = (topic: string, source: string, data: any): Message<string, any> => ({
-  id: `mock-${++mockCounter}`,
+let counter = 0;
+const msg = (topic: string, source: string, data: any, timestamp = Date.now()): Message<string, any> => ({
+  id: `m-${++counter}`,
   topic,
   source,
   target: '*',
   data,
-  timestamp: Date.now(),
+  timestamp,
 });
 
-// Helper for sleep
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const topicsOf = (entries: ReadonlyArray<{ message: { topic: string } }>) => entries.map((e) => e.message.topic);
 
 describe('MessageHistory', () => {
-  let config: HistoryConfig;
+  describe('retention is declared per topic', () => {
+    test('records only topics that retain; anything else is dropped', () => {
+      const history = new MessageHistory();
+      history.retain('feed.v1', 3);
 
-  beforeEach(() => {
-    config = {
-      enabled: true,
-      maxSize: 100,
-    };
-  });
+      expect(history.record(msg('feed.v1', 'a', { n: 1 }))).toBe(true);
+      expect(history.record(msg('noise.v1', 'a', { n: 2 }))).toBe(false);
 
-  describe('Constructor', () => {
-    test('should create history with config', () => {
-      const history = new MessageHistory(config);
-      const stats = history.getStats();
-      expect(stats.count).toBe(0);
+      expect(history.retains('feed.v1')).toBe(true);
+      expect(history.retains('noise.v1')).toBe(false);
+      expect(history.getStats().count).toBe(1);
     });
 
-    test('should start TTL cleanup if configured', () => {
-      jest.useFakeTimers();
-      const configWithTTL: HistoryConfig = {
-        ...config,
-        ttl: 1000,
-      };
-      const history = new MessageHistory(configWithTTL);
+    test('every topic has its own ring: a chatty topic never evicts another one', () => {
+      const history = new MessageHistory();
+      history.retain('chatty.v1', 2);
+      history.retain('quiet.v1', 2);
 
-      // Cleanup timer should be set
-      expect(jest.getTimerCount()).toBeGreaterThan(0);
+      history.record(msg('quiet.v1', 'a', { n: 0 }));
+      for (let i = 1; i <= 5; i++) history.record(msg('chatty.v1', 'a', { n: i }));
 
-      history.destroy();
-      jest.useRealTimers();
-    });
-  });
-
-  describe('record()', () => {
-    test('should record event to history', () => {
-      const history = new MessageHistory(config);
-      const event = createMockEvent('user.login.v1', 'mfe-auth', { userId: '123' });
-
-      history.record(event);
-
-      const stats = history.getStats();
-      expect(stats.count).toBe(1);
+      expect(history.querySync({ topics: ['chatty.v1'] }).map((e) => e.message.data.n)).toEqual([4, 5]);
+      expect(history.querySync({ topics: ['quiet.v1'] }).map((e) => e.message.data.n)).toEqual([0]);
     });
 
-    test('should record multiple events', () => {
-      const history = new MessageHistory(config);
+    test('sequence numbers are global, so a cross-topic query comes back in emit order', () => {
+      const history = new MessageHistory();
+      history.retain('a.v1', 10);
+      history.retain('b.v1', 10);
+      history.record(msg('a.v1', 's', 1));
+      history.record(msg('b.v1', 's', 2));
+      history.record(msg('a.v1', 's', 3));
 
-      history.record(createMockEvent('user.login.v1', 'mfe-auth', {}));
-      history.record(createMockEvent('user.logout.v1', 'mfe-auth', {}));
-      history.record(createMockEvent('cart.add.v1', 'mfe-cart', {}));
-
-      const stats = history.getStats();
-      expect(stats.count).toBe(3);
+      const all = history.querySync();
+      expect(topicsOf(all)).toEqual(['a.v1', 'b.v1', 'a.v1']);
+      expect(all.map((e) => e.sequence)).toEqual([0, 1, 2]);
     });
 
-    test('should freeze recorded events (immutability)', async () => {
-      const history = new MessageHistory(config);
-      const event = createMockEvent('test.v1', 'test', { value: 1 });
+    test('a state topic keeps exactly one value whatever limit is passed', () => {
+      const history = new MessageHistory();
+      history.retain('cart.snapshot.v1', 5, 'state');
+      history.record(msg('cart.snapshot.v1', 'store', { items: 1 }));
+      history.record(msg('cart.snapshot.v1', 'store', { items: 2 }));
+      history.record(msg('cart.snapshot.v1', 'store', { items: 3 }));
 
-      history.record(event);
+      expect(history.last('cart.snapshot.v1')?.message.data).toEqual({ items: 3 });
+      expect(history.getStats().topics).toEqual([{ topic: 'cart.snapshot.v1', kind: 'state', limit: 1, count: 1 }]);
+    });
 
-      const entries = await history.query();
-      const storedEvent = entries[0].message;
+    test('retainsMatching answers for globs', () => {
+      const history = new MessageHistory();
+      history.retain('chat.message-sent.v1', 50);
+      expect(history.retainsMatching('chat.*')).toBe(true);
+      expect(history.retainsMatching('chat.message-sent.v1')).toBe(true);
+      expect(history.retainsMatching('cart.*')).toBe(false);
+    });
 
-      // Attempt to modify should throw or silently fail
+    test('re-declaring a topic updates its limit and trims to it', () => {
+      const history = new MessageHistory();
+      history.retain('a.v1', 5);
+      for (let i = 1; i <= 5; i++) history.record(msg('a.v1', 's', i));
+      history.retain('a.v1', 2);
+      expect(history.querySync().map((e) => e.message.data)).toEqual([4, 5]);
+    });
+
+    test('recorded messages are frozen', () => {
+      const history = new MessageHistory();
+      history.retain('t.v1', 1);
+      history.record(msg('t.v1', 's', { value: 1 }));
+      const stored = history.querySync()[0]!.message;
       expect(() => {
-        (storedEvent as any).topic = 'modified';
+        (stored as any).topic = 'modified';
       }).toThrow();
     });
 
-    test('should apply FIFO eviction when maxSize exceeded', () => {
-      const smallConfig: HistoryConfig = {
-        ...config,
-        maxSize: 3,
-      };
-      const history = new MessageHistory(smallConfig);
-
-      // Record 5 events (maxSize = 3)
-      history.record(createMockEvent('event.1', 'test', { order: 1 }));
-      history.record(createMockEvent('event.2', 'test', { order: 2 }));
-      history.record(createMockEvent('event.3', 'test', { order: 3 }));
-      history.record(createMockEvent('event.4', 'test', { order: 4 }));
-      history.record(createMockEvent('event.5', 'test', { order: 5 }));
-
-      const stats = history.getStats();
-      expect(stats.count).toBe(3); // Should keep only last 3
-    });
-
-    test('should keep only newest events after FIFO eviction', async () => {
-      const smallConfig: HistoryConfig = {
-        ...config,
-        maxSize: 2,
-      };
-      const history = new MessageHistory(smallConfig);
-
-      history.record(createMockEvent('event.1', 'test', { order: 1 }));
-      history.record(createMockEvent('event.2', 'test', { order: 2 }));
-      history.record(createMockEvent('event.3', 'test', { order: 3 }));
-
-      const entries = await history.query();
-      expect(entries).toHaveLength(2);
-      expect(entries[0].message.data.order).toBe(2); // event.1 evicted
-      expect(entries[1].message.data.order).toBe(3);
-    });
-
-    test('should assign sequence numbers', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('event.1', 'test', {}));
-      history.record(createMockEvent('event.2', 'test', {}));
-      history.record(createMockEvent('event.3', 'test', {}));
-
-      const entries = await history.query();
-      expect(entries[0].sequence).toBe(0);
-      expect(entries[1].sequence).toBe(1);
-      expect(entries[2].sequence).toBe(2);
+    test('last() is undefined for an empty or undeclared topic', () => {
+      const history = new MessageHistory();
+      history.retain('a.v1', 3);
+      expect(history.last('a.v1')).toBeUndefined();
+      expect(history.last('nope.v1')).toBeUndefined();
     });
   });
 
-  describe('query()', () => {
-    test('should return all events when no filter', async () => {
-      const history = new MessageHistory(config);
+  describe('host limits', () => {
+    test('enabled: false switches event retention off but keeps state', () => {
+      const history = new MessageHistory({ enabled: false });
+      history.retain('feed.v1', 10);
+      history.retain('cart.snapshot.v1', 1, 'state');
 
-      history.record(createMockEvent('user.login.v1', 'mfe-auth', {}));
-      history.record(createMockEvent('cart.add.v1', 'mfe-cart', {}));
-      history.record(createMockEvent('user.logout.v1', 'mfe-auth', {}));
-
-      const entries = await history.query();
-      expect(entries).toHaveLength(3);
+      expect(history.enabled).toBe(false);
+      expect(history.record(msg('feed.v1', 's', 1))).toBe(false);
+      expect(history.record(msg('cart.snapshot.v1', 's', 1))).toBe(true);
+      expect(history.getStats().topics.map((t) => t.topic)).toEqual(['cart.snapshot.v1']);
     });
 
-    test('should return empty array when no events', async () => {
-      const history = new MessageHistory(config);
+    test('maxPerTopic caps declared event limits, never state', () => {
+      const history = new MessageHistory({ maxPerTopic: 2 });
+      history.retain('feed.v1', 10);
+      history.retain('cart.snapshot.v1', 1, 'state');
+      for (let i = 1; i <= 4; i++) history.record(msg('feed.v1', 's', i));
 
-      const entries = await history.query();
-      expect(entries).toEqual([]);
+      expect(history.getStats().topics).toEqual([
+        { topic: 'cart.snapshot.v1', kind: 'state', limit: 1, count: 0 },
+        { topic: 'feed.v1', kind: 'event', limit: 2, count: 2 },
+      ]);
     });
 
-    test('should filter by exact event type', async () => {
-      const history = new MessageHistory(config);
+    test('a limit below one declares nothing', () => {
+      const history = new MessageHistory();
+      history.retain('a.v1', 0);
+      history.retain('b.v1', -3);
+      expect(history.retains('a.v1')).toBe(false);
+      expect(history.retains('b.v1')).toBe(false);
+    });
 
-      history.record(createMockEvent('user.login.v1', 'mfe-auth', {}));
-      history.record(createMockEvent('cart.add.v1', 'mfe-cart', {}));
-      history.record(createMockEvent('user.logout.v1', 'mfe-auth', {}));
+    describe('ttl', () => {
+      beforeEach(() => jest.useFakeTimers());
+      afterEach(() => jest.useRealTimers());
 
-      const entries = await history.query({
-        topics: ['cart.add.v1'],
+      test('expires retained events, never a state value', () => {
+        const history = new MessageHistory({ ttl: 1000 });
+        history.retain('feed.v1', 10);
+        history.retain('cart.snapshot.v1', 1, 'state');
+        history.record(msg('feed.v1', 's', 1));
+        history.record(msg('cart.snapshot.v1', 's', { items: 1 }));
+        expect(history.getStats().count).toBe(2);
+
+        jest.advanceTimersByTime(1500);
+
+        expect(history.querySync({ topics: ['feed.v1'] })).toHaveLength(0);
+        expect(history.last('cart.snapshot.v1')?.message.data).toEqual({ items: 1 });
+        history.destroy();
       });
 
-      expect(entries).toHaveLength(1);
-      expect(entries[0].message.topic).toBe('cart.add.v1');
-    });
-
-    test('should filter by glob pattern (wildcard at end)', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('user.login.v1', 'mfe-auth', {}));
-      history.record(createMockEvent('user.logout.v1', 'mfe-auth', {}));
-      history.record(createMockEvent('cart.add.v1', 'mfe-cart', {}));
-
-      const entries = await history.query({
-        topics: ['user.*'],
+      test('keeps events within the ttl', () => {
+        const history = new MessageHistory({ ttl: 5000 });
+        history.retain('feed.v1', 10);
+        history.record(msg('feed.v1', 's', 1));
+        jest.advanceTimersByTime(3000);
+        expect(history.getStats().count).toBe(1);
+        history.destroy();
       });
 
-      expect(entries).toHaveLength(2);
-      expect(entries[0].message.topic).toBe('user.login.v1');
-      expect(entries[1].message.topic).toBe('user.logout.v1');
-    });
-
-    test('should filter by glob pattern (wildcard in middle)', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('cart.add.v1', 'mfe-cart', {}));
-      history.record(createMockEvent('cart.remove.v1', 'mfe-cart', {}));
-      history.record(createMockEvent('cart.add.v2', 'mfe-cart', {}));
-
-      const entries = await history.query({
-        topics: ['cart.*.v1'],
+      test('starts a timer only when a ttl is set, and destroy() stops it', () => {
+        expect(jest.getTimerCount()).toBe(0);
+        new MessageHistory();
+        expect(jest.getTimerCount()).toBe(0);
+        const withTtl = new MessageHistory({ ttl: 1000 });
+        expect(jest.getTimerCount()).toBe(1);
+        withTtl.destroy();
+        expect(jest.getTimerCount()).toBe(0);
       });
+    });
+  });
 
-      expect(entries).toHaveLength(2);
-      expect(entries[0].message.topic).toBe('cart.add.v1');
-      expect(entries[1].message.topic).toBe('cart.remove.v1');
+  describe('querySync()', () => {
+    function seeded() {
+      const history = new MessageHistory();
+      for (const t of ['user.login.v1', 'user.logout.v1', 'cart.add.v1', 'cart.remove.v1', 'cart.add.v2']) history.retain(t, 10);
+      history.record(msg('user.login.v1', 'mfe-auth', {}, 100));
+      history.record(msg('cart.add.v1', 'mfe-cart', {}, 200));
+      history.record(msg('user.logout.v1', 'mfe-auth', {}, 300));
+      history.record(msg('cart.remove.v1', 'mfe-cart', {}, 400));
+      history.record(msg('cart.add.v2', 'mfe-cart', {}, 500));
+      return history;
+    }
+
+    test('no filter returns everything in emit order; an empty history returns []', () => {
+      expect(topicsOf(seeded().querySync())).toEqual(['user.login.v1', 'cart.add.v1', 'user.logout.v1', 'cart.remove.v1', 'cart.add.v2']);
+      expect(new MessageHistory().querySync()).toEqual([]);
     });
 
-    test('should filter by multiple event types', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('user.login.v1', 'mfe-auth', {}));
-      history.record(createMockEvent('cart.add.v1', 'mfe-cart', {}));
-      history.record(createMockEvent('notification.new.v1', 'mfe-notif', {}));
-
-      const entries = await history.query({
-        topics: ['user.login.v1', 'cart.add.v1'],
-      });
-
-      expect(entries).toHaveLength(2);
+    test('filters by exact topic, by glob (end and middle), and by several patterns', () => {
+      const history = seeded();
+      expect(topicsOf(history.querySync({ topics: ['cart.add.v1'] }))).toEqual(['cart.add.v1']);
+      expect(topicsOf(history.querySync({ topics: ['user.*'] }))).toEqual(['user.login.v1', 'user.logout.v1']);
+      expect(topicsOf(history.querySync({ topics: ['cart.*.v1'] }))).toEqual(['cart.add.v1', 'cart.remove.v1']);
+      expect(topicsOf(history.querySync({ topics: ['*.v2'] }))).toEqual(['cart.add.v2']);
+      expect(topicsOf(history.querySync({ topics: ['user.login.v1', 'cart.add.v1'] }))).toEqual(['user.login.v1', 'cart.add.v1']);
+      expect(history.querySync({ topics: ['user.login.v2'] })).toEqual([]);
     });
 
-    test('should filter by source', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('event.v1', 'mfe-auth', {}));
-      history.record(createMockEvent('event.v1', 'mfe-cart', {}));
-      history.record(createMockEvent('event.v1', 'mfe-auth', {}));
-
-      const entries = await history.query({
-        sources: ['mfe-auth'],
-      });
-
-      expect(entries).toHaveLength(2);
-      expect(entries[0].message.source).toBe('mfe-auth');
-      expect(entries[1].message.source).toBe('mfe-auth');
+    test('filters by source and by time window', () => {
+      const history = seeded();
+      expect(topicsOf(history.querySync({ sources: ['mfe-auth'] }))).toEqual(['user.login.v1', 'user.logout.v1']);
+      expect(topicsOf(history.querySync({ since: 300 }))).toEqual(['user.logout.v1', 'cart.remove.v1', 'cart.add.v2']);
+      expect(topicsOf(history.querySync({ until: 200 }))).toEqual(['user.login.v1', 'cart.add.v1']);
+      expect(topicsOf(history.querySync({ since: 200, until: 400 }))).toEqual(['cart.add.v1', 'user.logout.v1', 'cart.remove.v1']);
     });
 
-    test('should filter by time range (since)', async () => {
-      const history = new MessageHistory(config);
-      const now = Date.now();
-
-      history.record(createMockEvent('event.1', 'test', {}));
-      await sleep(10);
-      const midpoint = Date.now();
-      await sleep(10);
-      history.record(createMockEvent('event.2', 'test', {}));
-
-      const entries = await history.query({
-        since: midpoint,
-      });
-
-      expect(entries).toHaveLength(1);
-      expect(entries[0].message.topic).toBe('event.2');
+    test('limit keeps the newest N across topics', () => {
+      expect(topicsOf(seeded().querySync({ limit: 2 }))).toEqual(['cart.remove.v1', 'cart.add.v2']);
     });
 
-    test('should filter by time range (until)', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('event.1', 'test', {}));
-      await sleep(10);
-      const midpoint = Date.now();
-      await sleep(10);
-      history.record(createMockEvent('event.2', 'test', {}));
-
-      const entries = await history.query({
-        until: midpoint,
-      });
-
-      expect(entries).toHaveLength(1);
-      expect(entries[0].message.topic).toBe('event.1');
+    test('filters combine', () => {
+      expect(topicsOf(seeded().querySync({ topics: ['cart.*'], sources: ['mfe-cart'], since: 300, limit: 10 }))).toEqual([
+        'cart.remove.v1',
+        'cart.add.v2',
+      ]);
     });
 
-    test('should filter by time range (since + until)', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('event.1', 'test', {}));
-      await sleep(10);
-      const start = Date.now();
-      await sleep(10);
-      history.record(createMockEvent('event.2', 'test', {}));
-      await sleep(10);
-      const end = Date.now();
-      await sleep(10);
-      history.record(createMockEvent('event.3', 'test', {}));
-
-      const entries = await history.query({
-        since: start,
-        until: end,
-      });
-
-      expect(entries).toHaveLength(1);
-      expect(entries[0].message.topic).toBe('event.2');
-    });
-
-    test('should apply limit (last N events)', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('event.1', 'test', {}));
-      history.record(createMockEvent('event.2', 'test', {}));
-      history.record(createMockEvent('event.3', 'test', {}));
-      history.record(createMockEvent('event.4', 'test', {}));
-      history.record(createMockEvent('event.5', 'test', {}));
-
-      const entries = await history.query({ limit: 3 });
-
-      expect(entries).toHaveLength(3);
-      expect(entries[0].message.topic).toBe('event.3'); // Last 3
-      expect(entries[1].message.topic).toBe('event.4');
-      expect(entries[2].message.topic).toBe('event.5');
-    });
-
-    test('should combine multiple filters', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('user.login.v1', 'mfe-auth', {}));
-      await sleep(10);
-      const since = Date.now();
-      await sleep(10);
-      history.record(createMockEvent('user.logout.v1', 'mfe-auth', {}));
-      history.record(createMockEvent('cart.add.v1', 'mfe-cart', {}));
-      history.record(createMockEvent('user.update.v1', 'mfe-auth', {}));
-
-      const entries = await history.query({
-        topics: ['user.*'],
-        sources: ['mfe-auth'],
-        since: since,
-        limit: 10,
-      });
-
-      expect(entries).toHaveLength(2); // user.logout + user.update
+    test('query() is the async twin of querySync()', async () => {
+      expect(topicsOf(await seeded().query({ topics: ['user.*'] }))).toEqual(['user.login.v1', 'user.logout.v1']);
     });
   });
 
   describe('clear()', () => {
-    test('should clear all events when no filter', async () => {
-      const history = new MessageHistory(config);
+    function seeded() {
+      const history = new MessageHistory();
+      for (const t of ['user.login.v1', 'user.logout.v1', 'cart.add.v1']) history.retain(t, 10);
+      history.record(msg('user.login.v1', 'mfe-auth', {}, 100));
+      history.record(msg('cart.add.v1', 'mfe-cart', {}, 200));
+      history.record(msg('user.logout.v1', 'mfe-auth', {}, 300));
+      return history;
+    }
 
-      history.record(createMockEvent('event.1', 'test', {}));
-      history.record(createMockEvent('event.2', 'test', {}));
-      history.record(createMockEvent('event.3', 'test', {}));
-
+    test('clears everything but keeps the topics declared', async () => {
+      const history = seeded();
       await history.clear();
-
-      const stats = history.getStats();
-      expect(stats.count).toBe(0);
+      expect(history.getStats().count).toBe(0);
+      expect(history.retains('user.login.v1')).toBe(true);
     });
 
-    test('should clear filtered events by type', async () => {
-      const history = new MessageHistory(config);
+    test('clears by topic pattern, by source, and by time window', async () => {
+      let history = seeded();
+      await history.clear({ topics: ['user.*'] });
+      expect(topicsOf(history.querySync())).toEqual(['cart.add.v1']);
 
-      history.record(createMockEvent('user.login.v1', 'mfe-auth', {}));
-      history.record(createMockEvent('cart.add.v1', 'mfe-cart', {}));
-      history.record(createMockEvent('user.logout.v1', 'mfe-auth', {}));
+      history = seeded();
+      await history.clear({ sources: ['mfe-auth'] });
+      expect(topicsOf(history.querySync())).toEqual(['cart.add.v1']);
 
-      await history.clear({
-        topics: ['user.*'],
-      });
-
-      const entries = await history.query();
-      expect(entries).toHaveLength(1);
-      expect(entries[0].message.topic).toBe('cart.add.v1');
-    });
-
-    test('should clear filtered events by source', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('event.v1', 'mfe-auth', {}));
-      history.record(createMockEvent('event.v1', 'mfe-cart', {}));
-      history.record(createMockEvent('event.v1', 'mfe-auth', {}));
-
-      await history.clear({
-        sources: ['mfe-auth'],
-      });
-
-      const entries = await history.query();
-      expect(entries).toHaveLength(1);
-      expect(entries[0].message.source).toBe('mfe-cart');
-    });
-
-    test('should clear filtered events by time range', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('event.1', 'test', {}));
-      await sleep(10);
-      const cutoff = Date.now();
-      await sleep(10);
-      history.record(createMockEvent('event.2', 'test', {}));
-      history.record(createMockEvent('event.3', 'test', {}));
-
-      await history.clear({
-        until: cutoff,
-      });
-
-      const entries = await history.query();
-      expect(entries).toHaveLength(2);
-      expect(entries[0].message.topic).toBe('event.2');
-      expect(entries[1].message.topic).toBe('event.3');
+      history = seeded();
+      await history.clear({ until: 150 });
+      expect(topicsOf(history.querySync())).toEqual(['cart.add.v1', 'user.logout.v1']);
     });
   });
 
   describe('getStats()', () => {
-    test('should return zero stats for empty history', () => {
-      const history = new MessageHistory(config);
-      const stats = history.getStats();
-
-      expect(stats.count).toBe(0);
-      expect(stats.oldestTimestamp).toBeUndefined();
-      expect(stats.newestTimestamp).toBeUndefined();
+    test('lists every declared topic even when nothing was recorded yet', () => {
+      const history = new MessageHistory();
+      history.retain('b.v1', 3);
+      history.retain('a.v1', 2);
+      expect(history.getStats()).toEqual({
+        count: 0,
+        topics: [
+          { topic: 'a.v1', kind: 'event', limit: 2, count: 0 },
+          { topic: 'b.v1', kind: 'event', limit: 3, count: 0 },
+        ],
+      });
     });
 
-    test('should return correct count', () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('event.1', 'test', {}));
-      history.record(createMockEvent('event.2', 'test', {}));
-      history.record(createMockEvent('event.3', 'test', {}));
-
+    test('reports totals, time span and a memory estimate', () => {
+      const history = new MessageHistory();
+      history.retain('a.v1', 10);
+      history.record(msg('a.v1', 's', 1, 100));
+      history.record(msg('a.v1', 's', 2, 300));
       const stats = history.getStats();
-      expect(stats.count).toBe(3);
-    });
-
-    test('should return oldest and newest timestamps', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('event.1', 'test', {}));
-      await sleep(10);
-      history.record(createMockEvent('event.2', 'test', {}));
-      await sleep(10);
-      history.record(createMockEvent('event.3', 'test', {}));
-
-      const stats = history.getStats();
-      expect(stats.oldestTimestamp).toBeDefined();
-      expect(stats.newestTimestamp).toBeDefined();
-      expect(stats.newestTimestamp!).toBeGreaterThan(stats.oldestTimestamp!);
-    });
-
-    test('should estimate memory usage', () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('event.1', 'test', {}));
-      history.record(createMockEvent('event.2', 'test', {}));
-
-      const stats = history.getStats();
-      expect(stats.memoryUsage).toBeDefined();
+      expect(stats.count).toBe(2);
+      expect(stats.oldestTimestamp).toBe(100);
+      expect(stats.newestTimestamp).toBe(300);
       expect(stats.memoryUsage).toBeGreaterThan(0);
-      expect(stats.memoryUsage).toBeCloseTo(200, -2);
-    });
-  });
-
-  describe('TTL cleanup', () => {
-    beforeEach(() => {
-      jest.useFakeTimers();
-    });
-
-    afterEach(() => {
-      jest.useRealTimers();
-    });
-
-    test('should automatically remove expired events', () => {
-      const configWithTTL: HistoryConfig = {
-        ...config,
-        ttl: 1000, // 1 second TTL
-      };
-      const history = new MessageHistory(configWithTTL);
-
-      // Record events
-      history.record(createMockEvent('event.1', 'test', {}));
-      history.record(createMockEvent('event.2', 'test', {}));
-
-      expect(history.getStats().count).toBe(2);
-
-      // Fast-forward past TTL + cleanup interval
-      jest.advanceTimersByTime(1500);
-
-      // Events should be cleaned up
-      expect(history.getStats().count).toBe(0);
-
-      history.destroy();
-    });
-
-    test('should not remove events within TTL', () => {
-      const configWithTTL: HistoryConfig = {
-        ...config,
-        ttl: 5000, // 5 second TTL
-      };
-      const history = new MessageHistory(configWithTTL);
-
-      history.record(createMockEvent('event.1', 'test', {}));
-
-      // Fast-forward less than TTL
-      jest.advanceTimersByTime(3000);
-
-      expect(history.getStats().count).toBe(1);
-
-      history.destroy();
     });
   });
 
   describe('destroy()', () => {
-    test('should clear all events', () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('event.1', 'test', {}));
-      history.record(createMockEvent('event.2', 'test', {}));
-
+    test('forgets every buffer', () => {
+      const history = new MessageHistory();
+      history.retain('a.v1', 10);
+      history.record(msg('a.v1', 's', 1));
       history.destroy();
-
-      const stats = history.getStats();
-      expect(stats.count).toBe(0);
-    });
-
-    test('should stop TTL cleanup timer', () => {
-      jest.useFakeTimers();
-      const configWithTTL: HistoryConfig = {
-        ...config,
-        ttl: 1000,
-      };
-      const history = new MessageHistory(configWithTTL);
-
-      const timersBefore = jest.getTimerCount();
-      history.destroy();
-      const timersAfter = jest.getTimerCount();
-
-      expect(timersAfter).toBeLessThan(timersBefore);
-
-      jest.useRealTimers();
-    });
-  });
-
-  describe('Glob pattern matching', () => {
-    test('should match exact string', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('user.login.v1', 'test', {}));
-
-      const entries = await history.query({
-        topics: ['user.login.v1'],
-      });
-
-      expect(entries).toHaveLength(1);
-    });
-
-    test('should match wildcard at end', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('user.login.v1', 'test', {}));
-      history.record(createMockEvent('user.logout.v1', 'test', {}));
-      history.record(createMockEvent('cart.add.v1', 'test', {}));
-
-      const entries = await history.query({
-        topics: ['user.*'],
-      });
-
-      expect(entries).toHaveLength(2);
-    });
-
-    test('should match wildcard at start', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('user.login.v1', 'test', {}));
-      history.record(createMockEvent('cart.add.v1', 'test', {}));
-      history.record(createMockEvent('notification.new.v1', 'test', {}));
-
-      const entries = await history.query({
-        topics: ['*.v1'],
-      });
-
-      expect(entries).toHaveLength(3);
-    });
-
-    test('should match wildcard in middle', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('user.login.v1', 'test', {}));
-      history.record(createMockEvent('user.logout.v1', 'test', {}));
-      history.record(createMockEvent('user.update.v2', 'test', {}));
-
-      const entries = await history.query({
-        topics: ['user.*.v1'],
-      });
-
-      expect(entries).toHaveLength(2);
-    });
-
-    test('should not match when pattern has no wildcard', async () => {
-      const history = new MessageHistory(config);
-
-      history.record(createMockEvent('user.login.v1', 'test', {}));
-      history.record(createMockEvent('user.logout.v1', 'test', {}));
-
-      const entries = await history.query({
-        topics: ['user.login.v2'],
-      });
-
-      expect(entries).toHaveLength(0);
+      expect(history.getStats()).toEqual({ count: 0, topics: [] });
+      expect(history.retains('a.v1')).toBe(false);
     });
   });
 });

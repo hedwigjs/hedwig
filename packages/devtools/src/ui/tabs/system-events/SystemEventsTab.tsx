@@ -23,8 +23,8 @@ export function SystemEventsTab({ store }: SystemEventsTabProps): ReactNode {
           {systemEvents.length} event{systemEvents.length === 1 ? "" : "s"}
         </span>
         <span className={styles.headerHint}>
-          Broker infrastructure signals — client, subscription, and bridge
-          lifecycle from{" "}
+          Broker infrastructure signals — client, subscription and
+          remote-client lifecycle from{" "}
           <code className={styles.code}>broker.$systemEvents</code>. Not user
           messages.
         </span>
@@ -48,7 +48,7 @@ export function SystemEventsTab({ store }: SystemEventsTabProps): ReactNode {
 
         {systemEvents.length === 0 && (
           <div className={styles.empty}>
-            No system events yet. Register a client or add a bridge to see events here.
+            No system events yet. Register a client or a remote client to see events here.
           </div>
         )}
       </div>

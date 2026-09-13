@@ -128,48 +128,38 @@ describe('BrokerCore system events', () => {
     });
   });
 
-  describe('bridge lifecycle', () => {
-    test('emits bridge.added when a bridge is added, and bridge.removed via cleanup', () => {
-      const addedListener = jest.fn();
-      const removedListener = jest.fn();
-      core.$systemEvents.on('bridge.added', addedListener);
-      core.$systemEvents.on('bridge.removed', removedListener);
-
-      const removeBridge = core.addBridge('cross-tab', {
-        transport: {
-          send: jest.fn(),
-          onMessage: jest.fn(() => () => {}),
-          destroy: jest.fn(),
-        },
-        forward: ['*'],
-      });
-
-      expect(addedListener).toHaveBeenCalledWith({ bridgeId: 'cross-tab' });
-      expect(removedListener).not.toHaveBeenCalled();
-
-      removeBridge();
-      expect(removedListener).toHaveBeenCalledWith({ bridgeId: 'cross-tab' });
+  describe('remote client lifecycle', () => {
+    const makeTransport = () => ({
+      send: jest.fn(),
+      onMessage: jest.fn(() => () => {}),
+      destroy: jest.fn(),
     });
 
-    test('replacing a bridge with the same id emits bridge.removed then bridge.added', () => {
+    test('createRemoteClient emits remote.created and client.registered; destroy() the reverse', () => {
       const events: string[] = [];
-      core.$systemEvents.on('bridge.added', () => events.push('added'));
-      core.$systemEvents.on('bridge.removed', () => events.push('removed'));
-
-      const makeTransport = () => ({
-        send: jest.fn(),
-        onMessage: jest.fn(() => () => {}),
-        destroy: jest.fn(),
+      core.$systemEvents.onAny((name) => {
+        events.push(name);
       });
 
-      // Suppress the "already exists, replacing" warning.
-      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const remote = core.createRemoteClient('backend', { transport: makeTransport() });
+      expect(events).toEqual(['remote.created', 'client.registered']);
 
-      core.addBridge('cross-tab', { transport: makeTransport(), forward: ['*'] });
-      core.addBridge('cross-tab', { transport: makeTransport(), forward: ['*'] });
+      events.length = 0;
+      remote.destroy();
+      expect(events).toEqual(['remote.destroyed', 'client.unregistered']);
+    });
 
-      expect(events).toEqual(['added', 'removed', 'added']);
-      warn.mockRestore();
+    test('forward() emits subscription.added with the remote id; destroy() removes it', () => {
+      const added = jest.fn();
+      const removed = jest.fn();
+      core.$systemEvents.on('subscription.added', added);
+      core.$systemEvents.on('subscription.removed', removed);
+
+      const remote = core.createRemoteClient('tabs', { transport: makeTransport(), forward: ['cart.*'] });
+      expect(added).toHaveBeenCalledWith({ clientId: 'tabs', topic: 'cart.*' });
+
+      remote.destroy();
+      expect(removed).toHaveBeenCalledWith({ clientId: 'tabs', topic: 'cart.*' });
     });
   });
 

@@ -2,7 +2,7 @@
   "name": "hedwig",
   "version": "0.0.0",
   "private": true,
-  "description": "The messaging toolkit for the frontend — a contract-first broker with pluggable transports and first-class observability.",
+  "description": "The messaging toolkit for the frontend \u2014 a contract-first broker with pluggable transports and first-class observability.",
   "license": "MIT",
   "author": "Hedwig contributors",
   "repository": {
@@ -22,9 +22,13 @@
     "examples/advanced/backend"
   ],
   "scripts": {
+    "build": "npm run build -w @hedwigjs/client && npm run build -w @hedwigjs/broker && npm run build -w @hedwigjs/devtools && npm run build -w @hedwigjs/react && npm run build -w @hedwigjs/vue",
+    "test": "npm test -w @hedwigjs/client && npm test -w @hedwigjs/broker && npm test -w @hedwigjs/devtools && npm --prefix packages/devtools/react18-smoke ci --no-audit --no-fund && npm --prefix packages/devtools/react18-smoke test && npm test -w @hedwigjs/react && npm test -w @hedwigjs/vue && npm test -w @hedwig-demo/backend",
     "dev:demo": "npm run dev -w @hedwig-demo/advanced",
     "stop:demo": "npm run stop -w @hedwig-demo/advanced",
-    "restart:demo": "npm run restart -w @hedwig-demo/advanced"
+    "restart:demo": "npm run restart -w @hedwig-demo/advanced",
+    "e2e": "npm run e2e -w @hedwig-demo/advanced",
+    "typecheck": "for d in packages/client packages/broker packages/devtools packages/react packages/vue packages/create-registry examples/advanced/shared/contracts examples/advanced/backend examples/advanced/shell examples/advanced/mfe/menu examples/advanced/mfe/cart examples/advanced/mfe/checkout examples/advanced/mfe/ai-chat examples/advanced/mfe/notifications examples/advanced/mfe/analytics; do echo \"== $d\"; (cd $d && npx tsc --noEmit -p tsconfig.json) || exit 1; done"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^1.0.0",

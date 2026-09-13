@@ -1,130 +1,35 @@
-import type { BackpressureOptions } from './backpressure/BackpressureHandler.types';
 import type { BrokerLogger } from './logger/BrokerLogger.types';
+import type { ClientID, Message, SubscriptionOptions, TopicKindMap, TopicPolicy } from '@hedwigjs/client';
 
 // ========================================
-// BASE TYPES (shared across all subsystems)
+// PUBLIC TYPES — owned by @hedwigjs/client
 // ========================================
+//
+// Everything a module can see is defined in the SDK package and re-exported
+// here so host code and the runtime's own modules keep one import path.
 
-/** Unique client identifier in the system */
-export type ClientID = string;
-
-/**
- * Internal message format for inter-module communication
- */
-export interface Message<T extends string = string, P = any> {
-  /** Unique message identifier (e.g. "abc-42") for debugging and DevTools */
-  id: string;
-
-  /** Message topic (e.g. 'user.login.v1') */
-  topic: T;
-
-  /** Message source - client ID that emitted the message */
-  source: string;
-
-  /** Target client ID or '*' for broadcast */
-  target: string;
-
-  /** Message payload data */
-  data: P;
-
-  /** Unix timestamp in milliseconds */
-  timestamp: number;
-
-  /** Indicates if this is a replayed historical message */
-  replayed?: boolean;
-
-  /** Indicates if this message was received from external source (bridge) */
-  fromExternal?: boolean;
-
-  /**
-   * Marks a debug/test message injected via `broker.$debug.send(...)`.
-   * Routing, hooks, history and bridge forwarding all treat it as a
-   * real message — the flag is purely metadata so DevTools and integration
-   * tests can distinguish spoofed traffic from production events.
-   */
-  synthetic?: boolean;
-}
+export type {
+  ClientID,
+  Message,
+  HandlerFn,
+  MessageOptions,
+  RequestOptions,
+  ReplayOptions,
+  SubscriptionOptions,
+  TopicKind,
+  TopicKindMap,
+  TopicPolicy,
+  TopicContractsMap,
+} from '@hedwigjs/client';
 
 /**
- * Message handler function
- * Can return data for Request-Reply pattern
- */
-export type HandlerFn<T extends string, P = unknown> = (
-  message: Message<T, P>,
-) => void | any | Promise<void | any>;
-
-/**
- * Type-erased message handler for internal core usage
+ * Type-erased message handler for internal core usage.
  *
  * Same contract as HandlerFn but without generic type parameters.
  * Used in Broker, Subscriptions, Router, BackpressureHandler
  * where specific message/payload types are already erased.
  */
 export type MessageHandler = (message: Message) => void | any | Promise<void | any>;
-
-// ========================================
-// MESSAGE AND SUBSCRIPTION OPTIONS
-// ========================================
-
-/**
- * Options for message emission and requests
- */
-export interface MessageOptions {
-  /**
-   * Record this message to history for replay
-   *
-   * Important: History has limited capacity (default 1000 messages).
-   * Only mark truly important messages that late subscribers need to replay.
-   *
-   * @default false
-   */
-  history?: boolean;
-}
-
-/**
- * Options for replaying historical messages
- */
-export interface ReplayOptions {
-  /**
-   * Maximum number of historical messages to replay
-   * If not specified, replays all matching messages
-   */
-  limit?: number;
-
-  /**
-   * Replay messages starting from this timestamp (Unix ms)
-   */
-  since?: number;
-
-  /**
-   * Replay messages until this timestamp (Unix ms)
-   */
-  until?: number;
-}
-
-/**
- * Options for message subscription
- *
- * Controls how messages are processed and delivered to handlers.
- * All options are opt-in and can be combined.
- */
-export interface SubscriptionOptions {
-  /**
-   * Backpressure control strategies for incoming messages
-   *
-   * Controls the rate and manner of message processing to prevent
-   * UI freezing and optimize performance.
-   */
-  backpressure?: BackpressureOptions;
-
-  /**
-   * Replay historical messages when subscribing
-   *
-   * Allows late subscribers to catch up on missed messages.
-   * Messages are replayed asynchronously after subscription is established.
-   */
-  replay?: ReplayOptions;
-}
 
 // ========================================
 // CLIENT SNAPSHOT TYPES (for DevTools)
@@ -143,27 +48,63 @@ export interface ClientSubscriptionInfo {
   handlerCount: number;
 }
 
+/** Remote-side details of a client that lives behind a transport. */
+export interface RemoteClientInfo {
+  kind: string;
+  identity: 'fixed' | 'allow' | 'prefix';
+  duplex: boolean;
+  fanout: boolean;
+  requests: boolean;
+  /** Topics the remote may inject. */
+  accepts: string[];
+  /** Requests in flight to the remote. */
+  pending: number;
+}
+
 /** Point-in-time snapshot of a single registered client. */
 export interface ClientInfo {
   id: ClientID;
   /** Unix timestamp (ms) when the client registered. */
   connectedAt: number;
+  /** Version of `@hedwigjs/client` that created the client, when it came through the SDK. */
+  sdkVersion?: string;
+  /** Local: exact topics with handlers. Remote: `forward` patterns. */
   subscriptions: ClientSubscriptionInfo[];
+  /** Present for remote clients only. */
+  remote?: RemoteClientInfo;
+}
+
+/** The retained (last) value of a `state` topic. */
+export interface RetainedState<T extends string = string, P = any> {
+  topic: T;
+  message: Message<T, P>;
+  /** Unix ms when it was retained. */
+  at: number;
 }
 
 /**
  * Configuration for Broker
  */
 export interface BrokerConfig {
-  /** Message history configuration */
+  /**
+   * Host-side limits on retention. *What* is retained comes from the
+   * contracts (`topics`): an event with `retention: { last: N }` keeps its
+   * last N messages, a `state` topic keeps its last value. Nothing here is
+   * required — a host that passes no `history` retains exactly what the
+   * registry declares.
+   */
   history?: {
-    /** Enable message history */
-    enabled: boolean;
+    /**
+     * Switch event retention off entirely (`replay` then finds nothing).
+     * `state` topics keep their last value regardless.
+     * @default true
+     */
+    enabled?: boolean;
 
-    /** Maximum number of messages to keep in memory (default: 1000) */
-    maxSize?: number;
+    /** Upper bound on any event's declared `retention.last`. */
+    maxPerTopic?: number;
 
-    /** Time to live for messages (ms). undefined = no expiration */
+    /** Time to live (ms) for retained event messages. State values never expire. */
     ttl?: number;
   };
 
@@ -177,4 +118,56 @@ export interface BrokerConfig {
    * Defaults to `console.warn` / `console.error` when not provided.
    */
   logger?: BrokerLogger;
+
+  /**
+   * Enable the broker-internal debug channel (`broker.$debug.send`).
+   *
+   * The channel injects messages with an arbitrary `source`, bypassing
+   * client identity — it exists for the DevTools Debug tab and integration
+   * tests. Off by default so a production bundle cannot inject spoofed
+   * traffic by accident; when off, `$debug.send` resolves
+   * `NACK DEBUG_DISABLED` and logs `debug.disabled`.
+   *
+   * This is accident prevention, not a security boundary: any code in the
+   * same realm can reach the broker regardless. See the threat-model doc.
+   *
+   * @default false
+   */
+  debug?: boolean;
+
+  /**
+   * Behaviour of guard hooks (`beforeSend`, `onSubscribe`) when a hook
+   * throws instead of returning a result.
+   *
+   * - `'closed'` (default): the throwing hook counts as a denial — the
+   *   message resolves `NACK HOOK_REJECTED`, the subscription throws. A
+   *   crashing ACL must not let traffic through.
+   * - `'open'`: the error is logged and the hook is skipped (the behaviour
+   *   before 0.2).
+   *
+   * Either way a `hook.failed` system event and a `hook.failed` log line
+   * are produced. Observer hooks (`afterSend`) are always isolated.
+   */
+  hooks?: {
+    failMode?: 'open' | 'closed';
+  };
+
+  /**
+   * Defaults for `request()`.
+   */
+  request?: {
+    /** Default timeout (ms) for every request; see {@link RequestOptions.timeout}. */
+    timeout?: number;
+  };
+
+  /**
+   * The contracts registry as the runtime needs it (`TOPIC_KINDS`): each
+   * topic's kind and, for events, an optional `retention`. `state` topics
+   * keep their last multicast and hand it to every new subscriber on `on()`
+   * (see `SubscriptionOptions.retained`); events with `retention.last`
+   * keep that many recent messages for `on(topic, fn, { replay })`.
+   * Requests need nothing from the runtime; their kind is enforced by the
+   * SDK's types. Keys are exact topic names.
+   */
+  topics?: TopicKindMap;
 }

@@ -34,8 +34,8 @@ type Props = {
   onClose: () => void;
   /**
    * Fires once the iframe finishes loading, with its `contentWindow`.
-   * Owner uses this to attach a broker bridge (PostMessageTransport)
-   * to the freshly-loaded document.
+   * Owner uses this to register the freshly-loaded document as a remote
+   * client of the broker (postMessage transport).
    */
   onIframeReady?: (win: Window) => void;
 };

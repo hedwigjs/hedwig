@@ -63,14 +63,22 @@ export function MessageSummary({ entry, open }: MessageSummaryProps): ReactNode 
   const contract = registry?.[entry.topic];
   const isObservabilityTopic = contract?.observability === true;
   const expectedNack = isExpectedTraceNack(entry, isObservabilityTopic);
+  // The contract's kind, when the registry knows it; the wire shape otherwise.
+  const kindLabel = contract?.kind ?? entry.kind;
+  const kindClass =
+    contract?.kind === "state"
+      ? styles.kindState
+      : kindLabel === "request" || kindLabel === "unicast"
+        ? styles.kindUnicast
+        : styles.kindMulticast;
 
   return (
     <>
       <div className={styles.main}>
         <span className={styles.toggle}>{open ? "−" : "+"}</span>
         <span className={styles.topic}>{entry.topic}</span>
-        <span className={entry.kind === "unicast" ? styles.kindUnicast : styles.kindMulticast}>
-          {entry.kind}
+        <span className={kindClass} data-mbdt-kind={kindLabel}>
+          {kindLabel}
         </span>
         {isObservabilityTopic && (
           <span
@@ -80,8 +88,22 @@ export function MessageSummary({ entry, open }: MessageSummaryProps): ReactNode 
             trace
           </span>
         )}
-        {entry.replayed && <span className={styles.pill}>replay</span>}
-        {entry.fromExternal && <span className={styles.pill}>external</span>}
+        {entry.replayed && (
+          <span className={styles.pill} title={contract?.kind === "state" ? "Retained value of a state topic, delivered on subscribe" : "Delivered from the history buffer"}>
+            {contract?.kind === "state" ? "retained" : "replay"}
+          </span>
+        )}
+        {entry.via ? (
+          <span
+            className={`${styles.pill} ${styles.pillVia}`}
+            title={`Delivered by remote client '${entry.via}'`}
+            data-mbdt-via={entry.via}
+          >
+            via {entry.via}
+          </span>
+        ) : (
+          entry.fromExternal && <span className={styles.pill}>external</span>
+        )}
         {entry.synthetic && (
           <span className={`${styles.pill} ${styles.pillSynthetic}`}>synthetic</span>
         )}

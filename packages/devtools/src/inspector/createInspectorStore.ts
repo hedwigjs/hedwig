@@ -1,6 +1,6 @@
+import { VERSION, isCompatibleVersion } from "@hedwigjs/broker";
 import type { Message, RoutingResult, HistoryEntry } from "@hedwigjs/broker";
-import type {
-  InspectorSnapshot,
+import type { InspectorSnapshot,
   MessageLogEntry,
   ClientEntry,
   ClientSubscriptionEntry,
@@ -8,8 +8,7 @@ import type {
   MessageBrokerForDevTools,
   SystemEventLogEntry,
   SystemEventName,
-  BridgeEntry,
-} from "./types";
+  VersionStatus, RetentionSnapshot } from "./types";
 import { serializeDataPreview, snapshotFrom, EMPTY_MESSAGES_FILTER } from "./types";
 import { createMessageRingBuffer, createRingBuffer } from "./ringLog";
 import { matchesAnyPattern } from "./matchPattern";
@@ -18,11 +17,9 @@ export interface CreateInspectorStoreOptions {
   maxEvents: number;
 }
 
-type ClientBase = Pick<ClientEntry, "id" | "connectedAt"> & {
+type ClientBase = Pick<ClientEntry, "id" | "connectedAt" | "remote" | "sdkVersion"> & {
   subscriptions: Array<Pick<ClientSubscriptionEntry, "topic" | "options">>;
 };
-
-type BridgeBase = Pick<BridgeEntry, "id" | "forwardPatterns" | "transportKind">;
 
 function computeLastReceivedAt(
   clientId: string,
@@ -38,6 +35,16 @@ function computeLastReceivedAt(
     ) {
       return new Date(e.createdAt).getTime();
     }
+  }
+  return null;
+}
+
+/** Newest local multicast matching a remote's forward pattern. */
+function computeLastForwardedAt(pattern: string, entries: MessageLogEntry[]): number | null {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i]!;
+    if (e.fromExternal || e.target !== "*") continue;
+    if (matchesAnyPattern(e.topic, [pattern])) return new Date(e.createdAt).getTime();
   }
   return null;
 }
@@ -77,6 +84,31 @@ function computeReceivedCount(clientId: string, entries: MessageLogEntry[]): num
   return count;
 }
 
+/**
+ * Activity of a remote client is not keyed by its own id: what it injects
+ * carries the peer's identity (`tab:cart-store`) with `via === id`, and
+ * what it receives is every local multicast matching its `forward`
+ * patterns (never listed among recipient ids). Same shape as the local
+ * counters so the Clients tab can treat both alike.
+ */
+function computeRemoteActivity(
+  base: ClientBase,
+  entries: MessageLogEntry[],
+): Pick<ClientEntry, "sentCount" | "receivedCount" | "lastActiveAt"> {
+  const forward = base.subscriptions.map((s) => s.topic);
+  let sentCount = 0;
+  let receivedCount = 0;
+  let lastActiveAt: number | null = null;
+  for (const e of entries) {
+    const sent = e.via === base.id || e.source === base.id;
+    const received = !e.fromExternal && matchesAnyPattern(e.topic, forward);
+    if (sent) sentCount++;
+    if (received) receivedCount++;
+    if (sent || received) lastActiveAt = new Date(e.createdAt).getTime();
+  }
+  return { sentCount, receivedCount, lastActiveAt };
+}
+
 export function createInspectorStore(options: CreateInspectorStoreOptions) {
   const { maxEvents } = options;
   const ring = createMessageRingBuffer(maxEvents);
@@ -86,61 +118,62 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
   const listeners = new Set<() => void>();
   let totalSeen = 0;
   let attached = false;
+  let version: VersionStatus = {
+    expected: VERSION,
+    actual: undefined,
+    mismatch: false,
+  };
   let clientsBase: ClientBase[] = [];
   let messagesFilter: MessagesFilter = { ...EMPTY_MESSAGES_FILTER };
   let historyEntries: ReadonlyArray<HistoryEntry> = [];
-  let bridgesBase: BridgeBase[] = [];
+  let historyStats: RetentionSnapshot = { count: 0, topics: [], enabled: true };
   let snapshotCache: InspectorSnapshot = snapshotFrom(
     [],
     totalSeen,
     attached,
+    version,
     [],
     messagesFilter,
     [],
-    [],
+    historyStats,
     [],
   );
 
   function emit() {
     const entries = ring.toArray();
-    const clients: ClientEntry[] = clientsBase.map((base) => ({
-      id: base.id,
-      sentCount: computeSentCount(base.id, entries),
-      receivedCount: computeReceivedCount(base.id, entries),
-      connectedAt: base.connectedAt,
-      lastActiveAt: computeLastActiveAt(base.id, entries),
-      subscriptions: base.subscriptions.map((sub) => ({
-        topic: sub.topic,
-        options: sub.options,
-        lastReceivedAt: computeLastReceivedAt(base.id, sub.topic, entries),
-      })),
-    }));
-    const bridges: BridgeEntry[] = bridgesBase.map((base) => {
-      let sentThroughCount = 0;
-      let receivedFromCount = 0;
-      for (const e of entries) {
-        if (!matchesAnyPattern(e.topic, base.forwardPatterns)) continue;
-        if (e.fromExternal) receivedFromCount++;
-        else sentThroughCount++;
-      }
+    const clients: ClientEntry[] = clientsBase.map((base) => {
+      const activity = base.remote
+        ? computeRemoteActivity(base, entries)
+        : {
+            sentCount: computeSentCount(base.id, entries),
+            receivedCount: computeReceivedCount(base.id, entries),
+            lastActiveAt: computeLastActiveAt(base.id, entries),
+          };
       return {
         id: base.id,
-        forwardPatterns: base.forwardPatterns,
-        transportKind: base.transportKind,
-        sentThroughCount,
-        receivedFromCount,
+        remote: base.remote,
+        sdkVersion: base.sdkVersion,
+        connectedAt: base.connectedAt,
+        ...activity,
+        subscriptions: base.subscriptions.map((sub) => ({
+          topic: sub.topic,
+          options: sub.options,
+          lastReceivedAt: base.remote
+            ? computeLastForwardedAt(sub.topic, entries)
+            : computeLastReceivedAt(base.id, sub.topic, entries),
+        })),
       };
     });
-
     snapshotCache = snapshotFrom(
       entries,
       totalSeen,
       attached,
+      version,
       clients,
       messagesFilter,
       historyEntries,
+      historyStats,
       systemEventsRing.toArray(),
-      bridges,
     );
     listeners.forEach((l) => l());
   }
@@ -156,6 +189,20 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
 
   function setAttached(value: boolean) {
     attached = value;
+    emit();
+  }
+
+  /**
+   * Record the attached core's package version. `undefined` (core predates
+   * the field) is NOT treated as a mismatch — only a known, incompatible
+   * value under the semver rule (same minor before 1.0, same major after).
+   */
+  function setVersion(actual: string | undefined) {
+    version = {
+      expected: VERSION,
+      actual,
+      mismatch: actual !== undefined && !isCompatibleVersion(actual, VERSION),
+    };
     emit();
   }
 
@@ -193,6 +240,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
 
   function refreshHistory(broker: MessageBrokerForDevTools) {
     historyEntries = broker.inspect.getHistory();
+    historyStats = broker.inspect.getHistoryStats();
     emit();
   }
 
@@ -200,19 +248,22 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
     clientsBase = broker.inspect.getClients().map((info) => ({
       id: info.id,
       connectedAt: info.connectedAt,
+      sdkVersion: info.sdkVersion,
+      remote: info.remote
+        ? {
+            kind: info.remote.kind,
+            identity: info.remote.identity,
+            duplex: info.remote.duplex,
+            fanout: info.remote.fanout,
+            requests: info.remote.requests,
+            accepts: info.remote.accepts,
+            pending: info.remote.pending,
+          }
+        : undefined,
       subscriptions: info.subscriptions.map((sub) => ({
         topic: sub.topic,
         options: sub.options,
       })),
-    }));
-    emit();
-  }
-
-  function refreshBridges(broker: MessageBrokerForDevTools) {
-    bridgesBase = broker.inspect.getBridges().map((info) => ({
-      id: info.id,
-      forwardPatterns: info.forwardPatterns,
-      transportKind: info.transportKind,
     }));
     emit();
   }
@@ -229,6 +280,9 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
       kind: message.target === "*" ? "multicast" : "unicast",
       replayed: message.replayed,
       fromExternal: message.fromExternal,
+      via: message.via,
+      wireId: message.wireId,
+      ext: message.ext,
       synthetic: message.synthetic,
       dataPreview: serializeDataPreview(message.data),
     };
@@ -262,6 +316,9 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
         ...prev,
         replayed: message.replayed ?? prev.replayed,
         fromExternal: message.fromExternal ?? prev.fromExternal,
+        via: message.via ?? prev.via,
+        wireId: message.wireId ?? prev.wireId,
+        ext: message.ext ?? prev.ext,
         synthetic: message.synthetic ?? prev.synthetic,
         dataPreview: prev.dataPreview ?? serializeDataPreview(message.data),
         latencyMs,
@@ -281,6 +338,9 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
         subscriberCount,
         replayed: message.replayed,
         fromExternal: message.fromExternal,
+        via: message.via,
+        wireId: message.wireId,
+        ext: message.ext,
         synthetic: message.synthetic,
         dataPreview: serializeDataPreview(message.data),
         latencyMs,
@@ -295,6 +355,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
     subscribe,
     getSnapshot,
     setAttached,
+    setVersion,
     onBeforeSend,
     onAfterSend,
     clearLog,
@@ -302,7 +363,6 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
     clearMessagesFilter,
     refreshClients,
     refreshHistory,
-    refreshBridges,
     pushSystemEvent,
     clearSystemEvents,
   };

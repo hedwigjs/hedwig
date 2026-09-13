@@ -1,6 +1,7 @@
 import type { Message, MessageHandler } from '../../types';
 import type { BackpressureStrategy } from '../BackpressureHandler.types';
 import type { BrokerLogger } from '../../logger/BrokerLogger.types';
+import { invokeIsolated } from './invokeIsolated';
 
 /**
  * RateLimitStrategy - Limits message processing rate with hard cap
@@ -75,11 +76,7 @@ export class RateLimitStrategy implements BackpressureStrategy {
       this.#timestamps[tail] = now;
       this.#count++;
 
-      try {
-        handler(message);
-      } catch (error) {
-        this.#logger.error('backpressure.handler.failed', { strategy: 'rateLimit', error });
-      }
+      invokeIsolated(handler, message, this.#logger, 'rateLimit');
 
       return true;
     }

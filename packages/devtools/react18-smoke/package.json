@@ -1,0 +1,30 @@
+{
+  "name": "@hedwig-internal/devtools-react18-smoke",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Renders the built @hedwigjs/devtools panel under React 18. A standalone project (not a workspace) so it can hold its own React 18 next to the workspace's React 19; a bundling guard: the sources need only React 18, and the bundle must not inline React 19's jsx-runtime.",
+  "scripts": {
+    "test": "jest"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "jest": "^29.5.0",
+    "jest-environment-jsdom": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "jsdom",
+    "testMatch": [
+      "**/*.test.js"
+    ],
+    "transform": {},
+    "moduleNameMapper": {
+      "^react$": "<rootDir>/node_modules/react",
+      "^react/(.*)$": "<rootDir>/node_modules/react/$1",
+      "^react-dom$": "<rootDir>/node_modules/react-dom",
+      "^react-dom/(.*)$": "<rootDir>/node_modules/react-dom/$1"
+    }
+  }
+}

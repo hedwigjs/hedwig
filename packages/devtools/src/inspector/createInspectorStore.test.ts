@@ -1,7 +1,28 @@
 import { createInspectorStore } from "./createInspectorStore";
-import { makeAck, makeNack, makeTestMessage } from "./testFixtures";
+import { makeAck, makeNack, makeReplayAck, makeTestMessage } from "./testFixtures";
 
 describe("createInspectorStore", () => {
+  it("keeps a replayed delivery ahead of the live message that follows it, with the replayed flag", () => {
+    // The broker replays history synchronously inside on(), firing afterSend
+    // (REPLAY_DELIVERED) for each entry before any live message can be
+    // emitted. The inspector must preserve that order and the flag.
+    const store = createInspectorStore({ maxEvents: 10 });
+    const replayed = makeTestMessage({ id: "h1", target: "*", replayed: true });
+    store.onAfterSend(replayed, makeReplayAck());
+
+    const live = makeTestMessage({ id: "l1", target: "*" });
+    store.onBeforeSend(live);
+    store.onAfterSend(live, makeAck());
+
+    const { entries } = store.getSnapshot();
+    expect(entries.map((e) => e.id)).toEqual(["h1", "l1"]);
+    expect(entries[0]!.replayed).toBe(true);
+    expect(entries[0]!.status).toBe("delivered");
+    expect(entries[0]!.result?.reason).toBe("REPLAY_DELIVERED");
+    expect(entries[1]!.replayed).toBeUndefined();
+    expect(entries[1]!.result?.reason).toBe("DELIVERED");
+  });
+
   it("increments totalSeen and keeps entries in pending then delivered order", () => {
     const store = createInspectorStore({ maxEvents: 10 });
     const m = makeTestMessage({ id: "a1" });

@@ -91,7 +91,7 @@ export const DevToolsShell = ({
     store.getSnapshot,
     store.getSnapshot,
   );
-  const { attached } = snapshot;
+  const { attached, version } = snapshot;
 
   const boxStyle = useMemo(
     () => shellInlineStyle(layout),
@@ -139,6 +139,15 @@ export const DevToolsShell = ({
         >
           {attached ? "connected" : "disconnected"}
         </span>
+        {version.mismatch && (
+          <span
+            className={`${styles.badge} ${styles.badgeWarn}`}
+            title={`This panel was built against @hedwigjs/broker ${version.expected}, the attached core is ${version.actual}. Tabs may render incomplete data — align @hedwigjs/broker and @hedwigjs/devtools versions.`}
+            data-mbdt-version-mismatch
+          >
+            broker {version.actual} ≠ {version.expected}
+          </span>
+        )}
         <span className={styles.spacer} />
         <div className={styles.positionGroup} title="Panel dock side">
           {ALL_POSITIONS.map((p) => (

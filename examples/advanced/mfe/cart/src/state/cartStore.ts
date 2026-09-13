@@ -60,9 +60,9 @@ function computeTotals(items: CartItem[]) {
  *  - Мутации приходят как **request** от любого MFE (menu, cart-ui,
  *    checkout). Handler возвращает response — sender видит результат
  *    (`RoutingResult.data`).
- *  - Текущее состояние — **state broadcast** `cart.snapshot.v1` с
- *    `history: true`, чтобы late-joiner получал последний snapshot через
- *    `on(..., { replay: { limit: 1 } })`.
+ *  - Текущее состояние — топик рода **state** `cart.snapshot.v1`: рантайм
+ *    удерживает последний snapshot и отдаёт его каждому новому подписчику
+ *    сразу при `on()`. Ничего на emit, ни `replay` у подписчиков.
  */
 export function startCartRuntime(): void {
   const rt = getRuntime();
@@ -74,13 +74,9 @@ export function startCartRuntime(): void {
   const emitSnapshot = () => {
     const items = Object.values(state);
     const { totalItems, totalPrice } = computeTotals(items);
-    // `history: true` records this emit into the broker's replay buffer so
-    // late subscribers with `replay: { limit: 1 }` receive it on subscribe.
-    void storeBus.emit(
-      'cart.snapshot.v1',
-      { items, totalItems, totalPrice },
-      { history: true },
-    );
+    // `cart.snapshot.v1` is a `state` topic (see the contract): the runtime
+    // retains this value and delivers it to late subscribers by itself.
+    void storeBus.emit('cart.snapshot.v1', { items, totalItems, totalPrice });
   };
 
   storeBus.on('cart.add-item.v1', (msg): CartAddItemResponse => {

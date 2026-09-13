@@ -1,0 +1,10 @@
+# Every change is reviewed by a maintainer. Add teams/people per path as
+# the project grows; the last matching line wins.
+*                       @alexpipinov
+
+# Public API surfaces — extra care on review.
+/packages/client/       @alexpipinov
+/packages/broker/       @alexpipinov
+/docs/content/spec/     @alexpipinov
+/.changeset/            @alexpipinov
+/.github/               @alexpipinov

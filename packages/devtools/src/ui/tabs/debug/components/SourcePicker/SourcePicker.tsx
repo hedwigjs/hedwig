@@ -17,8 +17,8 @@ interface SourcePickerProps {
  * Same interaction model as TopicPicker: pick from the list OR type a
  * free string. Free strings are allowed on purpose — the whole point of
  * `broker.$debug.send` is that source is an arbitrary label, not
- * restricted to registered clients (bridges use non-client source labels
- * like `ai-backend`, `notifications-backend`).
+ * restricted to registered clients (a remote client injects frames under
+ * a label the runtime decides, like `ai-backend` or `tab:cart-store`).
  */
 export function SourcePicker({
   value,

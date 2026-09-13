@@ -11,7 +11,7 @@ import type { BrokerLogger } from '../logger/BrokerLogger.types';
  * System events channel - pub/sub dispatcher for broker-internal events.
  *
  * Not to be confused with the user message bus (`broker.emit` / `client.on`).
- * This channel carries infrastructure-level signals (client/subscription/bridge
+ * This channel carries infrastructure-level signals (client/subscription/remote-client
  * lifecycle) and is exposed on the broker as `$systemEvents`. The `$` prefix
  * marks it as a broker-internal API — consumers should be tooling only.
  *

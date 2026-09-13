@@ -9,16 +9,16 @@
 //
 // NOTE: the template's original comment said "do not edit". We do edit — to
 // keep contracts + shared payload/model types co-located in one package for
-// the demo. See docs/content/guides/demo-architecture.md § Contracts.
+// the demo. See ../README.md for how this registry differs from the template.
 
 export * from "./index.generated.js";
 export * from "./shared-types.js";
 
-// Request/response type re-exports. Request contracts declare their input
-// as `payload` (picked up automatically by TopicPayloads) and their output
-// as a named `*Response` type — sender code imports these to type the
-// `bus.request<...>()` call site.
+// Request/response types. Each request contract declares its answer as
+// `response`; the generated `TopicResponses` map is the source of truth and
+// `request()` infers it. The named aliases stay for readability at call sites.
 export type { CartAddItemResponse } from "./domains/cart/add-item.v1.js";
 export type { CartDecrementResponse } from "./domains/cart/decrement.v1.js";
 export type { CartRemoveItemResponse } from "./domains/cart/remove-item.v1.js";
 export type { CheckoutStartResponse } from "./domains/checkout/start.v1.js";
+export type { NotificationStatusResponse } from "./domains/notification/status.v1.js";

@@ -49,7 +49,7 @@ function pickLang(raw: unknown): Lang {
   return raw === 'ru' ? 'ru' : 'en';
 }
 
-const iframeHtml = (lang: Lang): string => {
+export const iframeHtml = (lang: Lang): string => {
   const s = HTML_STRINGS[lang];
   return `<!DOCTYPE html>
 <html lang="${s.lang}">
@@ -192,6 +192,9 @@ const iframeHtml = (lang: Lang): string => {
 
   <script>
     document.getElementById('origin').textContent = location.origin;
+    // This document's realm id — the frame \`origin\`. One per load; the
+    // parent runtime drops frames stamped with its *own* id (echo guard).
+    const IFRAME_ORIGIN = 'checkout-iframe-' + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
     const form = document.getElementById('f');
     const status = document.getElementById('status');
 
@@ -207,20 +210,36 @@ const iframeHtml = (lang: Lang): string => {
       const data = await res.json();
       status.classList.add('on');
       status.innerHTML = '${s.statusA} <em>' + data.orderId + '</em> ${s.statusB} ' + data.status + '.';
-      // Отправляем через postMessage в форме broker Message'а — на parent'е
-      // висит @hedwigjs/broker bridge с PostMessageTransport, он подхватит
-      // и заинжектит в шину. Iframe не запускает свой broker — только
-      // формирует конверт нужной формы.
+      // Send a wire envelope v1 frame to the parent, where the iframe is
+      // registered as a remote client (postMessage transport). The iframe
+      // runs no broker of its own — it only builds the frame; see
+      // docs/content/spec/envelope-v1.md.
+      //
+      // Target origin: the parent tells us who it is via ?parentOrigin=
+      // (falls back to the referrer's origin). Never '*' — that would hand
+      // the order details to whatever document embeds this page.
+      const params = new URLSearchParams(location.search);
+      let parentOrigin = params.get('parentOrigin') || '';
+      if (!parentOrigin && document.referrer) {
+        try { parentOrigin = new URL(document.referrer).origin; } catch {}
+      }
+      if (!parentOrigin) {
+        console.warn('[checkout-iframe] no parent origin known, not posting checkout.completed.v1');
+        return;
+      }
       window.parent?.postMessage(
         {
+          v: 1,
           id: 'checkout-iframe-' + data.orderId,
+          origin: IFRAME_ORIGIN,
+          kind: 'event',
           topic: 'checkout.completed.v1',
           source: 'checkout-iframe',
           target: '*',
           data: data,
           timestamp: Date.now(),
         },
-        '*',
+        parentOrigin,
       );
     });
   </script>

@@ -1,4 +1,4 @@
-import type { EventContract } from "../../lib/contract";
+import type { TopicContract } from "../../lib/contract";
 import type { CartItem } from "../../shared-types";
 
 /**
@@ -13,6 +13,8 @@ export type CheckoutStartResponse = {
 
 export default {
   name: "checkout.start.v1",
+  kind: "request",
+  response: {} as CheckoutStartResponse,
   description:
     "Command: hand off the current cart to the checkout MFE. Handled as a request — cart waits for the checkout to confirm the modal opened and a session id was minted before returning control to the user.",
   payload: {} as { items: CartItem[]; totalPrice: number },
@@ -24,4 +26,4 @@ export default {
       totalPrice: 890,
     },
   },
-} as const satisfies EventContract;
+} as const satisfies TopicContract;

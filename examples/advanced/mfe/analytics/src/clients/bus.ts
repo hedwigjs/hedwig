@@ -1,5 +1,5 @@
-import { createClient } from '@hedwigjs/broker';
-import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
+import { createClient } from '@hedwigjs/client';
+import type { Topic, TopicContracts, TopicPayloads } from '@hedwig-demo/contracts';
 
 /**
  * Analytics MFE's broker client. Semi-trusted — the ACL configured in the
@@ -7,4 +7,4 @@ import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
  * and denies every send. Used to demonstrate broker-level `onSubscribe` and
  * `beforeSend` hooks.
  */
-export const bus = createClient<Topic, TopicPayloads>('analytics');
+export const bus = createClient<Topic, TopicPayloads, TopicContracts>('analytics');

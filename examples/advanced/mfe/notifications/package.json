@@ -2,14 +2,15 @@
   "name": "@hedwig-demo/notifications",
   "version": "0.0.0",
   "private": true,
-  "description": "Notifications MFE — WS-driven toast panel bridged into the broker.",
+  "description": "Notifications MFE \u2014 WS-driven toast panel bridged into the broker.",
   "scripts": {
     "dev": "webpack serve",
     "build": "webpack --mode production"
   },
   "dependencies": {
     "@hedwig-demo/contracts": "*",
-    "@hedwigjs/broker": "*",
+    "@hedwigjs/client": "*",
+    "@hedwigjs/react": "*",
     "react": "19.1.1",
     "react-dom": "19.1.1"
   },

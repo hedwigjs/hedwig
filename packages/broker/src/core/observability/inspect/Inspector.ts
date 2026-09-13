@@ -1,10 +1,10 @@
-import type { ClientID, ClientInfo } from '../../types';
+import type { ClientID, ClientInfo, RetainedState } from '../../types';
 import type { ClientRegistry } from '../../client/ClientRegistry';
 import type { Subscriptions } from '../../routing/Subscriptions';
-import type { Bridge } from '../../bridge/Bridge.types';
+import type { RemoteClientImpl } from '../../remote/RemoteClient';
 import type { MessageHistory } from '../../history/MessageHistory';
 import type { HistoryEntry, HistoryStats } from '../../history/MessageHistory.types';
-import type { BridgeInfo } from './Inspector.types';
+import type { VersionInfo } from './Inspector.types';
 
 /**
  * Inspector - read-only view over broker state.
@@ -24,19 +24,30 @@ import type { BridgeInfo } from './Inspector.types';
 export class Inspector<T extends string, P extends Record<T, any>> {
   #clients: ClientRegistry<T, P>;
   #subscriptions: Subscriptions<T>;
-  #bridges: ReadonlyMap<string, Bridge>;
-  #getHistory: () => MessageHistory<T, P> | undefined;
+  #remotes: ReadonlyMap<string, RemoteClientImpl>;
+  #history: MessageHistory<T, P>;
+  #getVersionInfo: () => VersionInfo;
 
   constructor(
     clients: ClientRegistry<T, P>,
     subscriptions: Subscriptions<T>,
-    bridges: ReadonlyMap<string, Bridge>,
-    getHistory: () => MessageHistory<T, P> | undefined,
+    remotes: ReadonlyMap<string, RemoteClientImpl>,
+    history: MessageHistory<T, P>,
+    getVersionInfo: () => VersionInfo,
   ) {
     this.#clients = clients;
     this.#subscriptions = subscriptions;
-    this.#bridges = bridges;
-    this.#getHistory = getHistory;
+    this.#remotes = remotes;
+    this.#history = history;
+    this.#getVersionInfo = getVersionInfo;
+  }
+
+  /**
+   * Realm-singleton diagnostics: this core's package version and how many
+   * other copies of the library adopted it. See {@link VersionInfo}.
+   */
+  getVersionInfo(): VersionInfo {
+    return this.#getVersionInfo();
   }
 
   /**
@@ -47,9 +58,10 @@ export class Inspector<T extends string, P extends Record<T, any>> {
    * first, then subscribe to events for incremental updates.
    */
   getClients(): ReadonlyArray<ClientInfo> {
-    return this.#clients.getAllIds().map((id) => ({
+    const local: ClientInfo[] = this.#clients.getAllIds().map((id) => ({
       id,
       connectedAt: this.#clients.getConnectedAt(id) ?? Date.now(),
+      sdkVersion: this.#clients.get(id)?.meta?.sdkVersion,
       subscriptions: Array.from(this.#subscriptions.getClientTopics(id) ?? []).map((topic) => ({
         topic,
         // A pair may hold N handlers with different options — the Inspector
@@ -60,6 +72,21 @@ export class Inspector<T extends string, P extends Record<T, any>> {
         handlerCount: this.#subscriptions.getHandlerCount(id, topic as T),
       })),
     }));
+    const remote: ClientInfo[] = Array.from(this.#remotes.values()).map((r) => ({
+      id: r.id,
+      connectedAt: r.createdAt,
+      subscriptions: r.forwardPatterns.map((topic) => ({ topic, handlerCount: 0 })),
+      remote: {
+        kind: r.kind,
+        identity: r.identity,
+        duplex: r.duplex,
+        fanout: r.fanout,
+        requests: r.requests,
+        accepts: [...r.acceptPatterns],
+        pending: r.pending,
+      },
+    }));
+    return [...local, ...remote];
   }
 
   /**
@@ -70,38 +97,32 @@ export class Inspector<T extends string, P extends Record<T, any>> {
   }
 
   /**
-   * Lifecycle info for every registered bridge. Does NOT expose internal
-   * `Bridge` instances (see `BridgeInfo`).
+   * The retained (last) value of every `state` topic that has been
+   * emitted at least once.
    */
-  getBridges(): ReadonlyArray<BridgeInfo> {
-    const result: BridgeInfo[] = [];
-    for (const [id, bridge] of this.#bridges) {
-      result.push({
-        id,
-        forwardPatterns: bridge.forwardPatterns,
-        transportKind: bridge.transportKind,
-      });
+  getRetained(): ReadonlyArray<RetainedState<T, P[T]>> {
+    const out: RetainedState<T, P[T]>[] = [];
+    for (const info of this.#history.getStats().topics) {
+      if (info.kind !== 'state') continue;
+      const last = this.#history.last(info.topic);
+      if (last) out.push({ topic: last.message.topic, message: last.message, at: last.timestamp });
     }
-    return result;
+    return out;
   }
 
   /**
-   * All messages currently stored in the replay buffer (oldest → newest).
-   * Returns an empty array when history is not enabled.
+   * Every retained message across topics (oldest → newest): events with
+   * `retention` in their contract and the last value of each `state` topic.
    */
   getHistory(): ReadonlyArray<HistoryEntry> {
-    const history = this.#getHistory();
-    if (!history) return [];
-    return history.getSnapshot();
+    return this.#history.getSnapshot();
   }
 
   /**
-   * Replay buffer statistics. Always returns `{ enabled: false, count: 0 }`
-   * when history is not enabled.
+   * Retention as declared by the registry, with each topic's fill, plus
+   * whether the host left event retention on (`history.enabled`).
    */
   getHistoryStats(): HistoryStats & { enabled: boolean } {
-    const history = this.#getHistory();
-    if (!history) return { count: 0, enabled: false };
-    return { ...history.getStats(), enabled: true };
+    return { ...this.#history.getStats(), enabled: this.#history.enabled };
   }
 }

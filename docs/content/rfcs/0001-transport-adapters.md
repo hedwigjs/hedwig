@@ -1,9 +1,14 @@
 # RFC 0001 — Transport adapters
 
-- **Status:** Draft
+- **Status:** Superseded by [RFC 0003](./0003-participants-runtime-sdk.md)
 - **Created:** 2026-08-23
 - **Owners:** —
 - **Supersedes:** —
+
+> Kept for history. The `Adapter.connect(bus)` contract and the
+> `@hedwigjs/adapter-*` packages described below were never built; the
+> current design keeps transports inside the runtime and models remote
+> participants as clients. See RFC 0003.
 
 ## Summary
 
@@ -102,10 +107,13 @@ or in a `hedwig-adapter-*` community naming convention.
 
 ## Reference use-cases in `examples/advanced/`
 
-Two ad-hoc adapters exist today and will become one-liners once first-party
-packages ship:
+Two ad-hoc adapters existed when this was written. They became remote
+clients, not adapter packages: the WebSocket now lives in
+`examples/advanced/shell/src/remotes.ts` (`createRemoteClient` over
+`{ kind: 'websocket' }`), the iframe in `mfe/checkout/src/App.tsx` via
+`useRemoteClient` from `@hedwigjs/react` — see RFC 0003.
 
-| Current file | Future adapter |
+| File at the time | Planned adapter (never built) |
 | --- | --- |
 | `mfe/notifications/src/hooks/useNotificationsSocket.ts` | `@hedwigjs/adapter-websocket` |
 | `mfe/checkout/src/App.tsx` (postMessage handler) | `@hedwigjs/adapter-postmessage` |

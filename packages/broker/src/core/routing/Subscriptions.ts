@@ -24,7 +24,14 @@ export type SubscriptionId = number;
 
 export type SubscriptionEntry = {
   readonly id: SubscriptionId;
+  /** Handler as delivered on multicast — wrapped by backpressure when configured. */
   readonly handler: MessageHandler;
+  /**
+   * The subscriber's original handler, present only when `handler` is a
+   * backpressure wrapper. Unicast (`request`) calls this one: a request
+   * must always be answered, never throttled or dropped.
+   */
+  readonly rawHandler?: MessageHandler;
   readonly options?: SubscriptionOptions;
 };
 
@@ -83,6 +90,7 @@ export class Subscriptions<T extends string> {
     handler: MessageHandler,
     options?: SubscriptionOptions,
     preReservedId?: SubscriptionId,
+    rawHandler?: MessageHandler,
   ): SubscriptionId {
     if (!this.#subscriptions.has(topic)) {
       this.#subscriptions.set(topic, new Set());
@@ -95,7 +103,8 @@ export class Subscriptions<T extends string> {
     this.#clientSubscriptions.get(clientId)!.add(topic);
 
     const id: SubscriptionId = preReservedId ?? this.#nextId++;
-    const entry: SubscriptionEntry = { id, handler, options };
+    const entry: SubscriptionEntry =
+      rawHandler && rawHandler !== handler ? { id, handler, rawHandler, options } : { id, handler, options };
 
     const key = this.#getKey(clientId, topic);
     let list = this.#entries.get(key);
@@ -244,6 +253,17 @@ export class Subscriptions<T extends string> {
    */
   isSubscribed(clientId: ClientID, topic: T): boolean {
     return this.#clientSubscriptions.get(clientId)?.has(topic) ?? false;
+  }
+
+  /**
+   * Whether a subscription id still refers to a live handler. O(1).
+   *
+   * Used by the Router to honour unsubscribes that happen *during* a
+   * dispatch: the recipient plan is snapshotted up front, and each entry
+   * is re-checked right before its handler is invoked.
+   */
+  isActive(id: SubscriptionId): boolean {
+    return this.#entryLocations.has(id);
   }
 
   /**

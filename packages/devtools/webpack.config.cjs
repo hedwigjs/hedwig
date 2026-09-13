@@ -14,11 +14,18 @@ module.exports = {
     clean: true,
     library: { type: "commonjs2" },
   },
-  externals: {
-    react: "commonjs2 react",
-    "react-dom": "commonjs2 react-dom",
-    "@hedwigjs/broker": "commonjs2 @hedwigjs/broker",
-  },
+  // Peers stay outside the bundle — INCLUDING their subpaths. Listing only
+  // `react` used to let webpack inline `react/jsx-runtime` from the React
+  // that happened to be installed here (19), whose element factory a
+  // React 18 host rejects. Any request under react/ or react-dom/ is the
+  // host's copy.
+  externals: [
+    { "@hedwigjs/broker": "commonjs2 @hedwigjs/broker" },
+    ({ request }, callback) => {
+      if (/^react(-dom)?(\/.*)?$/.test(request)) return callback(null, `commonjs2 ${request}`);
+      callback();
+    },
+  ],
   resolve: {
     extensions: [".ts", ".tsx", ".js"],
   },

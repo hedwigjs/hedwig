@@ -8,7 +8,7 @@ import type { MessageInspectorStore } from "./createInspectorStore";
  * Two channels:
  *  - Extension hooks (useBeforeSendHook / useAfterSendHook) drive the
  *    live user-message feed with pending → delivered/failed transitions.
- *  - `$systemEvents` (client/subscription/bridge lifecycle) drives two
+ *  - `$systemEvents` (client/subscription/remote-client lifecycle) drives two
  *    things: the aggregate Clients tab (via `refresh`) and the dedicated
  *    System Events log (via `pushSystemEvent`).
  *
@@ -20,22 +20,25 @@ export function attachInspector(
 ): () => void {
   store.setAttached(true);
 
+  // Version handshake: a panel built against one @hedwigjs/broker version
+  // attached to an incompatible core would otherwise fail somewhere deep in
+  // a renderer.
+  store.setVersion(broker.version);
+
   // Initial snapshots before any hooks/events fire
   store.refreshClients(broker);
   store.refreshHistory(broker);
-  store.refreshBridges(broker);
 
-  // Synthesize `bridge.added` for bridges that were registered BEFORE the
-  // inspector attached. Otherwise the System Events log would miss any
-  // bridge whose registration is synchronous during app bootstrap —
-  // DevTools mounts via React useEffect, which is a tick later than sync
-  // `addBridge` calls in the shell. Also covers late-attach scenarios
-  // (DevTools toggled off then on).
-  for (const bridge of broker.inspect.getBridges()) {
-    store.pushSystemEvent("bridge.added", {
-      bridgeId: bridge.id,
-      // Non-standard field: signals the event was reconstructed from a
-      // snapshot rather than observed live. Consumers may ignore it.
+  // Realm-singleton diagnostics happen at app bootstrap, long before this
+  // panel mounts, so the live event was never observed. Reconstruct it from
+  // the inspect snapshot; remote clients registered before attach are
+  // covered by `refreshClients` above.
+  // Optional chaining: cores that predate `getVersionInfo`.
+  const versionInfo = broker.inspect.getVersionInfo?.();
+  if (versionInfo && versionInfo.duplicateCopies > 0) {
+    store.pushSystemEvent("broker.duplicate_copy", {
+      version: versionInfo.version,
+      copies: versionInfo.duplicateCopies,
       hydrated: true,
     });
   }
@@ -72,13 +75,53 @@ export function attachInspector(
     store.pushSystemEvent("subscription.removed", payload);
     refreshClients();
   });
-  const unsubBridgeAdded = broker.$systemEvents.on("bridge.added", (payload) => {
-    store.pushSystemEvent("bridge.added", payload);
-    store.refreshBridges(broker);
+  // Remote clients (`broker.createRemoteClient`). Lifecycle is mirrored by
+  // `client.registered` / `client.unregistered`, which already refresh the
+  // Clients tab; these entries are log-only. `remote.frame.rejected` is an
+  // inbound frame dropped at the edge before any hook (no Messages row);
+  // `remote.send.failed` is an outbound frame the transport could not carry.
+  const unsubRemoteCreated = broker.$systemEvents.on("remote.created", (payload) => {
+    store.pushSystemEvent("remote.created", payload);
   });
-  const unsubBridgeRemoved = broker.$systemEvents.on("bridge.removed", (payload) => {
-    store.pushSystemEvent("bridge.removed", payload);
-    store.refreshBridges(broker);
+  const unsubRemoteDestroyed = broker.$systemEvents.on("remote.destroyed", (payload) => {
+    store.pushSystemEvent("remote.destroyed", payload);
+  });
+  const unsubRemoteFrameRejected = broker.$systemEvents.on("remote.frame.rejected", (payload) => {
+    store.pushSystemEvent("remote.frame.rejected", payload);
+  });
+  const unsubRemoteSendFailed = broker.$systemEvents.on("remote.send.failed", (payload) => {
+    store.pushSystemEvent("remote.send.failed", payload);
+  });
+  // Requests over a wire. The message row already carries the final result
+  // and latency; these four are the wire-level trace (frame left, response
+  // matched, local timeout, inbound request answered).
+  const unsubRequestForwarded = broker.$systemEvents.on("request.forwarded", (payload) => {
+    store.pushSystemEvent("request.forwarded", payload);
+  });
+  const unsubResponseReceived = broker.$systemEvents.on("response.received", (payload) => {
+    store.pushSystemEvent("response.received", payload);
+  });
+  const unsubRequestTimeout = broker.$systemEvents.on("request.timeout", (payload) => {
+    store.pushSystemEvent("request.timeout", payload);
+  });
+  const unsubResponseSent = broker.$systemEvents.on("response.sent", (payload) => {
+    store.pushSystemEvent("response.sent", payload);
+  });
+  // A state topic's retained value was replaced.
+  const unsubStateRetained = broker.$systemEvents.on("state.retained", (payload) => {
+    store.pushSystemEvent("state.retained", payload);
+  });
+  // Live counterpart of the hydrated realm-singleton event above — fires
+  // when a lazily loaded remote brings its own copy of the library after
+  // the panel is already attached.
+  const unsubDuplicateCopy = broker.$systemEvents.on("broker.duplicate_copy", (payload) => {
+    store.pushSystemEvent("broker.duplicate_copy", payload);
+  });
+  // A hook threw. With the default fail-closed mode a guard hook's failure
+  // is also a denial (the message shows as NACK HOOK_REJECTED); this event
+  // tells you it was a crash, not a policy decision.
+  const unsubHookFailed = broker.$systemEvents.on("hook.failed", (payload) => {
+    store.pushSystemEvent("hook.failed", payload);
   });
 
   // Security signals — hook-driven rejections. `subscription.rejected` fires
@@ -106,8 +149,17 @@ export function attachInspector(
     unsubClientUnregistered();
     unsubSubscriptionAdded();
     unsubSubscriptionRemoved();
-    unsubBridgeAdded();
-    unsubBridgeRemoved();
+    unsubRemoteCreated();
+    unsubRemoteDestroyed();
+    unsubRemoteFrameRejected();
+    unsubRemoteSendFailed();
+    unsubRequestForwarded();
+    unsubResponseReceived();
+    unsubRequestTimeout();
+    unsubResponseSent();
+    unsubStateRetained();
+    unsubDuplicateCopy();
+    unsubHookFailed();
     unsubSubscriptionRejected();
     unsubMessageRejected();
     store.setAttached(false);

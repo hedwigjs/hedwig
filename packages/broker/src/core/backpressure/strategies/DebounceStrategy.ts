@@ -1,6 +1,7 @@
 import type { Message, MessageHandler } from '../../types';
 import type { BackpressureStrategy } from '../BackpressureHandler.types';
 import type { BrokerLogger } from '../../logger/BrokerLogger.types';
+import { invokeIsolated } from './invokeIsolated';
 
 /**
  * DebounceStrategy - Delays handler execution until silence period
@@ -70,11 +71,7 @@ export class DebounceStrategy implements BackpressureStrategy {
    */
   #flush(): void {
     if (this.#pendingMessage && this.#pendingHandler) {
-      try {
-        this.#pendingHandler(this.#pendingMessage);
-      } catch (error) {
-        this.#logger.error('backpressure.handler.failed', { strategy: 'debounce', error });
-      }
+      invokeIsolated(this.#pendingHandler, this.#pendingMessage, this.#logger, 'debounce');
     }
 
     // Clear state

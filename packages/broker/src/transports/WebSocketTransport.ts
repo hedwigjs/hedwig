@@ -1,12 +1,20 @@
-import type { BridgeTransport } from '../core/bridge/Bridge.types';
+import type { Transport } from '../core/transport/Transport.types';
 
 /**
  * WebSocketTransport - Transport wrapper for WebSocket
  *
- * Simple wrapper that forwards messages to/from an existing WebSocket.
- * All connection management (connect, reconnect, etc.) is handled externally.
+ * Forwards frames to/from a WebSocket the caller constructed. Connecting
+ * and reconnecting stay outside: `ready` resolves once the socket is OPEN,
+ * `onClose` fires when it closes (the runtime then destroys the remote
+ * client, freeing its id for the next attempt). `destroy()` closes the
+ * socket if it is still connecting or open — the remote client owns its
+ * transport.
  */
-export class WebSocketTransport implements BridgeTransport {
+export class WebSocketTransport implements Transport {
+  readonly duplex = true;
+  readonly fanout = false;
+  /** Resolves once the socket is OPEN; rejects if it closes first. */
+  readonly ready: Promise<void>;
   #socket: WebSocket;
   #messageCallback: ((data: unknown) => void) | null = null;
   #messageHandler: ((e: MessageEvent) => void) | null = null;
@@ -16,6 +24,37 @@ export class WebSocketTransport implements BridgeTransport {
    */
   constructor(socket: WebSocket) {
     this.#socket = socket;
+    this.ready =
+      socket.readyState === WebSocket.OPEN
+        ? Promise.resolve()
+        : new Promise<void>((resolve, reject) => {
+            const onOpen = () => {
+              cleanup();
+              resolve();
+            };
+            const onClose = () => {
+              cleanup();
+              reject(new Error('WebSocket closed before it opened'));
+            };
+            const cleanup = () => {
+              socket.removeEventListener('open', onOpen);
+              socket.removeEventListener('close', onClose);
+              socket.removeEventListener('error', onClose);
+            };
+            socket.addEventListener('open', onOpen);
+            socket.addEventListener('close', onClose);
+            socket.addEventListener('error', onClose);
+          });
+    // A rejected `ready` is observed by the remote client; keep it from
+    // surfacing as an unhandled rejection when nobody is waiting yet.
+    this.ready.catch(() => {});
+  }
+
+  /** Fires when the socket closes; lets the runtime tear the remote down. */
+  onClose(callback: () => void): () => void {
+    const handler = () => callback();
+    this.#socket.addEventListener('close', handler);
+    return () => this.#socket.removeEventListener('close', handler);
   }
 
   /**
@@ -63,5 +102,9 @@ export class WebSocketTransport implements BridgeTransport {
       this.#messageHandler = null;
     }
     this.#messageCallback = null;
+    const state = this.#socket.readyState;
+    if (state === WebSocket.CONNECTING || state === WebSocket.OPEN) {
+      this.#socket.close();
+    }
   }
 }

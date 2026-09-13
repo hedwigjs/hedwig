@@ -11,6 +11,11 @@
   background: rgba(107, 114, 128, 0.03);
 }
 
+.row[data-verb="sent"],
+.row[data-verb="received"] {
+  border-left: 3px solid #0ea5e9;
+}
+
 .row[data-verb="rejected"] {
   border-left: 3px solid #ef4444;
   background: rgba(239, 68, 68, 0.05);
@@ -45,11 +50,17 @@
 
 .facetClient,
 .facetSubscription,
-.facetBridge,
+.facetRemote,
+.facetState,
 .facetMessage,
+.facetBroker,
 .verbAdded,
 .verbRemoved,
-.verbRejected {
+.verbRejected,
+.verbFailed,
+.verbWarning,
+.verbSent,
+.verbReceived {
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 3px;
@@ -68,7 +79,14 @@
   color: #67e8f9;
 }
 
-.facetBridge {
+/* State topics — a retained value changed. */
+.facetState {
+  background: #3f3f0b;
+  color: #fde68a;
+}
+
+/* Remote clients — participants behind a transport. */
+.facetRemote {
   background: #0b3b0f;
   color: #86efac;
 }
@@ -76,6 +94,12 @@
 .facetMessage {
   background: #422006;
   color: #fdba74;
+}
+
+/* Realm-singleton diagnostics (broker.duplicate_copy). */
+.facetBroker {
+  background: #1e293b;
+  color: #cbd5e1;
 }
 
 .verbAdded {
@@ -91,6 +115,31 @@
 .verbRejected {
   background: #7f1d1d;
   color: #fecaca;
+}
+
+/* Infrastructure failure (e.g. remote.send.failed): amber, distinct from the
+   red "rejected" which is a deliberate policy decision, not a malfunction. */
+.verbFailed {
+  background: #78350f;
+  color: #fde68a;
+}
+
+/* Wire-level request trace: neutral blue, a frame left or came back. */
+.verbSent {
+  background: #0c4a6e;
+  color: #bae6fd;
+}
+
+.verbReceived {
+  background: #075985;
+  color: #e0f2fe;
+}
+
+/* Nothing broke, but the page is not what the author assumed. Same amber
+   family as "failed", lighter, so the eye still stops on it. */
+.verbWarning {
+  background: #713f12;
+  color: #fef08a;
 }
 
 .meta {

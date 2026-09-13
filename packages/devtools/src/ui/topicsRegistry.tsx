@@ -4,13 +4,19 @@ import type { ReactNode } from "react";
 /**
  * Минимальная форма одного контракта, которую DevTools требует от реестра.
  *
- * Совместима со shape'ом `EventContract` из `@hedwigjs/create-registry`,
+ * Совместима со shape'ом `TopicContract` из `@hedwigjs/create-registry`,
  * но описана локально, чтобы DevTools не зависел от какого-либо
  * конкретного registry-пакета.
  */
 export interface TopicContractInfo {
   /** Имя топика, например `"users.fetched.v1"`. */
   name: string;
+  /**
+   * Род топика из контракта: `event` (факт, рассылка), `request` (команда
+   * с ответом), `state` (текущее значение; рантайм хранит последнее).
+   * Без него DevTools показывает multicast / unicast по адресату.
+   */
+  kind?: "event" | "request" | "state";
   /** Человекочитаемое описание для UI. */
   description: string;
   /** Именованные фикстуры payload'а. Минимум — ключ `happy`. */

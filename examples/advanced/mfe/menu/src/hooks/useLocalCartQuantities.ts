@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import type { MenuItem } from '@hedwig-demo/contracts';
 import type {
@@ -6,39 +6,32 @@ import type {
   CartDecrementResponse,
 } from '@hedwig-demo/contracts';
 
-import { bus } from '../clients/bus';
+import { bus, useStateTopic } from '../clients/bus';
 
 /**
  * Menu MFE's read-only view of cart quantities.
  *
  * The cart MFE owns state and exposes it as a broadcast `cart.snapshot.v1`
- * (retained via `history: true`). The menu MFE:
+ * (a `state` topic — the runtime keeps the last one). The menu MFE:
  *   1. Subscribes to snapshots — that's the ONLY channel it needs to render
  *      per-item quantities on dish cards. No item-added/removed events
  *      are listened to — full state is delivered on every mutation.
  *   2. Sends **requests** to the cart-store for mutations. `add-item`
  *      handles both first-add and increment (runtime returns updated qty).
  *
- * `replay: { limit: 1 }` guards the late-joiner case — if cart already has
- * items when the menu mounts, the broker fires the handler once with the
- * last retained snapshot.
+ * `useStateTopic` subscribes before paint and the retained snapshot arrives
+ * synchronously inside `on()`, so a menu that mounts after items were added
+ * shows the right quantities on its first frame.
  */
 export function useLocalCartQuantities() {
-  const [qtyById, setQtyById] = useState<Record<number, number>>({});
-
-  useEffect(() => {
-    return bus.on(
-      'cart.snapshot.v1',
-      (msg) => {
-        const next: Record<number, number> = {};
-        for (const item of msg.data.items) {
-          next[item.itemId] = item.quantity;
-        }
-        setQtyById(next);
-      },
-      { replay: { limit: 1 } },
-    );
-  }, []);
+  const snapshot = useStateTopic('cart.snapshot.v1');
+  const qtyById = useMemo(() => {
+    const next: Record<number, number> = {};
+    for (const item of snapshot?.items ?? []) {
+      next[item.itemId] = item.quantity;
+    }
+    return next;
+  }, [snapshot]);
 
   const getQty = useCallback((id: number) => qtyById[id] ?? 0, [qtyById]);
 

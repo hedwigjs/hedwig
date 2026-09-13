@@ -1,4 +1,3 @@
-import { Bridge as BridgeImpl } from './bridge/Bridge';
 import { RoutingResult, RoutingReason } from './routing/RoutingResult';
 import { Router } from './routing/Router';
 import { HooksRegistry } from './hooks/HooksRegistry';
@@ -10,7 +9,13 @@ import { SubscriptionReplay } from './history/SubscriptionReplay';
 import { SystemEvents } from './events/SystemEvents';
 import { Inspector } from './observability/inspect/Inspector';
 import { deepFreeze } from './utils/deepFreeze';
+import { generateUUID } from './utils/uuid';
+import { VERSION } from './version';
 import { defaultLogger } from './logger/BrokerLogger.types';
+import { createSafeLogger } from './logger/safeLogger';
+import { RemoteClientImpl } from './remote/RemoteClient';
+import { createTransport, BUILT_IN_TRANSPORT_KINDS } from './transport/createTransport';
+import { isTransportDescriptor } from './transport/Transport.types';
 
 import type {
   Message,
@@ -19,12 +24,16 @@ import type {
   SubscriptionOptions,
   BrokerConfig,
   MessageOptions,
+  RequestOptions,
+  TopicPolicy,
 } from './types';
 import type { BrokerLogger } from './logger/BrokerLogger.types';
 import type { BrokerClient } from './client/BrokerClient';
 import type { OnSubscribeHook, BeforeSendHook, AfterSendHook } from './hooks/HooksRegistry.types';
-import type { Bridge, BridgeConfig, ExternalMessageInjector } from './bridge/Bridge.types';
-import type { SystemEventsEmitter } from './events/SystemEvents.types';
+import type { SystemEventsEmitter, SystemEventPayload } from './events/SystemEvents.types';
+import type { RemoteClient, RemoteClientOptions } from './remote/RemoteClient.types';
+import type { Transport } from './transport/Transport.types';
+import type { WireExt } from './wire/envelope';
 import type { MessageBroker } from './MessageBroker';
 
 /**
@@ -32,10 +41,10 @@ import type { MessageBroker } from './MessageBroker';
  * of the public {@link MessageBroker} interface.
  *
  * Responsibilities:
- * - Message routing and delivery pipeline (hooks → routing → history → bridges)
+ * - Message routing and delivery pipeline (hooks → routing → history → remote clients)
  * - Subscription management (delegates to Subscriptions)
  * - Coordinate Router, HooksRegistry, ClientRegistry
- * - Bridge management for cross-context communication
+ * - Remote clients: participants that live behind a transport
  * - Message history & replay
  * - Emit system events on the internal system events channel
  * - Expose state snapshots via the inspect facade
@@ -46,14 +55,17 @@ import type { MessageBroker } from './MessageBroker';
  * `getBroker()`. Methods tagged `@internal` (subscribe, unsubscribe,
  * processMessage, registerClient, unregisterClient, resetClient,
  * getClient) form the internal protocol between
- * BrokerClient, Bridge and the facade — they are stable only inside the
+ * BrokerClient, RemoteClientImpl and the facade — they are stable only inside the
  * package and may change without notice.
  */
 export class BrokerCore<T extends string, P extends Record<T, any>>
   implements MessageBroker<T, P>
 {
   #isDestroyed = false;
-  #sessionId = crypto.randomUUID();
+  // Session label baked into every message id. `generateUUID` works outside
+  // secure contexts too — `crypto.randomUUID` alone would throw on plain-http
+  // intranet hosts and take `initBroker()` down with it.
+  #sessionId = generateUUID();
   #eventCounter = 0;
   #subscriptions = new Subscriptions<T>();
   #router: Router<T, P>;
@@ -61,39 +73,109 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   #clientRegistry = new ClientRegistry<T, P>();
   #systemEvents: SystemEvents<T, P>;
   #backpressure: BackpressureHandler;
-  #history?: MessageHistory<T, P>;
-  #replay?: SubscriptionReplay<T, P>;
-  #bridges = new Map<string, Bridge>();
+  #history: MessageHistory<T, P>;
+  #replay: SubscriptionReplay<T, P>;
+  #remotes = new Map<string, RemoteClientImpl>();
+  /** Topics declared `state` in the contracts registry (`BrokerConfig.topics`). */
+  #stateTopics = new Set<string>();
+  /** Last multicast per `state` topic. */
   #inspect: Inspector<T, P>;
 
   /**
+   * What this runtime can do, as stable strings (`transport.websocket`, …).
+   * The client SDK reads this before relying on a feature.
+   */
+  readonly capabilities: ReadonlySet<string> = new Set([
+    ...BUILT_IN_TRANSPORT_KINDS.map((kind) => `transport.${kind}`),
+    'wire.v1',
+    'remote.requests',
+  ]);
+
+  /**
+   * Package version of the copy that created this instance. Other copies
+   * of the library compare against it before adopting the instance;
+   * DevTools compares it with the version it was built against.
+   */
+  readonly version: string = VERSION;
+  #duplicateCopies = 0;
+  #debugEnabled: boolean;
+  #requestTimeout: number | undefined;
+
+  /**
    * Infrastructure logger configured via {@link BrokerConfig.logger}.
+   *
+   * Always wrapped by {@link createSafeLogger}: a throwing user logger is
+   * reported to `console.error` and never propagates into the pipeline.
    *
    * @internal Used by the facade layer.
    */
   readonly logger: BrokerLogger;
 
   constructor(config?: BrokerConfig) {
-    this.logger = config?.logger ?? defaultLogger;
+    this.logger = createSafeLogger(config?.logger ?? defaultLogger);
+    this.#debugEnabled = config?.debug === true;
+    this.#requestTimeout = config?.request?.timeout;
+    // Retention comes from the registry: a `state` topic keeps its last
+    // value, an event keeps `retention.last` messages. The host only caps.
+    this.#history = new MessageHistory(config?.history);
+    for (const [topic, entry] of Object.entries(config?.topics ?? {})) {
+      const policy: TopicPolicy = typeof entry === 'string' ? { kind: entry } : entry;
+      if (policy.kind === 'state') {
+        this.#stateTopics.add(topic);
+        this.#history.retain(topic, 1, 'state');
+      } else if (policy.kind === 'event' && policy.retention && policy.retention.last > 0) {
+        this.#history.retain(topic, policy.retention.last, 'event');
+      }
+    }
 
-    this.#hooks = new HooksRegistry(this.logger);
+    // System events first: the hooks registry reports failures through them.
     this.#systemEvents = new SystemEvents(this.logger);
+    this.#hooks = new HooksRegistry(this.logger, {
+      failMode: config?.hooks?.failMode ?? 'closed',
+      onHookFailed: (failure) =>
+        this.#systemEvents.emit('hook.failed', failure as SystemEventPayload<T, P, 'hook.failed'>),
+    });
     this.#backpressure = new BackpressureHandler(this.logger);
     this.#router = new Router(this.#subscriptions, this.logger);
 
-    if (config?.history?.enabled) {
-      this.#history = new MessageHistory(config.history);
-      this.#replay = new SubscriptionReplay(this.#history, this.#hooks, this.logger);
-    }
+    this.#replay = new SubscriptionReplay(this.#history, this.#hooks, this.logger);
 
     // Inspector is a read-only facade over internal state: it receives references,
     // not callbacks, so future snapshot methods can be added without changing wiring.
     this.#inspect = new Inspector(
       this.#clientRegistry,
       this.#subscriptions,
-      this.#bridges,
-      () => this.#history,
+      this.#remotes,
+      this.#history,
+      () => ({
+        version: this.version,
+        duplicateCopies: this.#duplicateCopies,
+      }),
     );
+  }
+
+  // ========================================
+  // REALM SINGLETON DIAGNOSTICS
+  // ========================================
+
+  /**
+   * Record that another (compatible) copy of the library adopted this
+   * instance through the realm registry. Logged and published so tooling
+   * can show that the page bundles `@hedwigjs/broker` more than once.
+   *
+   * @param copyVersion - Package version of the adopting copy.
+   * @internal Called by the facade.
+   */
+  noteDuplicateCopy(copyVersion: string): void {
+    this.#duplicateCopies += 1;
+    const payload = {
+      version: this.version,
+      copyVersion,
+      copies: this.#duplicateCopies,
+      at: Date.now(),
+    };
+    this.logger.warn('broker.duplicate_copy', payload);
+    this.#systemEvents.emit('broker.duplicate_copy', payload);
   }
 
   // ========================================
@@ -184,17 +266,56 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       options,
     );
 
-    this.#subscriptions.subscribe(clientId, topic, wrappedHandler, options, subscriptionId);
+    // The raw handler rides along so unicast can bypass the backpressure
+    // wrapper — a request must always be answered.
+    this.#subscriptions.subscribe(clientId, topic, wrappedHandler, options, subscriptionId, handler);
     this.#systemEvents.emit('subscription.added', { clientId, topic, options });
 
     if (options?.replay) {
-      if (!this.#replay) {
-        this.logger.warn('broker.replay.history_disabled', { clientId, topic });
+      if (!this.#history.retainsMatching(topic)) {
+        // Nothing to replay: the topic's contract declares no `retention`
+        // (or the host switched event retention off). Not an error — the
+        // subscription is live — but worth a line in the log.
+        this.logger.warn('broker.replay.no_retention', { clientId, topic });
       } else {
+        // Synchronous: the handler sees every matching retained entry before
+        // `on()` returns, so nothing emitted afterwards can overtake or
+        // duplicate them. See SubscriptionReplay for the reasoning.
         this.#replay.start(clientId, topic, wrappedHandler, options.replay);
       }
+    } else if (options?.retained !== false && this.#stateTopics.has(topic)) {
+      // A `state` topic hands its retained value to every new subscriber,
+      // synchronously and before `on()` returns, exactly like a replay of
+      // one entry. Nothing to do when nothing was emitted yet.
+      const last = this.#history.last(topic);
+      if (last) this.#deliverRetained(clientId, last.message, wrappedHandler);
     }
     return subscriptionId;
+  }
+
+  /**
+   * Deliver a retained state value to a fresh subscriber. Same contract as
+   * history replay: `replayed: true`, error-isolated, `afterSend` with
+   * `REPLAY_DELIVERED` so observers see it, `beforeSend` skipped (the
+   * message was validated when it was emitted).
+   */
+  #deliverRetained(clientId: ClientID, last: Readonly<Message<T, P[T]>>, handler: MessageHandler): void {
+    const replayed = deepFreeze({ ...last, replayed: true } as Message<T, P[T]>);
+    const log = (error: unknown) => {
+      this.logger.error('replay.handler.failed', { messageId: replayed.id, topic: replayed.topic, clientId, error });
+    };
+    try {
+      const result = handler(replayed);
+      if (result && typeof (result as Promise<unknown>).then === 'function') {
+        (result as Promise<unknown>).then(undefined, log);
+      }
+    } catch (error) {
+      log(error);
+    }
+    this.#hooks.afterSend(
+      replayed,
+      RoutingResult.create('ACK', RoutingReason.REPLAY_DELIVERED, `Retained state delivered to '${clientId}'`, clientId),
+    );
   }
 
   /**
@@ -247,13 +368,13 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
    * Process a message originating from a local client.
    *
    * Runs the full lifecycle pipeline: beforeSend → history → routing →
-   * afterSend → forward to bridges.
+   * afterSend → forward to remote clients.
    *
    * @param topic - Type of message
    * @param sender - Client ID of sender
    * @param recipient - Target recipient: specific ClientID (unicast) or '*' (multicast)
    * @param data - Message payload
-   * @param options - Message options (history)
+   * @param options - Message options (currently none)
    * @returns Promise resolving to RoutingResult with delivery status
    *
    * @internal Called by {@link BrokerClient.emit} / {@link BrokerClient.request}.
@@ -264,7 +385,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     sender: ClientID,
     recipient: ClientID | '*',
     data: P[K],
-    options?: MessageOptions,
+    options?: MessageOptions & RequestOptions,
   ): Promise<RoutingResult<R>> {
     return this.#runPipeline<K, R>(topic, sender, recipient, data, options, false, false);
   }
@@ -274,7 +395,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
    *
    * `send()` runs the full message pipeline exactly like a normal
    * `Client.emit()` / `Client.request()` — routing, hooks, history and
-   * bridge forwarding all apply — but with two differences:
+   * forwarding to remote clients all apply — but with two differences:
    *
    *  1. `source` is an arbitrary string, not tied to a registered client.
    *     Nothing gets reset in the client registry: safe to «impersonate»
@@ -290,8 +411,14 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
    *
    * The `$` prefix marks this as a broker-internal API — for DevTools
    * and integration tests, not for business code.
+   *
+   * Gated by `BrokerConfig.debug`. When the broker was booted without
+   * `debug: true`, `send()` resolves `NACK DEBUG_DISABLED` without
+   * touching the pipeline and logs `debug.disabled`; `enabled` tells
+   * tooling which state it is in so it can explain instead of failing.
    */
   get $debug(): {
+    readonly enabled: boolean;
     send<K extends T, R = unknown>(
       source: ClientID,
       topic: K,
@@ -301,6 +428,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     ): Promise<RoutingResult<R>>;
   } {
     return {
+      enabled: this.#debugEnabled,
       send: <K extends T, R = unknown>(
         source: ClientID,
         topic: K,
@@ -308,33 +436,44 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
         data: P[K],
         options?: MessageOptions,
       ): Promise<RoutingResult<R>> => {
+        if (!this.#debugEnabled) {
+          this.logger.warn('debug.disabled', { source, topic, target });
+          return Promise.resolve(
+            RoutingResult.create<R>(
+              'NACK',
+              RoutingReason.DEBUG_DISABLED,
+              'Debug channel is disabled. Boot the broker with initBroker({ debug: true }).',
+              target !== '*' ? target : undefined,
+            ),
+          );
+        }
         return this.#runPipeline<K, R>(topic, source, target, data, options, false, true);
       },
     };
   }
 
   /**
-   * Shared pipeline body for local {@link processMessage} and external
-   * inject wired in {@link addBridge}.
+   * Shared pipeline body for local {@link processMessage} and frames
+   * injected by remote clients ({@link createRemoteClient}).
    *
    * Pipeline stages:
    *  1. Create Message (assign id, timestamp) and deep-freeze it.
    *  2. Run `beforeSend` hooks. If any hook denies, short-circuit with
    *     NACK(HOOK_REJECTED) — still fire `afterSend` so observers see the
    *     rejection.
-   *  3. Record to history — ONLY for local-origin messages that explicitly
-   *     opt in via `options.history`. External (injected) messages are
-   *     skipped: the sender-side broker has already recorded them; recording
-   *     again here would duplicate on every bridge hop.
+   *  3. Retain — only on topics whose contract declares it (`retention` on
+   *     an event, or a `state` topic). Origin does not matter: a frame from
+   *     a remote client is retained like a local emit, because replay is
+   *     local and never goes back on the wire.
    *  4. Route: unicast → one recipient, multicast (`*`) → all subscribers.
    *  5. Run `afterSend` hooks with the delivery result.
-   *  6. Forward to bridges — ONLY for local-origin messages. External
-   *     messages are never bounced back to bridges; otherwise a bridge would
-   *     send what it just received right back to its transport.
+   *  6. Forward to remote clients — ONLY for local-origin multicasts.
+   *     External messages are never bounced back; otherwise a remote
+   *     would get what it just sent right back over its transport.
    *
    * `fromExternal` gates stages 3 and 6 — the two places where local and
    * external paths diverge. `synthetic` is metadata-only: routing, hooks,
-   * history and bridge forwarding all treat the message as real. Both
+   * history and forwarding all treat the message as real. Both
    * flags are internal — never on the public API.
    */
   async #runPipeline<K extends T, R = unknown>(
@@ -342,9 +481,11 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     sender: ClientID,
     recipient: ClientID | '*',
     data: P[K],
-    options: MessageOptions | undefined,
+    options: (MessageOptions & RequestOptions) | undefined,
     fromExternal: boolean,
     synthetic: boolean,
+    via?: string,
+    wire?: { wireId?: string; ext?: WireExt },
   ): Promise<RoutingResult<R>> {
     if (this.#isDestroyed) {
       return RoutingResult.create<R>('NACK', RoutingReason.BROKER_DESTROYED, 'Broker is destroyed');
@@ -355,6 +496,18 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
 
     if (fromExternal) {
       message.fromExternal = true;
+    }
+    if (via !== undefined) {
+      message.via = via;
+    } else if (recipient !== '*' && this.#remotes.has(recipient)) {
+      // A request to a remote client: the answer travels over that remote.
+      message.via = recipient;
+    }
+    if (wire?.wireId !== undefined) {
+      message.wireId = wire.wireId;
+    }
+    if (wire?.ext !== undefined) {
+      message.ext = wire.ext;
     }
     if (synthetic) {
       message.synthetic = true;
@@ -384,71 +537,44 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       return result;
     }
 
-    // Stage 3: Record to history (only if explicitly requested and not from external)
-    if (this.#history && !fromExternal && options?.history === true) {
-      this.#history.record(frozenMessage);
+    // Stage 3: retain. Only topics whose contract declares it keep anything:
+    // an event with `retention.last`, or a `state` topic (its last value).
+    // The origin does not matter — a frame from a remote client is retained
+    // like a local emit, because replay never goes back on the wire. A
+    // request is never recorded: replaying a command would re-run it with
+    // no requester to answer.
+    if (recipient === '*' && this.#history.record(frozenMessage) && this.#stateTopics.has(topic)) {
+      this.#systemEvents.emit('state.retained', { topic, messageId: frozenMessage.id, at: Date.now() });
     }
 
-    // Multicast never carries response data; the cast widens its phantom R
-    // so both branches share the Promise<RoutingResult<R>> return type.
+    // Stage 4: route. A unicast whose recipient is a remote client goes out
+    // as a `kind: 'request'` frame and waits for the response (local-origin
+    // only: a request that arrived over one wire is never relayed to
+    // another). Multicast never carries response data; the cast widens its
+    // phantom R so all branches share the Promise<RoutingResult<R>> type.
+    const remoteRecipient = recipient !== '*' && !fromExternal ? this.#remotes.get(recipient) : undefined;
     const result: RoutingResult<R> =
       recipient === '*'
         ? ((await this.#router.multicast(frozenMessage, sender)) as RoutingResult<R>)
-        : await this.#router.unicast<K, R>(frozenMessage, recipient);
+        : remoteRecipient
+          ? ((await remoteRecipient.request(frozenMessage, options?.timeout ?? this.#requestTimeout)) as RoutingResult<R>)
+          : await this.#router.unicast<K, R>(
+              frozenMessage,
+              recipient,
+              options?.timeout ?? this.#requestTimeout,
+            );
 
     // Stage 5: afterSend hooks
     this.#hooks.afterSend(frozenMessage, result);
 
-    // Stage 6: Forward to bridges (only if not from external source)
-    if (!fromExternal) {
-      this.#forwardToBridges(frozenMessage);
+    // Stage 6: Forward to remote clients — local multicasts only. A frame
+    // that came in over a transport is never echoed back; a unicast was
+    // already answered in stage 4 (locally, or by the remote it targeted).
+    if (!fromExternal && recipient === '*') {
+      this.#forwardToRemotes(frozenMessage);
     }
 
     return result;
-  }
-
-  // ========================================
-  // BRIDGE MANAGEMENT
-  // ========================================
-
-  /**
-   * Add a bridge for cross-context communication (idempotent)
-   *
-   * If a bridge with the given ID already exists, the old bridge is destroyed
-   * and replaced with the new one. This prevents duplicate bridges during HMR.
-   *
-   * @param id - Unique identifier for the bridge (e.g. 'cross-tab', 'iframe-checkout')
-   * @param config - Bridge configuration (transport + forward patterns)
-   * @returns Function to remove the bridge
-   */
-  addBridge(id: string, config: BridgeConfig): () => void {
-    if (this.#isDestroyed) {
-      this.logger.warn('broker.bridge.add.after_destroy', { bridgeId: id });
-      return () => {};
-    }
-
-    const existing = this.#bridges.get(id);
-
-    if (existing) {
-      this.logger.warn('broker.bridge.replaced', { bridgeId: id });
-      existing.destroy();
-      this.#systemEvents.emit('bridge.removed', { bridgeId: id });
-    }
-
-    const inject: ExternalMessageInjector<T, P> = (topic, sender, recipient, data) =>
-      this.#runPipeline(topic, sender, recipient, data, undefined, true, false);
-
-    const bridge = new BridgeImpl<T, P>(inject, config, this.logger);
-    this.#bridges.set(id, bridge);
-    this.#systemEvents.emit('bridge.added', { bridgeId: id });
-
-    return () => {
-      if (this.#bridges.get(id) === bridge) {
-        this.#bridges.delete(id);
-        bridge.destroy();
-        this.#systemEvents.emit('bridge.removed', { bridgeId: id });
-      }
-    };
   }
 
   // ========================================
@@ -465,10 +591,14 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       this.logger.warn('broker.client.register.after_destroy', { clientId: client.id });
       return;
     }
+    if (this.#remotes.has(client.id)) {
+      throw clientIdTaken(client.id, 'a remote client');
+    }
     this.#clientRegistry.register(client);
     this.#systemEvents.emit('client.registered', {
       clientId: client.id,
       at: this.#clientRegistry.getConnectedAt(client.id) ?? Date.now(),
+      sdkVersion: client.meta?.sdkVersion,
     });
   }
 
@@ -531,7 +661,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   /**
    * Register a beforeSend hook
    *
-   * Called before routing for ALL messages, including those from bridges.
+   * Called before routing for ALL messages, including those from remote clients.
    * Use message.fromExternal to distinguish local vs external if needed.
    */
   useBeforeSendHook(hook: BeforeSendHook<T, P>): () => void {
@@ -558,15 +688,111 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   // ========================================
 
   /**
-   * Forward message to all bridges that match the topic
-   * @private
+   * Forward a local multicast to every remote client whose `forward`
+   * patterns match the topic.
+   *
+   * Each remote is isolated: a transport that throws on `send()` (or never
+   * becomes ready) is reported as `remote.send.failed` and skipped, so the
+   * remaining remotes still receive the message and the caller's `emit()`
+   * promise resolves normally. Local delivery has already happened by the
+   * time this runs — a throwing wire must not retroactively turn that into
+   * a rejection.
    */
-  #forwardToBridges(message: Message<T, P[T]>): void {
-    for (const bridge of this.#bridges.values()) {
-      if (bridge.shouldForward(message.topic)) {
-        bridge.send(message);
+  #forwardToRemotes(message: Message<T, P[T]>): void {
+    for (const remote of this.#remotes.values()) {
+      if (remote.matchesForward(message.topic)) {
+        remote.send(message);
       }
     }
+  }
+
+  // ========================================
+  // REMOTE CLIENTS
+  // ========================================
+
+  /**
+   * Register a participant that lives on the far side of a transport.
+   * See {@link RemoteClient} for the model. The id must be free: local and
+   * remote clients share one namespace (`CLIENT_ID_TAKEN` otherwise).
+   */
+  createRemoteClient(id: string, options: RemoteClientOptions): RemoteClient {
+    if (this.#isDestroyed) {
+      throw new Error(`@hedwigjs/broker: cannot create remote client '${id}' — broker is destroyed`);
+    }
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new Error('@hedwigjs/broker: remote client id must be a non-empty string');
+    }
+    if (this.#clientRegistry.has(id)) throw clientIdTaken(id, 'a local client');
+    if (this.#remotes.has(id)) throw clientIdTaken(id, 'a remote client');
+
+    const descriptor = options.transport;
+    let transport: Transport;
+    let kind: string;
+    if (isTransportDescriptor(descriptor)) {
+      transport = createTransport(descriptor);
+      kind = descriptor.kind;
+    } else {
+      transport = descriptor;
+      kind = 'custom';
+    }
+
+    const remote = new RemoteClientImpl(id, kind, transport, options, {
+      logger: this.logger,
+      origin: this.#sessionId,
+      inject: (remoteId, topic, source, target, data, wire) =>
+        this.#runPipeline(topic as T, source, target, data as P[T], undefined, true, false, remoteId, wire),
+      onSubscribe: (topic, clientId) => this.#hooks.onSubscribe(topic as T, clientId),
+      subscriptionAdded: (clientId, topic) =>
+        this.#systemEvents.emit('subscription.added', { clientId, topic: topic as T }),
+      subscriptionRemoved: (clientId, topic) =>
+        this.#systemEvents.emit('subscription.removed', { clientId, topic: topic as T }),
+      subscriptionRejected: (clientId, topic, reason) =>
+        this.#systemEvents.emit('subscription.rejected', { clientId, topic: topic as T, reason }),
+      frameRejected: (remoteId, reason, claimed) => {
+        this.logger.warn('remote.frame.rejected', { remoteId, reason, ...claimed });
+        this.#systemEvents.emit('remote.frame.rejected', { remoteId, reason, ...claimed });
+      },
+      sendFailed: (remoteId, topic, messageId, reason, error) => {
+        const payload = { remoteId, topic: topic as T, messageId, reason: reason as 'TRANSPORT_THREW' | 'NOT_OPEN', error };
+        this.logger.error('remote.send.failed', payload);
+        this.#systemEvents.emit('remote.send.failed', payload);
+      },
+      destroyed: (remoteId) => {
+        if (this.#remotes.get(remoteId) !== remote) return;
+        this.#remotes.delete(remoteId);
+        const at = Date.now();
+        this.#systemEvents.emit('remote.destroyed', { remoteId, at });
+        this.#systemEvents.emit('client.unregistered', { clientId: remoteId, at });
+      },
+      nextId: () => `${this.#sessionId}-${++this.#eventCounter}`,
+      requestForwarded: (payload) => this.#systemEvents.emit('request.forwarded', { ...payload, topic: payload.topic as T }),
+      responseReceived: (payload) => this.#systemEvents.emit('response.received', { ...payload, topic: payload.topic as T }),
+      requestTimeout: (payload) => this.#systemEvents.emit('request.timeout', { ...payload, topic: payload.topic as T }),
+      responseSent: (payload) => this.#systemEvents.emit('response.sent', { ...payload, topic: payload.topic as T }),
+    });
+
+    // Registered before the initial `forward` so a policy denial there
+    // rolls the remote back cleanly instead of leaking the transport.
+    this.#remotes.set(id, remote);
+    try {
+      if (options.forward && options.forward.length > 0) {
+        remote.forward(options.forward);
+      }
+    } catch (error) {
+      this.#remotes.delete(id);
+      remote.destroy();
+      throw error;
+    }
+
+    const at = remote.createdAt;
+    this.#systemEvents.emit('remote.created', { remoteId: id, kind, identity: remote.identity, at });
+    this.#systemEvents.emit('client.registered', { clientId: id, at });
+    return remote;
+  }
+
+  /** Remote client by id, if registered. */
+  getRemoteClient(id: string): RemoteClient | undefined {
+    return this.#remotes.get(id);
   }
 
   /**
@@ -603,13 +829,14 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     }
     this.#isDestroyed = true;
 
-    for (const bridge of this.#bridges.values()) {
-      bridge.destroy();
+    for (const remote of Array.from(this.#remotes.values())) {
+      remote.dispose('BROKER_DESTROYED');
     }
-    this.#bridges.clear();
+    this.#remotes.clear();
 
     this.#hooks.clear();
-    this.#history?.destroy();
+    this.#stateTopics.clear();
+    this.#history.destroy();
     // Release per-handler backpressure strategies via the cleared entries,
     // then run destroy() as a belt-and-suspenders sweep for anything that
     // somehow escaped bookkeeping.
@@ -621,4 +848,12 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     this.#clientRegistry.clear();
     this.#systemEvents.clear();
   }
+}
+
+function clientIdTaken(id: string, holder: string): Error {
+  const error = new Error(
+    `@hedwigjs/broker: client id '${id}' is already taken by ${holder}. Local and remote clients share one namespace.`,
+  );
+  (error as Error & { code: string }).code = 'CLIENT_ID_TAKEN';
+  return error;
 }

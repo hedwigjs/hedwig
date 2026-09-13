@@ -1,17 +1,11 @@
 import type { ClientID } from '../types';
+import type { RoutingReasonType, RoutingResult as RoutingResultShape } from '@hedwigjs/client';
+import { RoutingReason } from '@hedwigjs/client';
 
-export const RoutingReason = {
-  DELIVERED: 'DELIVERED',
-  DISPATCHED: 'DISPATCHED',
-  REPLAY_DELIVERED: 'REPLAY_DELIVERED',
-  HOOK_REJECTED: 'HOOK_REJECTED',
-  NO_SUBSCRIBERS: 'NO_SUBSCRIBERS',
-  NOT_SUBSCRIBED: 'NOT_SUBSCRIBED',
-  HANDLER_FAILED: 'HANDLER_FAILED',
-  BROKER_DESTROYED: 'BROKER_DESTROYED',
-} as const;
-
-export type RoutingReasonType = (typeof RoutingReason)[keyof typeof RoutingReason];
+// The closed set of reasons and the result shape are owned by the SDK so
+// module code can switch on them without depending on the runtime.
+export { RoutingReason };
+export type { RoutingReasonType };
 
 /**
  * RoutingResult - Message delivery result (Value Object)
@@ -19,7 +13,7 @@ export type RoutingReasonType = (typeof RoutingReason)[keyof typeof RoutingReaso
  * Immutable object representing the result of a message dispatch operation.
  * Can only be created through the static factory method create().
  */
-export class RoutingResult<TResponse = unknown> {
+export class RoutingResult<TResponse = unknown> implements RoutingResultShape<TResponse> {
   readonly status: 'ACK' | 'NACK';
   readonly reason: RoutingReasonType;
   readonly message: string;
