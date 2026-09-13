@@ -52,8 +52,10 @@
   provenance attestations (Sigstore, via GitHub OIDC).
 - The runtime and the SDK follow semver independently. Before 1.0, copies
   of the runtime must share the same minor to share a realm; the SDK's
-  `MIN_RUNTIME` names the oldest runtime its types match and is bumped in
-  lockstep with runtime releases that extend the ABI-1 surface.
+  `MIN_RUNTIME` names the oldest runtime its types match. Before 1.0 it
+  is baked at build time from the runtime's package.json — the SDK
+  requires the runtime it was released with — so a release needs no
+  manual bump.
 - The wire format has its own version (`v`), see the spec.
 
 ## Design changes

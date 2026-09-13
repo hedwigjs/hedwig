@@ -57,7 +57,7 @@ not guaranteed.
 | `getRuntime()` / `tryGetRuntime()` | The `RuntimeHandle` with the gates applied — throwing (`RUNTIME_NOT_PROVIDED`, `RUNTIME_TOO_OLD`) or returning `undefined`. |
 | `readHandle()` | The raw handle, no gates. For tooling. |
 | `RUNTIME_KEY`, `ABI`, `RUNTIME_READY_EVENT` | The `globalThis` symbol, the ABI number (`1`) and the event name (`'hedwig:runtime-ready'`). See [The handle](#the-handle). |
-| `SDK_VERSION`, `MIN_RUNTIME`, `compareVersions(a, b)` | This build's version, the oldest runtime it accepts, and the numeric semver compare behind the gate. |
+| `SDK_VERSION`, `MIN_RUNTIME`, `compareVersions(a, b)` | This build's version, the oldest runtime it accepts (before 1.0: the runtime released with it), and the numeric semver compare behind the gate. |
 | `LazyClient`, `DEFAULT_QUEUE_LIMIT` | The class `createClient()` returns before a runtime exists (`bound`, `queued` for diagnostics) and its queue bound (64). |
 | `HedwigSdkError` | The error class; `code` is an `SdkErrorCode`. |
 | `RoutingReason` | The closed set of delivery outcomes to switch on (`RoutingReasonType`). |
