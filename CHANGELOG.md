@@ -344,6 +344,19 @@ step; it goes away once DevTools and the reference stand have moved.
   · event · 3 of 10` — instead of an undifferentiated ring. On the stand
   `notification.show.v1` keeps 10 and the chat transcript topics keep 50.
 
+### Review fixes after 0.2.0
+
+- `maxBytes` works on every transport; an inbound request's deadline is
+  enforced on the local handler; transports throw on a failed send so
+  `remote.send.failed` fires; `on()` refuses wildcard topics; optional
+  `payloads: 'clone'` for hosts that do not want in-place freezing.
+- SDK: no throw at module scope on a stale host (`NACK RUNTIME_TOO_OLD`
+  instead), `whenRuntimeReady()` rejects rather than throws, lazy-client
+  binding isolated per subscription.
+- create-registry reads contract fields from the TypeScript AST.
+- Docs: first-paint wording qualified; no hard-coded versions in
+  SECURITY.md and the spec; the API index is links only.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

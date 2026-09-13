@@ -39,6 +39,7 @@ export class PostMessageTransport implements Transport {
   #allowedOrigins: readonly string[];
   #messageHandler: ((e: MessageEvent) => void) | null = null;
   #messageCallback: ((data: unknown) => void) | null = null;
+  #destroyed = false;
 
   readonly duplex = true;
   readonly fanout = false;
@@ -65,11 +66,10 @@ export class PostMessageTransport implements Transport {
    * Send data to target window via postMessage
    */
   send(data: unknown): void {
-    try {
-      this.#target.postMessage(data, this.#targetOrigin);
-    } catch (error) {
-      console.error('[PostMessageTransport] Failed to send:', error);
-    }
+    // Thrown errors become `remote.send.failed` in the runtime; after
+    // destroy() a send is a no-op by contract.
+    if (this.#destroyed) return;
+    this.#target.postMessage(data, this.#targetOrigin);
   }
 
   /**
@@ -105,6 +105,7 @@ export class PostMessageTransport implements Transport {
    * Cleanup: remove event listener
    */
   destroy(): void {
+    this.#destroyed = true;
     if (this.#messageHandler) {
       window.removeEventListener('message', this.#messageHandler);
       this.#messageHandler = null;

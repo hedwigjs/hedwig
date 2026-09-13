@@ -49,7 +49,7 @@ export type {
   RequestTopic,
   ResponseOf,
 } from './types/contracts';
-export type { Transport, TransportDescriptor, TransportKind } from './types/transport';
+export type { Transport, TransportDescriptor, TransportFrameMeta, TransportKind } from './types/transport';
 export type {
   RemoteClient,
   RemoteClientOptions,

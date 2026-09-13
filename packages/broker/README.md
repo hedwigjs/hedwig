@@ -186,7 +186,7 @@ the same `code` property.
 | Code | Thrown by | When |
 | --- | --- | --- |
 | `RUNTIME_NOT_PROVIDED` | SDK | No runtime in this realm: `createRemoteClient()`, `getRuntime()`. `createClient()` returns a lazy client instead. |
-| `RUNTIME_TOO_OLD` | SDK | The runtime's version is below the SDK's `MIN_RUNTIME`. Raised by `createClient()` / `createRemoteClient()` / `getRuntime()`; `whenRuntimeReady()` rejects. Update `@hedwigjs/broker` in the host. |
+| `RUNTIME_TOO_OLD` | SDK | The runtime's version is below the SDK's `MIN_RUNTIME`. Raised by `createRemoteClient()` / `getRuntime()`; `whenRuntimeReady()` rejects; `createClient()` returns a blocked client that answers `NACK RUNTIME_TOO_OLD` instead of throwing at module scope. Update `@hedwigjs/broker` in the host. |
 | `RUNTIME_ALREADY_PROVIDED` | `initBroker()` | A handle for this ABI already exists in the realm but was not created through this package's realm slot — another provider of the runtime. One host boots one runtime. |
 | `CLIENT_ID_TAKEN` | runtime | `createClient()` / `createRemoteClient()` with an id that is in use. Local and remote clients share one namespace. See `ClientOptions.onConflict` under [Client](#client). |
 | `TRANSPORT_UNSUPPORTED` | runtime | A descriptor `kind` this runtime does not provide. `hasCapability('transport.<kind>')` tells ahead. |
@@ -409,7 +409,12 @@ cannot change what the next one sees. Two consequences worth knowing:
 - **Freezing happens in place.** The object you pass as `data` is the
   object that gets frozen — there is no copy. If you emit a live store
   object, it is frozen afterwards; pass a snapshot when you need to
-  keep mutating the original.
+  keep mutating the original. Hosts that would rather pay for a copy
+  than ask that of every module set `initBroker({ payloads: 'clone' })`:
+  the payload is copied with `structuredClone` and the copy is frozen,
+  the emitter's object is untouched. A payload `structuredClone` cannot
+  copy (functions, class instances) is then rejected with
+  `NACK SERIALIZATION_FAILED`.
 - **Binary data is exempt.** `ArrayBuffer`, `SharedArrayBuffer` and
   every typed array / `DataView` over them are skipped (they cannot be
   frozen) and stay mutable. Everything around them is still frozen.

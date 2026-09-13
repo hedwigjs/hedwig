@@ -39,7 +39,7 @@ useRemoteClient('checkout-iframe', () =>
 | --- | --- | --- |
 | `useClient(id, options?)` | `Client` | Created synchronously in setup, destroyed on scope dispose. Third type parameter `TopicContracts` for kind-aware verbs. |
 | `useTopic(client, topic, handler, options?)` | — | `client` may be a plain client, a ref, or a getter; the subscription follows it and ends with the scope. |
-| `useStateTopic(client, topic, initial?)` | `ShallowRef` | Holds a `state` topic's retained value as soon as it returns; updates on every emit. |
+| `useStateTopic(client, topic, initial?)` | `ShallowRef` | Holds a `state` topic's retained value as soon as it returns when the runtime is already there (a lazy client fills it when it binds); updates on every emit. |
 | `useRequest(client, recipient, topic, options?)` | `RequestHandle<D, R>` — `{ send, pending, result, reset }` | `pending` is a `Ref<boolean>`, `result` a `ShallowRef`; answer type `R` from the contract; `send` never rejects. `RequestHandle` is exported. |
 | `useRemoteClient(id, options)` | `ShallowRef<RemoteClient \| null>` | `options` is a `MaybeRefOrGetter`: a plain options object, a ref, or a getter; `null` / `undefined` means no remote. Recreated when the source changes, destroyed on `null` and on dispose (transport closed, pending requests `REMOTE_GONE`). |
 | `useRuntimeReady()` | `Ref<boolean>` | Whether the host's runtime exists yet. |

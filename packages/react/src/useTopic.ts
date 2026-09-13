@@ -9,7 +9,8 @@ import { useIsoLayoutEffect } from './useClient';
  * re-subscribe when it changes. The subscription is (re)made when `client`
  * or `topic` change; `options` are read at subscribe time. Runs as a
  * layout effect, so a `state` topic's retained value reaches the handler
- * before the first paint.
+ * before the first paint — when the runtime is already there; a lazy
+ * client delivers it when it binds.
  *
  * A subscription denied by an `onSubscribe` hook throws from the effect;
  * catch it with an error boundary or check the policy first.

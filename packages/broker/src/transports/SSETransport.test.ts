@@ -130,13 +130,12 @@ describe('SSETransport', () => {
       const cb = jest.fn();
       transport.onMessage(cb);
 
-      FakeEventSource.instances[0]!.dispatch(
-        'message',
-        JSON.stringify({ kind: 'hello', n: 7 }),
-      );
+      const text = JSON.stringify({ kind: 'hello', n: 7 });
+      FakeEventSource.instances[0]!.dispatch('message', text);
 
       expect(cb).toHaveBeenCalledTimes(1);
-      expect(cb).toHaveBeenCalledWith({ kind: 'hello', n: 7 });
+      // The wire length rides along so the runtime can apply `maxBytes`.
+      expect(cb).toHaveBeenCalledWith({ kind: 'hello', n: 7 }, { bytes: text.length });
     });
 
     test('forwards non-string frames (already-parsed objects) as-is', () => {

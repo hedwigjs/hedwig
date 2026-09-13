@@ -1,6 +1,6 @@
 # Wire envelope v1
 
-Status: **Normative** · Schema: [`envelope-v1.schema.json`](../../../packages/broker/spec/envelope-v1.schema.json) · Since: the first `@hedwigjs/broker` release after 0.1.1 (on `main`, unreleased)
+Status: **Normative** · Schema: [`envelope-v1.schema.json`](../../../packages/broker/spec/envelope-v1.schema.json) · Since `@hedwigjs/broker` 0.2.0
 
 A frame is one JSON value carried by a transport between a Hedwig runtime
 and a remote client. There are two shapes: a **message** (`kind: event`

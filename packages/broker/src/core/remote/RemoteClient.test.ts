@@ -37,12 +37,12 @@ function quietLogger(): BrokerLogger & { calls: Array<[string, unknown]> } {
 interface FakeTransport extends Transport {
   send: jest.Mock;
   destroy: jest.Mock;
-  fire(frame: unknown): void;
+  fire(frame: unknown, meta?: { bytes?: number }): void;
   close(): void;
 }
 
 function fakeTransport(flags: Partial<Pick<Transport, 'duplex' | 'fanout' | 'ready'>> = {}): FakeTransport {
-  let inbound: ((frame: unknown) => void) | null = null;
+  let inbound: ((frame: unknown, meta?: { bytes?: number }) => void) | null = null;
   let closeCb: (() => void) | null = null;
   return {
     ...flags,
@@ -60,7 +60,7 @@ function fakeTransport(flags: Partial<Pick<Transport, 'duplex' | 'fanout' | 'rea
       };
     },
     destroy: jest.fn(),
-    fire: (frame) => inbound?.(frame),
+    fire: (frame, meta) => inbound?.(frame, meta),
     close: () => closeCb?.(),
   };
 }
@@ -455,6 +455,26 @@ describe('inbound — accepts and identity', () => {
     expect(seen).toHaveLength(1);
     expect(seen[0]!.wireId).toBeUndefined();
     expect(seen[0]!.ext).toBeUndefined();
+    core.destroy();
+  });
+
+  test('maxBytes applies to structured frames too, and to the size a text transport reports', async () => {
+    const { core, events } = setup();
+    const transport = fakeTransport();
+    core.createRemoteClient('tabs', { transport, accepts: ['*'], maxBytes: 64 });
+    const handler = jest.fn();
+    new BrokerClient('local', core).on('a.v1', handler);
+
+    // postMessage / BroadcastChannel hand over objects: measured as JSON text.
+    transport.fire({ topic: 'a.v1', target: '*', data: { pad: 'x'.repeat(100) } });
+    transport.fire({ topic: 'a.v1', target: '*', data: { n: 1 } });
+    // A text transport reports the wire length; a small object with a big wire size is rejected on that.
+    transport.fire({ topic: 'a.v1', target: '*', data: { n: 2 } }, { bytes: 10_000 });
+    await tick();
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    const reasons = events.filter(([n]) => n === 'remote.frame.rejected').map(([, p]) => (p as { reason: string }).reason);
+    expect(reasons).toEqual(['TOO_LARGE', 'TOO_LARGE']);
     core.destroy();
   });
 
@@ -861,6 +881,37 @@ describe('requests from a remote client', () => {
     await flush();
     expect(transport.send).toHaveBeenCalledTimes(1);
     expect(transport.send.mock.calls[0]![0]).toMatchObject({ kind: 'response', correlationId: 'q-1', status: 'NACK', reason });
+    core.destroy();
+  });
+
+  test('the sender\'s deadline bounds the local handler: a hung handler is answered NACK TIMEOUT', async () => {
+    const { core, events } = setup();
+    const transport = fakeTransport();
+    core.createRemoteClient('backend', { transport, accepts: ['a.v1'] });
+    new BrokerClient('local', core).on('a.v1', () => new Promise(() => {})); // never settles
+
+    // deadline − timestamp = 40 ms of budget, in the sender's clock.
+    fireRequest(transport, { timestamp: 1_000, deadline: 1_040 });
+    await new Promise((r) => setTimeout(r, 120));
+
+    expect(transport.send).toHaveBeenCalledTimes(1);
+    expect(transport.send.mock.calls[0]![0]).toMatchObject({ kind: 'response', correlationId: 'q-1', status: 'NACK', reason: 'TIMEOUT' });
+    expect(events.find(([n]) => n === 'response.sent')?.[1]).toMatchObject({ correlationId: 'q-1', reason: 'TIMEOUT' });
+    core.destroy();
+  });
+
+  test('a request whose deadline had already passed when sent is answered NACK TIMEOUT without running the handler', async () => {
+    const { core } = setup();
+    const transport = fakeTransport();
+    core.createRemoteClient('backend', { transport, accepts: ['a.v1'] });
+    const handler = jest.fn(() => ({ ok: true }));
+    new BrokerClient('local', core).on('a.v1', handler);
+
+    fireRequest(transport, { timestamp: 1_000, deadline: 900 });
+    await flush();
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(transport.send.mock.calls[0]![0]).toMatchObject({ kind: 'response', correlationId: 'q-1', status: 'NACK', reason: 'TIMEOUT' });
     core.destroy();
   });
 

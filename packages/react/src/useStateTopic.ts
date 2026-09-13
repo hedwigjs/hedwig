@@ -8,7 +8,10 @@ import { useTopic } from './useTopic';
  * The runtime hands a state topic's retained value to a new subscriber
  * synchronously inside `on()`; the subscription happens in a layout
  * effect, so the value is set before the first paint — no flash of
- * `initial`. Later emits update it.
+ * `initial`. That holds when the runtime is already there at mount. A
+ * module-scope client created before `initBroker()` is a lazy client:
+ * its subscription binds when the runtime appears, and the value lands
+ * then — after the first paint. Later emits update it either way.
  */
 export function useStateTopic<
   T extends string,

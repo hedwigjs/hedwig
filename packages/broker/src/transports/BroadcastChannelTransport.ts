@@ -17,6 +17,7 @@ export class BroadcastChannelTransport implements Transport {
   readonly fanout = true;
   #channel: BroadcastChannel;
   #messageCallback: ((data: unknown) => void) | null = null;
+  #destroyed = false;
 
   /**
    * @param channelName - Unique channel name for this application
@@ -29,11 +30,10 @@ export class BroadcastChannelTransport implements Transport {
    * Broadcast data to all other tabs
    */
   send(data: unknown): void {
-    try {
-      this.#channel.postMessage(data);
-    } catch (error) {
-      console.error('[BroadcastChannelTransport] Failed to send:', error);
-    }
+    // Thrown errors become `remote.send.failed` in the runtime; after
+    // destroy() the channel is closed and a send is a no-op by contract.
+    if (this.#destroyed) return;
+    this.#channel.postMessage(data);
   }
 
   /**
@@ -53,6 +53,7 @@ export class BroadcastChannelTransport implements Transport {
    * Cleanup: close the channel
    */
   destroy(): void {
+    this.#destroyed = true;
     this.#channel.onmessage = null;
     this.#messageCallback = null;
     this.#channel.close();

@@ -35,6 +35,11 @@ export const RoutingReason = {
   SERIALIZATION_FAILED: 'SERIALIZATION_FAILED',
   /** SDK only: queued before the runtime existed and dropped from a full buffer. */
   RUNTIME_NOT_READY: 'RUNTIME_NOT_READY',
+  /**
+   * SDK only: the runtime in this realm is older than this SDK requires
+   * (`MIN_RUNTIME`). The client never binds; every call answers this.
+   */
+  RUNTIME_TOO_OLD: 'RUNTIME_TOO_OLD',
 } as const;
 
 export type RoutingReasonType = (typeof RoutingReason)[keyof typeof RoutingReason];

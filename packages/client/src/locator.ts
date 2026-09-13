@@ -69,7 +69,15 @@ export function hasCapability(name: string): boolean {
  */
 export function whenRuntimeReady(): Promise<RuntimeHandle> {
   const now = readHandle();
-  if (now) return Promise.resolve(getRuntime());
+  if (now) {
+    // The gate may refuse the handle that is already there (RUNTIME_TOO_OLD);
+    // a promise-returning function reports that as a rejection, never a throw.
+    try {
+      return Promise.resolve(getRuntime());
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
   return new Promise<RuntimeHandle>((resolve, reject) => {
     const settle = () => {
       try {
