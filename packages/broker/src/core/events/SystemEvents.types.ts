@@ -132,6 +132,47 @@ export interface SystemEventMap<T extends string, P extends Record<T, any>> {
     source?: ClientID;
     topic?: string;
   };
+
+  // ─── Remote clients ───────────────────────────────────────────────────────
+
+  'remote.created': {
+    remoteId: string;
+    kind: string;
+    identity: 'fixed' | 'allow' | 'prefix';
+    at: number;
+  };
+  'remote.destroyed': { remoteId: string; at: number };
+  /**
+   * An inbound frame was dropped at the remote client before any hook:
+   * too large, rate-limited, malformed, topic not in `accepts`, or a
+   * `source` the identity mode rejects. `source` / `topic` are what the
+   * frame claimed.
+   */
+  'remote.frame.rejected': {
+    remoteId: string;
+    reason:
+      | 'MALFORMED'
+      | 'TOO_LARGE'
+      | 'RATE_LIMITED'
+      | 'TOPIC_NOT_ACCEPTED'
+      | 'SOURCE_MISMATCH'
+      | 'SOURCE_NOT_ALLOWED'
+      | 'UNSUPPORTED';
+    source?: string;
+    topic?: string;
+  };
+  /**
+   * A frame for the remote could not be sent: the transport threw
+   * (`TRANSPORT_THREW`) or never became ready (`NOT_OPEN`). Local delivery
+   * already happened; this is the only trace.
+   */
+  'remote.send.failed': {
+    remoteId: string;
+    topic: T;
+    messageId: string;
+    reason: 'TRANSPORT_THREW' | 'NOT_OPEN';
+    error?: unknown;
+  };
 }
 
 export type SystemEventName<T extends string, P extends Record<T, any>> = keyof SystemEventMap<

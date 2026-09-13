@@ -37,6 +37,13 @@ export interface Message<T extends string = string, P = any> {
   fromExternal?: boolean;
 
   /**
+   * Id of the remote client whose transport delivered this message. Set by
+   * the runtime, never by the peer; local-only, never on the wire. Hooks
+   * and ACLs may key on it.
+   */
+  via?: string;
+
+  /**
    * Marks a debug/test message injected via `broker.$debug.send(...)`.
    * Routing, hooks, history and bridge forwarding all treat it as a
    * real message — the flag is purely metadata so DevTools and integration
@@ -174,12 +181,28 @@ export interface ClientSubscriptionInfo {
   handlerCount: number;
 }
 
+/** Remote-side details of a client that lives behind a transport. */
+export interface RemoteClientInfo {
+  kind: string;
+  identity: 'fixed' | 'allow' | 'prefix';
+  duplex: boolean;
+  fanout: boolean;
+  requests: boolean;
+  /** Topics the remote may inject. */
+  accepts: string[];
+  /** Requests in flight to the remote. */
+  pending: number;
+}
+
 /** Point-in-time snapshot of a single registered client. */
 export interface ClientInfo {
   id: ClientID;
   /** Unix timestamp (ms) when the client registered. */
   connectedAt: number;
+  /** Local: exact topics with handlers. Remote: `forward` patterns. */
   subscriptions: ClientSubscriptionInfo[];
+  /** Present for remote clients only. */
+  remote?: RemoteClientInfo;
 }
 
 /**

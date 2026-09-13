@@ -14,6 +14,9 @@ import { generateUUID } from './utils/uuid';
 import { VERSION } from './version';
 import { defaultLogger } from './logger/BrokerLogger.types';
 import { createSafeLogger } from './logger/safeLogger';
+import { RemoteClientImpl } from './remote/RemoteClient';
+import { createTransport, BUILT_IN_TRANSPORT_KINDS } from './transport/createTransport';
+import { isTransportDescriptor } from './transport/Transport.types';
 
 import type {
   Message,
@@ -29,6 +32,8 @@ import type { BrokerClient } from './client/BrokerClient';
 import type { OnSubscribeHook, BeforeSendHook, AfterSendHook } from './hooks/HooksRegistry.types';
 import type { Bridge, BridgeConfig, ExternalMessageInjector } from './bridge/Bridge.types';
 import type { SystemEventsEmitter, SystemEventPayload } from './events/SystemEvents.types';
+import type { RemoteClient, RemoteClientOptions } from './remote/RemoteClient.types';
+import type { Transport } from './transport/Transport.types';
 import type { MessageBroker } from './MessageBroker';
 
 /**
@@ -71,7 +76,16 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   #history?: MessageHistory<T, P>;
   #replay?: SubscriptionReplay<T, P>;
   #bridges = new Map<string, Bridge>();
+  #remotes = new Map<string, RemoteClientImpl>();
   #inspect: Inspector<T, P>;
+
+  /**
+   * What this runtime can do, as stable strings (`transport.websocket`, …).
+   * The client SDK reads this before relying on a feature.
+   */
+  readonly capabilities: ReadonlySet<string> = new Set(
+    BUILT_IN_TRANSPORT_KINDS.map((kind) => `transport.${kind}`),
+  );
 
   /**
    * Package version of the copy that created this instance. Other copies
@@ -121,6 +135,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       this.#clientRegistry,
       this.#subscriptions,
       this.#bridges,
+      this.#remotes,
       () => this.#history,
       () => ({
         version: this.version,
@@ -431,6 +446,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     options: RequestOptions | undefined,
     fromExternal: boolean,
     synthetic: boolean,
+    via?: string,
   ): Promise<RoutingResult<R>> {
     if (this.#isDestroyed) {
       return RoutingResult.create<R>('NACK', RoutingReason.BROKER_DESTROYED, 'Broker is destroyed');
@@ -441,6 +457,9 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
 
     if (fromExternal) {
       message.fromExternal = true;
+    }
+    if (via !== undefined) {
+      message.via = via;
     }
     if (synthetic) {
       message.synthetic = true;
@@ -496,6 +515,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     // would execute a command remotely while reporting failure here.
     if (!fromExternal && recipient === '*') {
       this.#forwardToBridges(frozenMessage);
+      this.#forwardToRemotes(frozenMessage);
     }
 
     return result;
@@ -571,6 +591,9 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     if (this.#isDestroyed) {
       this.logger.warn('broker.client.register.after_destroy', { clientId: client.id });
       return;
+    }
+    if (this.#remotes.has(client.id)) {
+      throw clientIdTaken(client.id, 'a remote client');
     }
     this.#clientRegistry.register(client);
     this.#systemEvents.emit('client.registered', {
@@ -676,6 +699,97 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
    *
    * @private
    */
+  #forwardToRemotes(message: Message<T, P[T]>): void {
+    for (const remote of this.#remotes.values()) {
+      if (remote.matchesForward(message.topic)) {
+        remote.send(message);
+      }
+    }
+  }
+
+  // ========================================
+  // REMOTE CLIENTS
+  // ========================================
+
+  /**
+   * Register a participant that lives on the far side of a transport.
+   * See {@link RemoteClient} for the model. The id must be free: local and
+   * remote clients share one namespace (`CLIENT_ID_TAKEN` otherwise).
+   */
+  createRemoteClient(id: string, options: RemoteClientOptions): RemoteClient {
+    if (this.#isDestroyed) {
+      throw new Error(`@hedwigjs/broker: cannot create remote client '${id}' — broker is destroyed`);
+    }
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new Error('@hedwigjs/broker: remote client id must be a non-empty string');
+    }
+    if (this.#clientRegistry.has(id)) throw clientIdTaken(id, 'a local client');
+    if (this.#remotes.has(id)) throw clientIdTaken(id, 'a remote client');
+
+    const descriptor = options.transport;
+    let transport: Transport;
+    let kind: string;
+    if (isTransportDescriptor(descriptor)) {
+      transport = createTransport(descriptor);
+      kind = descriptor.kind;
+    } else {
+      transport = descriptor;
+      kind = 'custom';
+    }
+
+    const remote = new RemoteClientImpl(id, kind, transport, options, {
+      logger: this.logger,
+      inject: (remoteId, topic, source, target, data) =>
+        this.#runPipeline(topic as T, source, target, data as P[T], undefined, true, false, remoteId),
+      onSubscribe: (topic, clientId) => this.#hooks.onSubscribe(topic as T, clientId),
+      subscriptionAdded: (clientId, topic) =>
+        this.#systemEvents.emit('subscription.added', { clientId, topic: topic as T }),
+      subscriptionRemoved: (clientId, topic) =>
+        this.#systemEvents.emit('subscription.removed', { clientId, topic: topic as T }),
+      subscriptionRejected: (clientId, topic, reason) =>
+        this.#systemEvents.emit('subscription.rejected', { clientId, topic: topic as T, reason }),
+      frameRejected: (remoteId, reason, claimed) => {
+        this.logger.warn('remote.frame.rejected', { remoteId, reason, ...claimed });
+        this.#systemEvents.emit('remote.frame.rejected', { remoteId, reason, ...claimed });
+      },
+      sendFailed: (remoteId, topic, messageId, reason, error) => {
+        const payload = { remoteId, topic: topic as T, messageId, reason: reason as 'TRANSPORT_THREW' | 'NOT_OPEN', error };
+        this.logger.error('remote.send.failed', payload);
+        this.#systemEvents.emit('remote.send.failed', payload);
+      },
+      destroyed: (remoteId) => {
+        if (this.#remotes.get(remoteId) !== remote) return;
+        this.#remotes.delete(remoteId);
+        const at = Date.now();
+        this.#systemEvents.emit('remote.destroyed', { remoteId, at });
+        this.#systemEvents.emit('client.unregistered', { clientId: remoteId, at });
+      },
+    });
+
+    // Registered before the initial `forward` so a policy denial there
+    // rolls the remote back cleanly instead of leaking the transport.
+    this.#remotes.set(id, remote);
+    try {
+      if (options.forward && options.forward.length > 0) {
+        remote.forward(options.forward);
+      }
+    } catch (error) {
+      this.#remotes.delete(id);
+      remote.destroy();
+      throw error;
+    }
+
+    const at = remote.createdAt;
+    this.#systemEvents.emit('remote.created', { remoteId: id, kind, identity: remote.identity, at });
+    this.#systemEvents.emit('client.registered', { clientId: id, at });
+    return remote;
+  }
+
+  /** Remote client by id, if registered. */
+  getRemoteClient(id: string): RemoteClient | undefined {
+    return this.#remotes.get(id);
+  }
+
   #forwardToBridges(message: Message<T, P[T]>): void {
     for (const [bridgeId, bridge] of this.#bridges) {
       if (!bridge.shouldForward(message.topic)) continue;
@@ -736,6 +850,10 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       bridge.destroy();
     }
     this.#bridges.clear();
+    for (const remote of Array.from(this.#remotes.values())) {
+      remote.destroy();
+    }
+    this.#remotes.clear();
 
     this.#hooks.clear();
     this.#history?.destroy();
@@ -750,4 +868,12 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     this.#clientRegistry.clear();
     this.#systemEvents.clear();
   }
+}
+
+function clientIdTaken(id: string, holder: string): Error {
+  const error = new Error(
+    `@hedwigjs/broker: client id '${id}' is already taken by ${holder}. Local and remote clients share one namespace.`,
+  );
+  (error as Error & { code: string }).code = 'CLIENT_ID_TAKEN';
+  return error;
 }

@@ -16,7 +16,7 @@
  */
 
 // ── Entry points ────────────────────────────────────────────────────────
-export { initBroker, createClient, getBroker, destroyBroker } from './facade';
+export { initBroker, createClient, createRemoteClient, getBroker, destroyBroker } from './facade';
 
 // ── Package version (realm singleton compatibility, DevTools handshake) ──
 export { VERSION, isCompatibleVersion } from './core/version';
@@ -70,6 +70,20 @@ export type { HistoryEntry, HistoryStats } from './core/history/MessageHistory.t
 // ── Bridge extension point ──────────────────────────────────────────────
 export type { BridgeTransport, BridgeConfig, InvalidFrameReason } from './core/bridge/Bridge.types';
 
+// ── Remote clients & transports ─────────────────────────────────────────
+export type {
+  RemoteClient,
+  RemoteClientOptions,
+  RemoteIdentity,
+  RemoteFrameRejectReason,
+} from './core/remote/RemoteClient.types';
+export type {
+  Transport,
+  TransportDescriptor,
+  TransportKind,
+} from './core/transport/Transport.types';
+export type { RemoteClientInfo } from './core/types';
+
 // ── Built-in transports ─────────────────────────────────────────────────
 // Ready-to-use implementations for the common cross-context wires. Kept
 // here for zero-config demo integrations; framework-specific adapters
@@ -88,6 +102,7 @@ export {
   SSETransport,
   type SSETransportConfig,
 } from './transports/SSETransport';
+export { MessagePortTransport } from './transports/MessagePortTransport';
 
 // ── Backpressure configuration ──────────────────────────────────────────
 export type { BackpressureOptions } from './core/backpressure/BackpressureHandler.types';

@@ -12,6 +12,9 @@ import type { BridgeTransport } from '../core/bridge/Bridge.types';
  * - Broadcast notifications to all tabs
  */
 export class BroadcastChannelTransport implements BridgeTransport {
+  readonly duplex = true;
+  /** One `send` reaches every other tab; inbound may come from any of them. */
+  readonly fanout = true;
   #channel: BroadcastChannel;
   #messageCallback: ((data: unknown) => void) | null = null;
 

@@ -12,8 +12,17 @@ export interface PostMessageTransportConfig {
    * Use `'*'` only for trusted contexts — the browser will otherwise refuse
    * to deliver the message if the target's origin doesn't match.
    * @default '*'
+   * @deprecated Use `targetOrigin`; the `'*'` default goes away with the
+   *   `addBridge` API.
    */
   origin?: string;
+
+  /**
+   * Target origin for outbound `postMessage` calls. Preferred over
+   * `origin`; never `'*'` in production — that hands every frame to
+   * whatever document is loaded in the target window.
+   */
+  targetOrigin?: string;
 
   /**
    * Explicit allowlist for **inbound** message origins.
@@ -52,9 +61,12 @@ export class PostMessageTransport implements BridgeTransport {
   #messageHandler: ((e: MessageEvent) => void) | null = null;
   #messageCallback: ((data: unknown) => void) | null = null;
 
+  readonly duplex = true;
+  readonly fanout = false;
+
   constructor(config: PostMessageTransportConfig) {
     this.#target = config.target;
-    this.#origin = config.origin ?? '*';
+    this.#origin = config.targetOrigin ?? config.origin ?? '*';
 
     if (config.allowedOrigins !== undefined) {
       this.#allowedOrigins = [...config.allowedOrigins];

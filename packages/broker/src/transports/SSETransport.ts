@@ -42,6 +42,9 @@ export interface SSETransportConfig {
  * format all the other bridges use.
  */
 export class SSETransport implements BridgeTransport {
+  /** Server → client only. A remote on this transport can never be asked. */
+  readonly duplex = false;
+  readonly fanout = false;
   #eventSource: EventSource;
   #eventName: string;
   #messageHandler: ((e: MessageEvent) => void) | null = null;

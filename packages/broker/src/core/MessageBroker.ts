@@ -1,4 +1,5 @@
 import type { BridgeConfig } from './bridge/Bridge.types';
+import type { RemoteClient, RemoteClientOptions } from './remote/RemoteClient.types';
 import type { SystemEventsEmitter } from './events/SystemEvents.types';
 import type { Inspector } from './observability/inspect/Inspector';
 import type {
@@ -133,6 +134,25 @@ export interface MessageBroker<T extends string, P extends Record<T, any>> {
    * @returns Function that removes the bridge and tears down its listeners.
    */
   addBridge(id: string, config: BridgeConfig): () => void;
+
+  /**
+   * Register a participant whose code runs on the far side of a transport
+   * (a backend over WebSocket, an iframe over postMessage, another tab over
+   * BroadcastChannel). Returns a {@link RemoteClient} proxy: `forward()`
+   * subscribes it to local topics, `accepts` names what it may inject.
+   *
+   * Local and remote clients share one id namespace; a taken id throws
+   * `CLIENT_ID_TAKEN`.
+   */
+  createRemoteClient(id: string, options: RemoteClientOptions): RemoteClient;
+
+  /** Remote client by id, if registered. */
+  getRemoteClient(id: string): RemoteClient | undefined;
+
+  /**
+   * Stable capability strings of this runtime (`transport.websocket`, …).
+   */
+  readonly capabilities: ReadonlySet<string>;
 
   /**
    * Register a `beforeSend` hook.

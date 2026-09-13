@@ -27,6 +27,10 @@ export type BrokerLogEvent =
   | 'bridge.message.parse_failed'
   | 'bridge.message.invalid'
   | 'bridge.send.failed'
+  // Remote clients
+  | 'remote.frame.rejected'
+  | 'remote.send.failed'
+  | 'remote.transport.destroy_failed'
   // Backpressure
   | 'backpressure.handler.failed'
   | 'backpressure.on_drop.failed'

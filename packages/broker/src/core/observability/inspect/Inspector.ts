@@ -2,6 +2,7 @@ import type { ClientID, ClientInfo } from '../../types';
 import type { ClientRegistry } from '../../client/ClientRegistry';
 import type { Subscriptions } from '../../routing/Subscriptions';
 import type { Bridge } from '../../bridge/Bridge.types';
+import type { RemoteClientImpl } from '../../remote/RemoteClient';
 import type { MessageHistory } from '../../history/MessageHistory';
 import type { HistoryEntry, HistoryStats } from '../../history/MessageHistory.types';
 import type { BridgeInfo, VersionInfo } from './Inspector.types';
@@ -25,6 +26,7 @@ export class Inspector<T extends string, P extends Record<T, any>> {
   #clients: ClientRegistry<T, P>;
   #subscriptions: Subscriptions<T>;
   #bridges: ReadonlyMap<string, Bridge>;
+  #remotes: ReadonlyMap<string, RemoteClientImpl>;
   #getHistory: () => MessageHistory<T, P> | undefined;
   #getVersionInfo: () => VersionInfo;
 
@@ -32,12 +34,14 @@ export class Inspector<T extends string, P extends Record<T, any>> {
     clients: ClientRegistry<T, P>,
     subscriptions: Subscriptions<T>,
     bridges: ReadonlyMap<string, Bridge>,
+    remotes: ReadonlyMap<string, RemoteClientImpl>,
     getHistory: () => MessageHistory<T, P> | undefined,
     getVersionInfo: () => VersionInfo,
   ) {
     this.#clients = clients;
     this.#subscriptions = subscriptions;
     this.#bridges = bridges;
+    this.#remotes = remotes;
     this.#getHistory = getHistory;
     this.#getVersionInfo = getVersionInfo;
   }
@@ -58,7 +62,7 @@ export class Inspector<T extends string, P extends Record<T, any>> {
    * first, then subscribe to events for incremental updates.
    */
   getClients(): ReadonlyArray<ClientInfo> {
-    return this.#clients.getAllIds().map((id) => ({
+    const local: ClientInfo[] = this.#clients.getAllIds().map((id) => ({
       id,
       connectedAt: this.#clients.getConnectedAt(id) ?? Date.now(),
       subscriptions: Array.from(this.#subscriptions.getClientTopics(id) ?? []).map((topic) => ({
@@ -71,6 +75,21 @@ export class Inspector<T extends string, P extends Record<T, any>> {
         handlerCount: this.#subscriptions.getHandlerCount(id, topic as T),
       })),
     }));
+    const remote: ClientInfo[] = Array.from(this.#remotes.values()).map((r) => ({
+      id: r.id,
+      connectedAt: r.createdAt,
+      subscriptions: r.forwardPatterns.map((topic) => ({ topic, handlerCount: 0 })),
+      remote: {
+        kind: r.kind,
+        identity: r.identity,
+        duplex: r.duplex,
+        fanout: r.fanout,
+        requests: r.requests,
+        accepts: [...r.acceptPatterns],
+        pending: r.pending,
+      },
+    }));
+    return [...local, ...remote];
   }
 
   /**

@@ -1,5 +1,6 @@
 import type { ClientID, Message } from '../types';
 import type { RoutingResult } from '../routing/RoutingResult';
+import type { Transport } from '../transport/Transport.types';
 
 /**
  * Callback that injects a message received from a transport into the broker
@@ -76,16 +77,7 @@ export type ExternalMessageInjector<
  * }
  * ```
  */
-export interface BridgeTransport {
-  /** Outbound: send a payload to the wire. See interface docs for contract. */
-  send(data: unknown): void;
-
-  /** Inbound: subscribe to payloads from the wire. Returns unsubscribe. */
-  onMessage(callback: (data: unknown) => void): () => void;
-
-  /** Release resources. Must be idempotent. */
-  destroy(): void;
-}
+export type BridgeTransport = Transport;
 
 /**
  * Why an inbound frame was dropped before reaching the pipeline.

@@ -4,6 +4,7 @@ import { VERSION, GLOBAL_REGISTRY_KEY, isCompatibleVersion } from './core/versio
 import type { BrokerConfig } from './core/types';
 import type { MessageBroker } from './core/MessageBroker';
 import type { Client } from './core/client/Client.types';
+import type { RemoteClient, RemoteClientOptions } from './core/remote/RemoteClient.types';
 
 /**
  * Per-realm slot: the one live core and the version of the copy that
@@ -133,6 +134,12 @@ export function createClient<
     );
   }
 
+  if (core.getRemoteClient(id)) {
+    throw new Error(
+      `@hedwigjs/broker: client id '${id}' is already taken by a remote client. Local and remote clients share one namespace.`,
+    );
+  }
+
   const existing = core.getClient(id);
 
   if (existing) {
@@ -141,6 +148,30 @@ export function createClient<
     return existing as Client<T, P>;
   }
   return new BrokerClient<T, P>(id, core as BrokerCore<T, P>);
+}
+
+/**
+ * Register a remote participant on the current broker. Shorthand for
+ * `getBroker().createRemoteClient(id, options)`; see
+ * {@link MessageBroker.createRemoteClient}.
+ *
+ * @example
+ * const backend = createRemoteClient('notifications-backend', {
+ *   transport: { kind: 'websocket', socket },
+ *   accepts: ['notification.*'],
+ * });
+ *
+ * @throws Error if the broker has not been initialized, or was created by an
+ *   incompatible version of the library.
+ */
+export function createRemoteClient(id: string, options: RemoteClientOptions): RemoteClient {
+  const core = resolve();
+  if (!core) {
+    throw new Error(
+      'MessageBroker not initialized. Call initBroker(config) first.',
+    );
+  }
+  return core.createRemoteClient(id, options);
 }
 
 /**

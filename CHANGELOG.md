@@ -96,6 +96,38 @@ commit with a changeset; per-package notes will appear in
   of three hand-written copies with per-process counters.
 - DevTools renders `bridge.message.invalid` in System Events.
 
+### Broker — remote clients (RFC-0003 step 3a)
+
+Anything behind a transport is now a *client*, not a bridge:
+`broker.createRemoteClient(id, { transport, identity, accepts, forward })`
+(also exported as `createRemoteClient`). `addBridge` still works in this
+step; it goes away once DevTools and the reference stand have moved.
+
+- `Transport` interface with capability flags (`duplex`, `fanout`,
+  `ready`, `onClose`). Built-ins report them: SSE is inbound-only,
+  BroadcastChannel is fan-out, WebSocket exposes `ready` (OPEN) and
+  `onClose`. `BridgeTransport` is now an alias.
+- `TransportDescriptor`: name a built-in by `kind` (`postmessage`,
+  `message-port`, `websocket`, `sse`, `broadcast-channel`) and the runtime
+  instantiates it. Unknown kinds throw `TRANSPORT_UNSUPPORTED` listing
+  what the runtime provides; `broker.capabilities` advertises the same.
+  New `MessagePortTransport` for workers and `MessageChannel`.
+- Identity of inbound frames is decided on this side: `fixed` (default,
+  one participant; foreign `source` → `SOURCE_MISMATCH`), `allow`
+  (listed sources only), `prefix` (foreign realm, `source` becomes
+  `tab:cart-store`). `accepts` gates which topics a remote may inject —
+  everything else is dropped before any hook (`TOPIC_NOT_ACCEPTED`).
+- `forward()` is the remote's subscription: it runs `onSubscribe` hooks
+  with the remote's id and throws on denial, so one ACL covers local and
+  remote participants. Requests never go to a remote (step 5).
+- Edge protection: `maxBytes`, `rateLimit`; all drops are published as
+  `remote.frame.rejected { reason }`. A transport that throws or never
+  opens yields `remote.send.failed` instead of rejecting the emitter.
+- `message.via` names the remote that delivered a message (local-only,
+  never on the wire). Local and remote clients share one id namespace
+  (`CLIENT_ID_TAKEN`); `inspect.getClients()` lists remotes with a
+  `remote` block; `remote.created` / `remote.destroyed` events.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification
