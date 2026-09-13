@@ -156,6 +156,8 @@ export function useChat() {
       const removeBridge = broker.addBridge(BRIDGE_ID, {
         transport,
         forward: ['chat.reply-chunk.v1', 'chat.reply-completed.v1'],
+        // The stream may only speak as the AI backend.
+        allowedSources: ['ai-backend'],
       });
 
       // Teardown closure captures the exact transport/bridge for this

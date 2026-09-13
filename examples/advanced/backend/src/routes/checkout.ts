@@ -207,10 +207,22 @@ const iframeHtml = (lang: Lang): string => {
       const data = await res.json();
       status.classList.add('on');
       status.innerHTML = '${s.statusA} <em>' + data.orderId + '</em> ${s.statusB} ' + data.status + '.';
-      // Отправляем через postMessage в форме broker Message'а — на parent'е
-      // висит @hedwigjs/broker bridge с PostMessageTransport, он подхватит
-      // и заинжектит в шину. Iframe не запускает свой broker — только
-      // формирует конверт нужной формы.
+      // Send a broker-Message-shaped frame to the parent, where a
+      // PostMessageTransport bridge injects it into the bus. The iframe runs
+      // no broker of its own — it only builds the frame.
+      //
+      // Target origin: the parent tells us who it is via ?parentOrigin=
+      // (falls back to the referrer's origin). Never '*' — that would hand
+      // the order details to whatever document embeds this page.
+      const params = new URLSearchParams(location.search);
+      let parentOrigin = params.get('parentOrigin') || '';
+      if (!parentOrigin && document.referrer) {
+        try { parentOrigin = new URL(document.referrer).origin; } catch {}
+      }
+      if (!parentOrigin) {
+        console.warn('[checkout-iframe] no parent origin known, not posting checkout.completed.v1');
+        return;
+      }
       window.parent?.postMessage(
         {
           id: 'checkout-iframe-' + data.orderId,
@@ -220,7 +232,7 @@ const iframeHtml = (lang: Lang): string => {
           data: data,
           timestamp: Date.now(),
         },
-        '*',
+        parentOrigin,
       );
     });
   </script>

@@ -397,8 +397,17 @@ Contract summary:
   idempotent.
 
 Transports are the **trust boundary** between the broker and the
-outside world. The broker will route whatever a transport hands it —
-validate at the wire.
+outside world. The bridge checks the *shape* of every inbound frame
+(`topic`, `source`, `target` non-empty strings, `data` present) and
+drops anything else as `bridge.message.invalid`; it does not
+authenticate the peer. Because hooks and ACLs key on `message.source`,
+set `allowedSources` on every bridge whose peer you do not fully trust —
+a frame claiming another source is dropped before any hook runs.
+
+Only multicasts cross a bridge. A `request()` is resolved against the
+local client registry and never forwarded: its result could not come
+back over the wire, and forwarding it would execute a command remotely
+while reporting `NOT_SUBSCRIBED` here.
 
 ---
 
@@ -595,6 +604,7 @@ user messages — infrastructure telemetry.
 | `bridge.added`           | `{ bridgeId }`                                             | `broker.addBridge(id, …)`.                                                  |
 | `bridge.removed`         | `{ bridgeId }`                                             | Bridge remover called, or broker teardown.                                  |
 | `bridge.send.failed`     | `{ bridgeId, topic, messageId, error }`                    | A transport threw from `send()`. The message was delivered locally and the caller got a normal result — this is the only trace that the wire dropped it. |
+| `bridge.message.invalid` | `{ bridgeId, reason, source?, topic? }`                    | An inbound frame was dropped at the bridge: `MALFORMED` (bad shape) or `SOURCE_NOT_ALLOWED` (not in `allowedSources`). Never reached a hook. |
 
 ```ts
 const off = getBroker().$systemEvents.on('message.rejected', (evt) => {

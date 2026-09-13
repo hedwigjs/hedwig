@@ -2,6 +2,9 @@ import type { Server as HttpServer } from 'node:http';
 import type { Express, Request, Response } from 'express';
 import { WebSocket, WebSocketServer } from 'ws';
 
+import { createEnvelope } from '../envelope';
+import type { Envelope } from '../envelope';
+
 type NotificationKind = 'success' | 'info' | 'warn' | 'error';
 
 type NotificationPayload = {
@@ -10,19 +13,8 @@ type NotificationPayload = {
   body?: string;
 };
 
-/**
- * Broker Message shape — the shell hosts a WebSocketTransport bridge that
- * expects incoming frames to already be broker-Message-compatible so it
- * can inject them as if they'd been emitted locally.
- */
-type Envelope = {
-  id: string;
-  topic: 'notification.show.v1';
-  source: string;
-  target: '*';
-  data: NotificationPayload;
-  timestamp: number;
-};
+/** Identity this backend claims on the wire; the shell's bridge allow-lists it. */
+const SOURCE = 'notifications-backend';
 
 type Lang = 'en' | 'ru';
 
@@ -77,17 +69,8 @@ function pickLang(raw: unknown): Lang {
   return raw === 'ru' ? 'ru' : 'en';
 }
 
-let envelopeSeq = 0;
-
-function envelope(payload: NotificationPayload): Envelope {
-  return {
-    id: `notif-backend-${++envelopeSeq}`,
-    topic: 'notification.show.v1',
-    source: 'notifications-backend',
-    target: '*',
-    data: payload,
-    timestamp: Date.now(),
-  };
+function envelope(payload: NotificationPayload): Envelope<'notification.show.v1', NotificationPayload> {
+  return createEnvelope({ topic: 'notification.show.v1', source: SOURCE, data: payload });
 }
 
 export function registerNotificationsRoutes(

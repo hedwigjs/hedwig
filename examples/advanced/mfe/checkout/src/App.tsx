@@ -22,7 +22,8 @@ import { getLang } from '../../../shared/i18n/useLang';
 const IFRAME_URL_BASE = process.env.CHECKOUT_IFRAME_URL as string;
 
 const IFRAME_ORIGIN = new URL(IFRAME_URL_BASE).origin;
-const IFRAME_URL = `${IFRAME_URL_BASE}?lang=${getLang()}`;
+// `parentOrigin` lets the iframe target its postMessage at us instead of '*'.
+const IFRAME_URL = `${IFRAME_URL_BASE}?lang=${getLang()}&parentOrigin=${encodeURIComponent(window.location.origin)}`;
 
 const BRIDGE_ID = 'checkout-iframe';
 
@@ -132,6 +133,9 @@ export const App: FC = () => {
     removeBridgeRef.current = broker.addBridge(BRIDGE_ID, {
       transport,
       forward: ['checkout.completed.v1'],
+      // The iframe may only speak as itself; a frame claiming another
+      // client id is dropped at the bridge (`bridge.message.invalid`).
+      allowedSources: ['checkout-iframe'],
     });
   }, []);
 

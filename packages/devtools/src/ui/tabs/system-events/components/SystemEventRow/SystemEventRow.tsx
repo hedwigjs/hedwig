@@ -23,6 +23,7 @@ function facetOf(name: SystemEventLogEntry["name"]): EventFacet {
 function verbOf(name: SystemEventLogEntry["name"]): EventVerb {
   // client.registered / .unregistered map to added / removed for UI purposes.
   if (name.endsWith("rejected")) return "rejected";
+  if (name.endsWith("invalid")) return "rejected";
   if (name.endsWith("failed")) return "failed";
   // Realm-singleton diagnostics: nothing broke, but the page is not what
   // the author assumed (library bundled twice / two protocol versions).
@@ -65,6 +66,10 @@ function summarize(entry: SystemEventLogEntry): string {
     return `broker ${version} · ${copies} extra ${copies === 1 ? "copy" : "copies"} of @hedwigjs/broker on this page${who}`;
   }
 
+  // bridge.message.invalid: reason + what the frame claimed.
+  if (bridgeId && reason) {
+    return `${bridgeId} · ${reason}${source ? ` · claimed source ${source}` : ""}${topic ? ` · ${topic}` : ""}`;
+  }
   // bridge.send.failed carries topic + messageId; lifecycle events only bridgeId.
   if (bridgeId && topic) return `${bridgeId} · ${topic}${messageId ? ` · ${messageId}` : ""}`;
   if (bridgeId) return bridgeId;

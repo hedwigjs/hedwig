@@ -1,5 +1,8 @@
 import type { Express, Request, Response } from 'express';
 
+import { createEnvelope } from '../envelope';
+import type { Envelope } from '../envelope';
+
 type CannedReply = {
   match: RegExp;
   text: string;
@@ -104,37 +107,18 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-let envelopeSeq = 0;
+/** Identity this backend claims on the wire; the ai-chat bridge allow-lists it. */
+const SOURCE = 'ai-backend';
 
 /**
- * Backend Message shape — matches @hedwigjs/broker Message so the client
- * can inject SSE frames directly via SSETransport + addBridge (see
- * mfe/ai-chat useChat). One SSE `data:` frame == one broker Message.
+ * One SSE `data:` frame == one broker Message, built by the shared
+ * `createEnvelope` so the frame shape cannot drift from the other routes.
  * We deliberately do NOT use named `event:` lines — SSETransport
  * multiplexes on the message's own `topic` field, not on the SSE event
  * name.
  */
-type Envelope<Topic extends string, Data> = {
-  id: string;
-  topic: Topic;
-  source: 'ai-backend';
-  target: '*';
-  data: Data;
-  timestamp: number;
-};
-
-function envelope<Topic extends string, Data>(
-  topic: Topic,
-  data: Data,
-): Envelope<Topic, Data> {
-  return {
-    id: `ai-backend-${++envelopeSeq}`,
-    topic,
-    source: 'ai-backend',
-    target: '*',
-    data,
-    timestamp: Date.now(),
-  };
+function envelope<Topic extends string, Data>(topic: Topic, data: Data): Envelope<Topic, Data> {
+  return createEnvelope({ topic, source: SOURCE, data });
 }
 
 function writeMessage(res: Response, msg: unknown): void {

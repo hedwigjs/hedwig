@@ -489,8 +489,12 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     // Stage 5: afterSend hooks
     this.#hooks.afterSend(frozenMessage, result);
 
-    // Stage 6: Forward to bridges (only if not from external source)
-    if (!fromExternal) {
+    // Stage 6: Forward to bridges — local multicasts only. A frame that came
+    // in over a transport is never echoed back, and a unicast never crosses
+    // a bridge: its recipient is resolved locally (NOT_SUBSCRIBED otherwise)
+    // and its result could not come back over the wire, so forwarding it
+    // would execute a command remotely while reporting failure here.
+    if (!fromExternal && recipient === '*') {
       this.#forwardToBridges(frozenMessage);
     }
 
@@ -528,7 +532,20 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     const inject: ExternalMessageInjector<T, P> = (topic, sender, recipient, data) =>
       this.#runPipeline(topic, sender, recipient, data, undefined, true, false);
 
-    const bridge = new BridgeImpl<T, P>(inject, config, this.logger);
+    const bridge = new BridgeImpl<T, P>(inject, config, this.logger, (reason, raw) => {
+      // A frame the bridge refused to inject: malformed, or from a source
+      // outside the allow-list. Never reaches hooks — surface it here.
+      const source =
+        raw && typeof raw === 'object' && typeof (raw as { source?: unknown }).source === 'string'
+          ? ((raw as { source: string }).source as ClientID)
+          : undefined;
+      const topic =
+        raw && typeof raw === 'object' && typeof (raw as { topic?: unknown }).topic === 'string'
+          ? (raw as { topic: string }).topic
+          : undefined;
+      this.logger.warn('bridge.message.invalid', { bridgeId: id, reason, source, topic });
+      this.#systemEvents.emit('bridge.message.invalid', { bridgeId: id, reason, source, topic });
+    });
     this.#bridges.set(id, bridge);
     this.#systemEvents.emit('bridge.added', { bridgeId: id });
 

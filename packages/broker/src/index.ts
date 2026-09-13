@@ -68,7 +68,7 @@ export type { BridgeInfo, VersionInfo } from './core/observability/inspect/Inspe
 export type { HistoryEntry, HistoryStats } from './core/history/MessageHistory.types';
 
 // ── Bridge extension point ──────────────────────────────────────────────
-export type { BridgeTransport, BridgeConfig } from './core/bridge/Bridge.types';
+export type { BridgeTransport, BridgeConfig, InvalidFrameReason } from './core/bridge/Bridge.types';
 
 // ── Built-in transports ─────────────────────────────────────────────────
 // Ready-to-use implementations for the common cross-context wires. Kept

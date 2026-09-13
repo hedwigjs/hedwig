@@ -56,6 +56,8 @@ export function installBackendNotificationsBridge(): void {
       removeBridge = broker.addBridge(BRIDGE_ID, {
         transport: new WebSocketTransport(socket!),
         forward: ['notification.show.v1'],
+        // The socket may only speak as the backend; ACL keys on `source`.
+        allowedSources: ['notifications-backend'],
       });
     });
 
@@ -104,6 +106,8 @@ export function installCrossTabCartBridge(): () => void {
   const removeBridge = broker.addBridge(CROSS_TAB_BRIDGE_ID, {
     transport,
     forward: ['cart.snapshot.v1'],
+    // Only the other tabs' cart-store publishes on this channel.
+    allowedSources: ['cart-store'],
   });
 
   return () => {

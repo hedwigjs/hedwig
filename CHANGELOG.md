@@ -79,6 +79,23 @@ commit with a changeset; per-package notes will appear in
   and `backpressure.handler.failed` carry `messageId`, `topic`, `source`.
 - DevTools renders `hook.failed` in System Events.
 
+### Broker — minimum bridge safety
+
+- A `request()` never crosses a bridge any more: only multicasts are
+  forwarded. Previously a unicast to an unregistered recipient resolved
+  `NACK NOT_SUBSCRIBED` locally yet still executed on the other side.
+- Inbound frames are validated field by field (`topic`, `source`,
+  `target` non-empty strings, `data` present); anything else is dropped
+  as `bridge.message.invalid { reason: 'MALFORMED' }` before any hook.
+- New `BridgeConfig.allowedSources`: frames claiming a `source` outside
+  the list are dropped as `SOURCE_NOT_ALLOWED`. The reference stand sets
+  it on all three inbound bridges.
+- Reference stand: the checkout iframe posts to the parent's origin
+  (passed as `?parentOrigin=`) instead of `'*'`; the backend builds
+  every frame through one `createEnvelope` helper with UUID ids instead
+  of three hand-written copies with per-process counters.
+- DevTools renders `bridge.message.invalid` in System Events.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

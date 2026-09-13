@@ -120,6 +120,18 @@ export interface SystemEventMap<T extends string, P extends Record<T, any>> {
     messageId: string;
     error: unknown;
   };
+  /**
+   * An inbound frame was dropped at the bridge before reaching any hook:
+   * malformed (`MALFORMED`) or from a `source` outside the bridge's
+   * `allowedSources` (`SOURCE_NOT_ALLOWED`). `source` / `topic` are the
+   * values the frame claimed, when they were strings at all.
+   */
+  'bridge.message.invalid': {
+    bridgeId: string;
+    reason: 'MALFORMED' | 'SOURCE_NOT_ALLOWED';
+    source?: ClientID;
+    topic?: string;
+  };
 }
 
 export type SystemEventName<T extends string, P extends Record<T, any>> = keyof SystemEventMap<

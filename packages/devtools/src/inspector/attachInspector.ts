@@ -105,6 +105,11 @@ export function attachInspector(
   const unsubBridgeSendFailed = broker.$systemEvents.on("bridge.send.failed", (payload) => {
     store.pushSystemEvent("bridge.send.failed", payload);
   });
+  // Inbound frame refused at the bridge (malformed or source not allowed).
+  // Never reached a hook, so Messages has no row for it — this is the only trace.
+  const unsubBridgeMessageInvalid = broker.$systemEvents.on("bridge.message.invalid", (payload) => {
+    store.pushSystemEvent("bridge.message.invalid", payload);
+  });
   // Live counterpart of the hydrated realm-singleton event above — fires
   // when a lazily loaded remote brings its own copy of the library after
   // the panel is already attached.
@@ -146,6 +151,7 @@ export function attachInspector(
     unsubBridgeAdded();
     unsubBridgeRemoved();
     unsubBridgeSendFailed();
+    unsubBridgeMessageInvalid();
     unsubDuplicateCopy();
     unsubHookFailed();
     unsubSubscriptionRejected();

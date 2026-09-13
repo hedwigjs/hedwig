@@ -88,14 +88,36 @@ export interface BridgeTransport {
 }
 
 /**
+ * Why an inbound frame was dropped before reaching the pipeline.
+ *
+ * - `MALFORMED` — not an object, not JSON, or `topic` / `source` / `target`
+ *   not non-empty strings, or `data` missing.
+ * - `SOURCE_NOT_ALLOWED` — `source` is not in the bridge's `allowedSources`.
+ */
+export type InvalidFrameReason = 'MALFORMED' | 'SOURCE_NOT_ALLOWED';
+
+/**
  * Bridge configuration
  */
 export interface BridgeConfig {
   /** Low-level duplex link (see {@link BridgeTransport}) */
   transport: BridgeTransport;
 
-  /** Message patterns to forward (e.g. ['user.*', 'theme.*']) */
+  /**
+   * Topic patterns forwarded to the transport (e.g. `['user.*', 'theme.*']`).
+   * Only multicasts (`emit`) are forwarded; a `request()` never leaves the
+   * realm through a bridge, because its result could not come back.
+   */
   forward: string[];
+
+  /**
+   * Allow-list for the `source` claimed by inbound frames. When set, a frame
+   * whose `source` is not listed is dropped and reported as
+   * `bridge.message.invalid { reason: 'SOURCE_NOT_ALLOWED' }`. When omitted,
+   * any source is accepted — set it for every bridge whose peer you do not
+   * fully trust, since hooks and ACLs key on `message.source`.
+   */
+  allowedSources?: string[];
 }
 
 /**

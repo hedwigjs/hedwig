@@ -4,6 +4,7 @@ import type {
   BridgeConfig,
   BridgeTransport,
   ExternalMessageInjector,
+  InvalidFrameReason,
 } from './Bridge.types';
 import type { BrokerLogger } from '../logger/BrokerLogger.types';
 import { matchesAnyPattern } from '../utils/matchPattern';
@@ -16,7 +17,7 @@ import { matchesAnyPattern } from '../utils/matchPattern';
  *
  * Responsibilities:
  * - OUTBOUND: When broker calls send(), forward message to transport
- * - INBOUND: Listen to transport and inject messages into broker
+ * - INBOUND: Listen to transport, validate the frame, inject into broker
  *
  * Use cases:
  * - iframe communication (PostMessageTransport)
@@ -29,18 +30,23 @@ export class Bridge<T extends string = string, P extends Record<T, any> = any>
   #inject: ExternalMessageInjector<T, P>;
   #transport: BridgeTransport;
   #patterns: string[];
+  #allowedSources: ReadonlySet<string> | null;
   #unsubscribe: (() => void) | null = null;
   #logger: BrokerLogger;
+  #onInvalid: (reason: InvalidFrameReason, raw: unknown) => void;
 
   constructor(
     inject: ExternalMessageInjector<T, P>,
     config: BridgeConfig,
     logger: BrokerLogger,
+    onInvalid: (reason: InvalidFrameReason, raw: unknown) => void = () => {},
   ) {
     this.#inject = inject;
     this.#transport = config.transport;
     this.#patterns = config.forward;
+    this.#allowedSources = config.allowedSources ? new Set(config.allowedSources) : null;
     this.#logger = logger;
+    this.#onInvalid = onInvalid;
 
     // Start listening for incoming messages from transport
     this.#unsubscribe = this.#transport.onMessage((data) => {
@@ -80,19 +86,28 @@ export class Bridge<T extends string = string, P extends Record<T, any> = any>
 
   /**
    * Handle incoming message from transport (INBOUND)
-   * Parse and inject into broker
+   * Validate and inject into broker
    */
   #handleIncoming(data: unknown): void {
-    const message = this.#parseMessage(data);
-    if (!message) return;
+    const parsed = this.#parseMessage(data);
+    if (!parsed.ok) {
+      this.#onInvalid(parsed.reason, data);
+      return;
+    }
+    const message = parsed.message;
 
     // Only process messages that match our patterns
     if (!this.shouldForward(message.topic)) return;
 
+    if (this.#allowedSources && !this.#allowedSources.has(message.source)) {
+      this.#onInvalid('SOURCE_NOT_ALLOWED', data);
+      return;
+    }
+
     // Internal injection path — does NOT forward back to bridges and does NOT
     // record into history (the other side already did). The `fromExternal`
     // flag is set inside the inject callback wired by BrokerCore.
-    this.#inject(
+    void this.#inject(
       message.topic as T,
       message.source,
       message.target,
@@ -101,22 +116,32 @@ export class Bridge<T extends string = string, P extends Record<T, any> = any>
   }
 
   /**
-   * Parse raw data into Message object
+   * Parse raw data into a Message-shaped frame.
+   *
+   * Every field the pipeline relies on is checked: `topic`, `source` and
+   * `target` must be non-empty strings and `data` must be present (any
+   * value, including `null`). Anything else is rejected with a reason so the
+   * broker can publish `bridge.message.invalid` — a malformed frame must
+   * never reach hooks or routing.
    */
-  #parseMessage(data: unknown): Message | null {
+  #parseMessage(data: unknown): { ok: true; message: Message } | { ok: false; reason: InvalidFrameReason } {
+    let message: unknown;
     try {
       // Handle both string (JSON) and object data
-      const message = typeof data === 'string' ? JSON.parse(data) : data;
-
-      // Validate required fields
-      if (!message || typeof message !== 'object') return null;
-      if (!message.topic || typeof message.topic !== 'string') return null;
-
-      return message as Message;
+      message = typeof data === 'string' ? JSON.parse(data) : data;
     } catch (error) {
       this.#logger.error('bridge.message.parse_failed', { error });
-      return null;
+      return { ok: false, reason: 'MALFORMED' };
     }
+
+    if (!message || typeof message !== 'object') return { ok: false, reason: 'MALFORMED' };
+    const m = message as Record<string, unknown>;
+    if (typeof m.topic !== 'string' || m.topic.length === 0) return { ok: false, reason: 'MALFORMED' };
+    if (typeof m.source !== 'string' || m.source.length === 0) return { ok: false, reason: 'MALFORMED' };
+    if (typeof m.target !== 'string' || m.target.length === 0) return { ok: false, reason: 'MALFORMED' };
+    if (!('data' in m)) return { ok: false, reason: 'MALFORMED' };
+
+    return { ok: true, message: m as unknown as Message };
   }
 
   /**
