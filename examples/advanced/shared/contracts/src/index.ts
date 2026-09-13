@@ -9,7 +9,7 @@
 //
 // NOTE: the template's original comment said "do not edit". We do edit — to
 // keep contracts + shared payload/model types co-located in one package for
-// the demo. See docs/content/guides/demo-architecture.md § Contracts.
+// the demo. See ../README.md for how this registry differs from the template.
 
 export * from "./index.generated.js";
 export * from "./shared-types.js";

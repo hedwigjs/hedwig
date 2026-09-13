@@ -50,9 +50,10 @@ const registry: Array<{
     loader: () => import('cart/HeaderTrigger' as any) as Promise<MfeModule>,
   },
   {
-    // Demo of the replay buffer. Own bundle chunk, own client id
-    // (`late-mount-demo`), subscribes to `cart.snapshot.v1` with
-    // `replay: { limit: 1 }` on demand — see mfe/cart/src/views/LateMountDemo.
+    // Demo of a late joiner. Own bundle chunk, own client id
+    // (`late-mount-demo`); mounts on demand and gets the current cart from
+    // the `state` topic `cart.snapshot.v1` before its first paint, no replay
+    // option needed — see mfe/cart/src/views/LateMountDemo.
     name: 'late-mount',
     slot: 'late-mount',
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -1,18 +1,21 @@
 # Bring your own contracts
 
 `@hedwigjs/broker` is contract-first: every topic has a name and a typed
-payload. But **where those types come from is your choice**. Broker's
+payload. But **where those types come from is your choice**. The client's
 generic signature is deliberately minimal:
 
 ```ts
-Client<T extends string, P extends Record<T, any>>
+Client<T extends string, P extends Record<T, any>, C extends TopicContractsMap<T> = TopicContractsMap<T>>
 ```
 
-Two TypeScript types — that's the whole contract. `T` is the union of topic
-names; `P` is the mapping topic → payload. No opinion about how you produce
-them.
+Three TypeScript types, the third optional — that's the whole contract.
+`T` is the union of topic names; `P` is the mapping topic → payload; `C`
+maps topic → `{ kind, response }` and makes the verbs kind-aware (`emit`
+only for events and state, `request` only for requests, the answer type
+inferred). Leave `C` out and every topic is open to both verbs. No opinion
+about how you produce them.
 
-This guide shows five patterns for producing `Topic` + `TopicPayloads`, from
+This guide shows six patterns for producing `Topic` + `TopicPayloads`, from
 the opinionated starter to bring-your-own codegen.
 
 ## Table of contents
@@ -35,36 +38,54 @@ Opinionated scaffolder for TS-first, greenfield projects.
 npm create @hedwigjs/registry my-topics --name @my-org/topics
 ```
 
-Creates a standalone TypeScript workspace with codegen. Every event lives in
-one file:
+Creates a standalone TypeScript workspace with codegen. Every topic lives in
+one file and says what it is — an `event`, a `request` (with a `response`
+type) or `state`:
 
 ```ts
 // my-topics/src/domains/cart/item-added.v1.ts
-import type { EventContract } from "../../lib/contract";
+import type { TopicContract } from "../../lib/contract";
 
 export default {
   name: "cart.item-added.v1",
+  kind: "event",
   description: "Item added to cart.",
   payload: {} as { itemId: number; name: string; price: string },
   examples: {
     happy: { itemId: 1, name: "Хачапури", price: "890" },
   },
-} as const satisfies EventContract;
+} as const satisfies TopicContract;
 ```
 
 `npm run build` regenerates `src/index.generated.ts`:
 
 ```ts
-export const registry = { "cart.item-added.v1": itemAddedV1, ... } as const;
+export const registry = { "cart.item-added.v1": CartItemAddedV1, ... } as const;
 export type Topic = keyof typeof registry;
 export type TopicPayloads = { [K in Topic]: typeof registry[K] extends { payload: infer P } ? P : never };
+export type TopicContracts = { [K in Topic]: { kind: ...; response: ... } };   // for createClient's third parameter
+export type TopicKinds, EventTopic, RequestTopic, StateTopic, TopicResponses;   // for your own generic code
+export const TOPICS = { CART_ITEM_ADDED_V1: "cart.item-added.v1", ... } as const;
+export const TOPIC_KINDS = { "cart.item-added.v1": "event", ... } as const;    // for initBroker({ topics })
 ```
 
-Consumers install `@my-org/topics` as a normal npm dep. Broker:
+Consumers install `@my-org/topics` as a normal npm dep. A module:
 
 ```ts
-import type { Topic, TopicPayloads } from "@my-org/topics";
-const client = createClient<Topic, TopicPayloads>("cart");
+import { createClient } from "@hedwigjs/client";
+import type { Topic, TopicPayloads, TopicContracts } from "@my-org/topics";
+
+const client = createClient<Topic, TopicPayloads, TopicContracts>("cart");
+```
+
+The host hands the kinds to the runtime — that is what makes `state`
+topics and `retention` work:
+
+```ts
+import { initBroker } from "@hedwigjs/broker";
+import { TOPIC_KINDS } from "@my-org/topics";
+
+initBroker({ topics: TOPIC_KINDS });
 ```
 
 **When to use:** greenfield TS-first project, no existing contracts pipeline,
@@ -94,9 +115,19 @@ export type TopicPayloads = TopicMap;
 That's it. Use directly:
 
 ```ts
+import { createClient } from "@hedwigjs/client";
 import type { Topic, TopicPayloads } from "./contracts";
+
 const client = createClient<Topic, TopicPayloads>("cart");
 ```
+
+Without a third type parameter every topic is a plain event to the type
+checker, and without `initBroker({ topics })` it is a plain event to the
+runtime too. If you want a `state` topic or `retention`, write the two
+small maps by hand next to the `TopicMap`: a `TopicContracts`-shaped type
+(`{ [topic]: { kind; response } }`) for the client and a
+`TOPIC_KINDS`-shaped object (`{ [topic]: kind | { kind, retention } }`)
+for the host.
 
 **When to use:** small project, no cross-team ownership of topics, no need
 for per-topic metadata (description / examples).
@@ -131,9 +162,12 @@ export type TopicPayloads = {
 };
 ```
 
-Bonus: use the same schemas for runtime validation inside adapters
-(RFC-0001) — validate every incoming external message against its schema
-before letting it into the bus.
+Bonus: use the same schemas at the edge. A backend, an iframe or another
+tab joins the broker as a **remote client**; what it may inject is its
+`accepts` list, and a `useBeforeSendHook` sees every message — remote or
+local — before it is routed. Parse the payload with its schema there and
+reject what doesn't fit. (The separate "transport adapter" packages of
+RFC 0001 were never built; remote clients replaced them.)
 
 **When to use:** already committed to Zod for API validation, want one
 source of truth for both runtime validation and TS types.
@@ -240,9 +274,11 @@ type TopicsRegistry = Record<string, TopicContractInfo>;
 
 interface TopicContractInfo {
   name: string;
+  kind?: "event" | "request" | "state";  // shown on every message row; without it DevTools falls back to multicast / unicast
   description: string;
-  examples?: Record<string, unknown>;   // fixtures for the debug tab
+  examples?: Record<string, unknown>;   // fixtures for the Debug tab
   deprecatedBy?: string;
+  observability?: boolean;              // telemetry-only topic: NACK NO_SUBSCRIBERS renders neutrally
 }
 ```
 
@@ -273,5 +309,9 @@ present.
 | Mixed | Distributed ownership across teams | Composition boilerplate |
 
 **Broker doesn't care which one you pick.** As long as you produce a
-`Topic` union and a `TopicPayloads` mapping, `createClient<Topic,
-TopicPayloads>("id")` works.
+`Topic` union and a `TopicPayloads` mapping,
+`createClient<Topic, TopicPayloads>("id")` from `@hedwigjs/client` works.
+Add a `TopicContracts` map as the third parameter for kind-aware verbs,
+and give the host a `TOPIC_KINDS` map (`initBroker({ topics })`) if you use
+`state` topics or `retention` — without it the runtime treats every topic
+as a plain event and retains nothing.

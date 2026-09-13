@@ -6,8 +6,8 @@
 
 ```
 src/
-├── domains/<domain>/<action>.v<N>.ts   ← события, один файл = одно событие
-├── lib/contract.ts                     ← тип EventContract (не трогать)
+├── domains/<domain>/<action>.v<N>.ts   ← контракты, один файл = один топик
+├── lib/contract.ts                     ← тип TopicContract (не трогать)
 ├── index.ts                            ← публичный entry (не трогать)
 └── index.generated.ts                  ← агрегат, генерится автоматически
 scripts/
@@ -18,68 +18,129 @@ scripts/
 
 | Команда | Что делает |
 |---|---|
-| `npm run dev` | Watch-сборка во время разработки |
-| `npm run build` | Одноразовая сборка перед публикацией |
+| `npm run dev` | Watch-режим на время разработки: codegen + `tsc --watch` |
+| `npm run build` | Одноразовая сборка: codegen + `tsc`, результат в `dist/`. `prepublishOnly` вызывает её перед `npm publish` |
 
-## Добавление события
+## Род топика
 
-1. Скопировать соседний event-файл (или создать новый по шаблону ниже) в `src/domains/<domain>/<action>.v1.ts`:
+У каждого топика есть `kind` — что это за топик. Раньше это решалось в каждом месте вызова, теперь один раз в контракте:
+
+| `kind` | Что это | Глагол | Особое поле |
+|---|---|---|---|
+| `event` | Факт: «заказ оплачен». Уходит всем текущим подписчикам | `emit()` | `retention: { last: N }` — необязательно. Рантайм держит последние N сообщений для тех, кто подпишется позже и попросит `replay` |
+| `request` | Команда одному адресату, с ответом | `request()` | `response` — тип ответа обработчика, обязателен |
+| `state` | Текущее значение: «в корзине две позиции». Рантайм хранит последнее значение и отдаёт его каждому новому подписчику сразу, внутри `on()` | `emit()` | `retention: { last: 1 }` — единственное допустимое значение, оно же по умолчанию |
+
+Контракт без `kind` считается событием — codegen напишет об этом предупреждение в конце сборки. `EventContract` остался как deprecated-псевдоним `TopicContract`; в новых файлах используйте `TopicContract`.
+
+## Добавление топика
+
+1. Скопировать соседний файл (или создать новый по шаблону ниже) в `src/domains/<domain>/<action>.v1.ts`:
 
 ```ts
-import type { EventContract } from "../../lib/contract";
+import type { TopicContract } from "../../lib/contract";
 
 export default {
   name: "<domain>.<action>.v1",
-  description: "Описание события",
+  kind: "event",                // event | request | state
+  // retention: { last: 10 },   // только у event: сколько последних сообщений держать для опоздавших
+  description: "Описание топика",
 
   payload: {} as {
     // ...
   },
 
+  // response: {} as { ... },   // только у request: тип ответа обработчика
+
   examples: {
     happy: { /* ... */ },
   },
-} satisfies EventContract;
+} satisfies TopicContract;
 ```
 
-2. Поменять `name`, `description`, `payload`, `examples`
+2. Поменять `name`, `kind`, `description`, `payload`, `examples` (у `request` — ещё и `response`)
 3. `npm run build` (или watch автоматом подхватит)
 
-Конвенция: имя домена и action в `name` **обязательно** должны совпадать с путём — `users/fetched.v1.ts` → `name: "users.fetched.v1"`. Codegen упадёт с ошибкой при расхождении.
+Конвенция: имя домена и action в `name` **обязательно** должны совпадать с путём — `users/fetched.v1.ts` → `name: "users.fetched.v1"`. Codegen упадёт с ошибкой при расхождении. Он же проверяет `kind`: у `request` должен быть `response`, у остальных его быть не должно; `retention` нельзя указывать у `request`, у `state` допустимо только `{ last: 1 }`, а `last` — целое число больше нуля.
 
 ## Версионирование
 
-При изменении контракта опубликованного события:
+При изменении контракта опубликованного топика:
 
 1. Скопировать `<action>.v1.ts` → `<action>.v2.ts`
 2. Поменять `name` на `...v2`
 3. В `<action>.v1.ts` добавить `deprecatedBy: "<domain>.<action>.v2"`
 4. `npm run build`
 
-## Использование в MFE
+Смена `kind` — тоже ломающее изменение (у запроса есть адресат и ответ, у события их нет), поэтому это новая версия.
+
+## Что генерируется
+
+`npm run build` пишет `src/index.generated.ts`, а `src/index.ts` его реэкспортирует. Из корня пакета доступны:
+
+| Экспорт | Что это |
+|---|---|
+| `Topic` | Объединение имён всех топиков |
+| `TopicPayloads` | `{ [topic]: payload }` |
+| `TopicContracts` | `{ [topic]: { kind, response } }` — третий параметр `createClient`: `emit` принимает только `event` и `state`, `request` — только `request`, тип ответа выводится из контракта |
+| `TopicKinds`, `EventTopic`, `RequestTopic`, `StateTopic`, `TopicResponses` | Род каждого топика, объединения имён по роду, типы ответов — для своего generic-кода |
+| `TOPICS` | Константы вида `TOPICS.USERS_FETCHED_V1 === "users.fetched.v1"` |
+| `TOPIC_KINDS` | Реестр для рантайма: у каждого топика — строка с родом, у события с `retention` — `{ kind, retention }`. Передаётся в `initBroker` |
+| `registry` | Все контракты целиком, `Record<name, TopicContract>` — для DevTools |
+
+## Использование в модуле (MFE)
+
+Модуль создаёт клиента через `@hedwigjs/client` и подставляет сгенерированные типы. Сам рантайм (`@hedwigjs/broker`) модулю не нужен — его поднимает хост.
+
+```ts
+import { createClient } from "@hedwigjs/client";
+import type { Topic, TopicPayloads, TopicContracts } from "{{PACKAGE_NAME}}";
+
+export const bus = createClient<Topic, TopicPayloads, TopicContracts>("users-ui");
+
+// event — рассылка всем текущим подписчикам
+void bus.emit("users.fetched.v1", { users: [...], fetchedAt: Date.now() });
+
+// state — последнее значение придёт синхронно внутри on()
+bus.on("users.current.v1", (msg) => render(msg.data));
+
+// request — тип ответа берётся из `response` контракта
+const result = await bus.request("users-store", "users.refresh.v1", { force: true });
+result.data; // ответ обработчика или undefined
+
+// event с retention — опоздавший подписчик просит реплей последних сообщений, дальше получает живые
+bus.on("users.fetched.v1", (msg) => log(msg.data), { replay: { limit: 10 } });
+```
+
+Имена топиков здесь условные. С `TopicContracts` компилятор не даст сделать `emit` у `request` и `request` у `event` / `state`.
+
+Один контракт можно импортировать и по пути:
 
 ```ts
 import UsersFetched from "{{PACKAGE_NAME}}/domains/users/fetched.v1";
 
-client.emit(UsersFetched.name, {
-  users: [...],
-  fetchedAt: Date.now(),
-});
+void bus.emit(UsersFetched.name, { users: [...], fetchedAt: Date.now() });
 ```
 
-## Использование всего реестра (DevTools, типы брокера)
+## Использование всего реестра (хост: брокер и DevTools)
+
+Хост один раз поднимает рантайм и передаёт ему `TOPIC_KINDS` — это всё, что рантайму нужно знать о реестре: род каждого топика и `retention`. Дальше `state`-топики хранят последнее значение, события с `retention` — последние N.
 
 ```ts
 import { initBroker } from "@hedwigjs/broker";
-import type { Topic, TopicPayloads } from "{{PACKAGE_NAME}}";
+import { TOPIC_KINDS } from "{{PACKAGE_NAME}}";
 
-initBroker<Topic, TopicPayloads>({...});
+initBroker({ topics: TOPIC_KINDS });
 ```
+
+Хост может только ограничить объявленное в реестре: `history: { maxPerTopic, ttl, enabled }` (всё необязательно, `enabled` по умолчанию `true`).
 
 ```tsx
 import { getBroker } from "@hedwigjs/broker";
 import { MessageBrokerDevTools } from "@hedwigjs/devtools";
 import { registry } from "{{PACKAGE_NAME}}";
 
-<MessageBrokerDevTools broker={getBroker()} registry={registry} />
+<MessageBrokerDevTools broker={getBroker()} registry={registry} enabled />
 ```
+
+`registry` даёт DevTools описания топиков, фикстуры из `examples` для вкладки Debug, пометки `deprecatedBy` и `observability`.

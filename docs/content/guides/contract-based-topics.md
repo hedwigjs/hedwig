@@ -20,11 +20,21 @@ One file per topic under `src/domains/<domain>/<action>.v<N>.ts`,
 exported as default and checked with `satisfies TopicContract`:
 
 ```ts
+// notification/show.v1.ts — event that keeps its last 10 for late subscribers
+export default {
+  name: "notification.show.v1",
+  kind: "event",
+  retention: { last: 10 },                // optional; without it nothing is kept
+  description: "Show a toast.",
+  payload: {} as { kind: "success" | "info" | "warn" | "error"; title: string; body?: string },
+  examples: { happy: { kind: "success", title: "Order accepted" } },
+} satisfies TopicContract;
+
 // cart/snapshot.v1.ts — state
 export default {
   name: "cart.snapshot.v1",
   kind: "state",
-  retention: { last: 1 },                 // optional; the default
+  retention: { last: 1 },                 // optional; the default and the only value
   description: "Full cart after every mutation.",
   payload: {} as { items: CartItem[]; totalItems: number; totalPrice: number },
   examples: { empty: { items: [], totalItems: 0, totalPrice: 0 } },
@@ -43,7 +53,8 @@ export default {
 
 A contract without `kind` is an event; codegen says so once per build so
 an existing registry migrates at its own pace. Codegen refuses a request
-without `response` and a `response` on anything else.
+without `response`, a `response` on anything else, `retention` on a
+request, and anything but `{ last: 1 }` on `state`.
 
 ## What the generator produces
 
@@ -54,7 +65,9 @@ without `response` and a `response` on anything else.
   third parameter of `createClient` and the verbs become kind-aware.
 - `EventTopic`, `RequestTopic`, `StateTopic`, `TopicKinds`,
   `TopicResponses` — for your own generic code.
-- `TOPIC_KINDS` — the runtime map for `initBroker({ topics: TOPIC_KINDS })`.
+- `TOPIC_KINDS` — the runtime map for `initBroker({ topics: TOPIC_KINDS })`:
+  a kind string per topic, or `{ kind, retention }` where an event
+  declares it.
 - `registry` — the full catalogue for `<MessageBrokerDevTools registry={registry} />`.
 
 ## In a module
@@ -67,6 +80,9 @@ export const bus = createClient<Topic, TopicPayloads, TopicContracts>('cart-ui')
 
 // state: the retained snapshot arrives synchronously inside on()
 bus.on('cart.snapshot.v1', (msg) => render(msg.data));
+
+// event with retention: a late subscriber asks for the last ones, then goes live
+bus.on('notification.show.v1', (msg) => toast(msg.data), { replay: { limit: 10 } });
 
 // request: the answer type comes from the contract
 const line = await bus.request('cart-store', 'cart.add-item.v1', { itemId: 8, name: 'Khachapuri', price: '890 ₽' });
@@ -85,10 +101,12 @@ import { TOPIC_KINDS } from '@my-org/topics';
 initBroker({ topics: TOPIC_KINDS });
 ```
 
-That is the only runtime-side change: `state` topics are retained from
-then on. Everything else — verbs, answer types — is enforced by the type
-checker, so an untyped JavaScript module still works, it just gets no
-help.
+That is the only runtime-side change: from then on `state` topics keep
+their last value and events with `retention` their last N. The host can
+only cap what the contracts declared — `history: { maxPerTopic, ttl,
+enabled }`. Everything else — verbs, answer types — is enforced by the
+type checker, so an untyped JavaScript module still works, it just gets
+no help.
 
 ## Versioning
 
@@ -105,5 +123,7 @@ coexist in the registry.
 - `replay` on `on()` remains the subscriber's choice for **events** that
   declare `retention: { last: N }` in their contract — the runtime keeps
   the last N of those; state needs neither.
+- `{ retained: false }` on `on()` opts a subscriber out of the state
+  hand-over — live updates only.
 - `observability: true` marks telemetry-only topics so DevTools renders a
   `NACK NO_SUBSCRIBERS` on them neutrally.

@@ -12,7 +12,7 @@
 - `packages/devtools` — React DevTools panel (host only).
 - `packages/react`, `packages/vue` — adapters on top of the SDK.
 - `packages/create-registry` — `npm create @hedwigjs/registry` scaffolder.
-- `examples/advanced` — the reference stand (shell, 7 MFEs, backend, contracts, e2e).
+- `examples/advanced` — the reference stand (shell, 6 MFEs, backend, contracts, e2e).
 - `docs/content` — spec (normative), RFCs, guides.
 
 ## Everyday commands (repo root)
@@ -24,6 +24,8 @@
 | `npm test` | Unit suites: client, broker, devtools, react, vue, and the demo backend's schema tests. Also renders the built DevTools panel under React 18 (`packages/devtools/react18-smoke`, a standalone project with its own lockfile — run `npm run build -w @hedwigjs/devtools` first). |
 | `npm run e2e` | Playwright against the reference stand. Boots the stand itself; needs `npx playwright install chromium` once. |
 | `npm run dev:demo` | The stand at http://localhost:3000 (shell), MFEs on 3001–3006, backend on 4000. |
+| `npm run stop:demo` | Frees ports 3000–3006 and 4000 (kills whatever listens there). |
+| `npm run restart:demo` | `stop:demo`, then `dev:demo`. |
 
 ## Making a change
 

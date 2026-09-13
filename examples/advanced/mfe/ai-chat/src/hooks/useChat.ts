@@ -40,7 +40,7 @@ const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice
  * Every event is on the bus — DevTools sees the whole timeline
  * (message-sent, reply-started, N × reply-chunk, reply-completed) with
  * source labels showing which came from the local client vs. the backend
- * bridge ("external" badge in DevTools).
+ * remote (`via ai-backend` pill in DevTools).
  */
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);

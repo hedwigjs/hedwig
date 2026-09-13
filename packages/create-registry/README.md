@@ -2,8 +2,9 @@
 
 Optional starter kit. Scaffolds an opinionated topics-registry
 workspace for `@hedwigjs/broker` — a codegen-driven TypeScript package
-where each event lives in its own file and the runtime types
-(`Topic`, `TopicPayloads`, `TOPICS`, `registry`) are generated for you.
+where each topic lives in its own file and the types the runtime and
+the SDK expect (`Topic`, `TopicPayloads`, `TopicContracts`, `TOPICS`,
+`TOPIC_KINDS`, `registry`, …) are generated for you.
 
 ```bash
 npm create @hedwigjs/registry my-topics
@@ -26,10 +27,10 @@ npm create @hedwigjs/registry my-topics
 - [What it does](#what-it-does)
 - [Usage](#usage)
 - [What gets generated](#what-gets-generated)
-- [The `EventContract` shape](#the-eventcontract-shape)
+- [The contract shape](#the-contract-shape)
 - [Generated exports](#generated-exports)
 - [Using the registry in your app](#using-the-registry-in-your-app)
-- [Adding an event](#adding-an-event)
+- [Adding a topic](#adding-a-topic)
 - [Versioning workflow](#versioning-workflow)
 - [When to use — and when not to](#when-to-use--and-when-not-to)
 - [License](#license)
@@ -40,13 +41,17 @@ npm create @hedwigjs/registry my-topics
 
 Running the initializer creates a standalone TypeScript package with:
 
-- A file convention: one event per file at `src/domains/<domain>/<action>.v<N>.ts`.
-- A tiny `EventContract<Name, Payload>` type.
+- A file convention: one topic per file at `src/domains/<domain>/<action>.v<N>.ts`.
+- A small `TopicContract` type. Every topic is an `event`, a `request`
+  (with a `response` type) or `state`; an event may declare `retention`.
 - A codegen (`scripts/build.mjs`) that scans `src/domains/`, validates
-  names, and writes `src/index.generated.ts` — a composed registry
-  plus the exact `Topic` / `TopicPayloads` types `@hedwigjs/broker`
+  names and kinds, and writes `src/index.generated.ts` — a composed
+  registry, the `Topic` / `TopicPayloads` / `TopicContracts` types
+  `@hedwigjs/client` expects, the `TOPIC_KINDS` map the runtime
   expects, and a `TOPICS` constant map you can use to avoid string
   typos at call sites.
+- A `README.md` for your team — this workflow, with your package name
+  filled in.
 
 The generated package has **no runtime dependency on `@hedwigjs/*`** —
 it's a plain TS package that ships types and (optional) fixture
@@ -93,15 +98,16 @@ delegates the install to it.
 my-topics/
 ├── package.json
 ├── tsconfig.json
-├── .gitignore
+├── README.md                 # workflow notes for your team
+├── .gitignore                # node_modules, dist, src/index.generated.ts
 ├── scripts/
 │   └── build.mjs             # codegen: scans src/domains → writes src/index.generated.ts
 └── src/
     ├── index.ts              # re-exports index.generated (don't edit)
     ├── index.generated.ts    # AUTO-GENERATED — never hand-edit
-    ├── domains/              # your event contracts live here
+    ├── domains/              # your topic contracts live here
     └── lib/
-        └── contract.ts       # EventContract<Name, Payload> type (don't edit)
+        └── contract.ts       # TopicContract type (don't edit)
 ```
 
 Scripts in the generated package:
@@ -125,17 +131,18 @@ every call site:
 
 | `kind`    | Meaning                                                                 | Verb        | Extra field                 |
 | --------- | ----------------------------------------------------------------------- | ----------- | --------------------------- |
-| `event`   | A fact: "order paid". Fan-out to current subscribers.                   | `emit()`    | —                           |
-| `request` | A command to one recipient that answers.                                | `request()` | `response` — the answer type |
-| `state`   | A current value: "cart has 2 items". The runtime keeps the last one and hands it to every new subscriber. | `emit()` | `retention` (optional, `{ last: 1 }`) |
+| `event`   | A fact: "order paid". Fan-out to current subscribers.                   | `emit()`    | `retention` (optional, `{ last: N }`) — keep the last N for late subscribers |
+| `request` | A command to one recipient that answers.                                | `request()` | `response` — the answer type (required) |
+| `state`   | A current value: "cart has 2 items". The runtime keeps the last one and hands it to every new subscriber. | `emit()` | `retention` (optional, `{ last: 1 }` — the only value) |
 
 ```ts
-// src/domains/notification/show.v1.ts — an event
+// src/domains/notification/show.v1.ts — an event that keeps its last 10
 import type { TopicContract } from "../../lib/contract";
 
 export default {
   name: "notification.show.v1",
   kind: "event",
+  retention: { last: 10 },
   description: "Show a toast notification.",
   payload: {} as { kind: "success" | "info" | "warn" | "error"; title: string; body?: string },
   examples: {
@@ -174,17 +181,22 @@ Fields:
 | `description`    | yes      | Human-readable. Shown in DevTools and hover cards.                                          |
 | `payload`        | yes      | Payload type. Idiomatic: `{} as { ... }`.                                                   |
 | `response`       | request  | The handler's answer type. Required for `request`, forbidden otherwise (codegen checks).    |
-| `retention`      | no       | `state` only. `{ last: 1 }` — the only policy for now; the default.                         |
+| `retention`      | no       | `{ last: N }`. On an `event`: the runtime keeps the last N messages of the topic for subscribers that ask for `replay`; without it nothing is kept. On `state`: only `{ last: 1 }`, which is also the default. Not allowed on a `request`. |
 | `examples`       | yes      | Named fixtures. `examples.happy` is the default seed used by DevTools' Debug tab.           |
 | `deprecatedBy`   | no       | Successor topic name. DevTools surfaces a warning.                                          |
 | `observability`  | no       | Mark telemetry-only topics so `NACK NO_SUBSCRIBERS` renders neutrally instead of red.       |
 
 ¹ A contract without `kind` is an event; codegen prints a summary
 warning so existing registries migrate at their own pace. `EventContract`
-remains as a deprecated alias of `TopicContract`.
+remains as a deprecated alias of `TopicContract` — don't use it in new
+files.
 
-The path-to-name convention and the `kind` / `response` rules are enforced
-by codegen — a mismatch fails the build with an explicit error.
+The path-to-name convention and the `kind` / `response` / `retention`
+rules are enforced by codegen — a mismatch fails the build with an
+explicit error (`retention` on a request, a `state` topic with anything
+but `last: 1`, a `last` that is not a positive integer). The build
+summary counts kinds and retaining events:
+`✔ Generated src/index.generated.ts (16 topics: 10 event, 5 request, 1 state; 3 event(s) with retention)`.
 
 ---
 
@@ -205,32 +217,60 @@ import { registry, TOPICS, TOPIC_KINDS, type Topic, type TopicPayloads, type Top
 | `TopicKinds`      | type  | `{ [topic]: 'event' \| 'request' \| 'state' }`.                                                  |
 | `EventTopic`, `RequestTopic`, `StateTopic` | type | Unions of topic names per kind.                                                  |
 | `TopicResponses`  | type  | `{ [request topic]: response }`.                                                                 |
-| `TOPICS`          | value | SCREAMING_SNAKE_CASE constants like `TOPICS.CART_ITEM_ADDED_V1 === "cart.item-added.v1"`.          |
-| `TOPIC_KINDS`     | value | `{ [topic]: kind }` for the runtime: `initBroker({ topics: TOPIC_KINDS })` turns on retention for state topics. |
+| `TOPICS`          | value | SCREAMING_SNAKE_CASE constants like `TOPICS.NOTIFICATION_SHOW_V1 === "notification.show.v1"`.    |
+| `TOPIC_KINDS`     | value | The registry as the runtime needs it: `initBroker({ topics: TOPIC_KINDS })`. Each entry is a kind string, or `{ kind, retention }` for an event that declares `retention` — e.g. `"cart.snapshot.v1": "state"`, `"notification.show.v1": { kind: "event", retention: { last: 10 } }`. |
 | `registry`        | value | Full `Record<name, TopicContract>`. Pass to `<MessageBrokerDevTools registry={registry} />`.     |
 
-Each event is also importable directly by path — useful when you only
+Each topic is also importable directly by path — useful when you only
 need one contract:
 
 ```ts
-import CartItemAdded from "@my-org/topics/domains/cart/item-added.v1";
+import NotificationShow from "@my-org/topics/domains/notification/show.v1";
 
-cartClient.emit(CartItemAdded.name, { sku: "CROISSANT", qty: 2 });
+toastBus.emit(NotificationShow.name, { kind: "success", title: "Order accepted" });
 ```
 
 ---
 
 ## Using the registry in your app
 
-Boot the broker with the generated types:
+The host boots the runtime once and hands it `TOPIC_KINDS`. That is all
+the runtime needs to know about the registry — which topics are `state`
+and which events keep how many messages:
 
 ```ts
-import { initBroker, createClient } from "@hedwigjs/broker";
-import type { Topic, TopicPayloads } from "@my-org/topics";
+// host — once per realm
+import { initBroker } from "@hedwigjs/broker";
+import { TOPIC_KINDS } from "@my-org/topics";
 
-initBroker<Topic, TopicPayloads>({ history: { enabled: true, maxSize: 200 } });
+initBroker({ topics: TOPIC_KINDS });
+```
 
-const cartClient = createClient<Topic, TopicPayloads>("cart");
+The host can only cap what the contracts declared:
+`history: { maxPerTopic, ttl, enabled }` (all optional; `enabled`
+defaults to `true`).
+
+Modules never depend on the runtime. They create a client with
+`@hedwigjs/client` and the three generated types:
+
+```ts
+// a module
+import { createClient } from "@hedwigjs/client";
+import type { Topic, TopicPayloads, TopicContracts } from "@my-org/topics";
+
+export const bus = createClient<Topic, TopicPayloads, TopicContracts>("cart-ui");
+
+// state: the retained snapshot arrives synchronously inside on()
+bus.on("cart.snapshot.v1", (msg) => render(msg.data));
+
+// request: the answer type comes from the contract's `response`
+const line = await bus.request("cart-store", "cart.add-item.v1", { itemId: 8, name: "Khachapuri", price: "890 ₽" });
+line.data?.subtotal;                                   // number | undefined
+
+// event with retention: a late subscriber asks for the last ones, then goes live
+bus.on("notification.show.v1", (msg) => toast(msg.data), { replay: { limit: 10 } });
+
+bus.emit("cart.add-item.v1", …);                       // compile error: a request cannot be emitted
 ```
 
 Rename a topic in one place, and every `emit` / `on` / `request` in
@@ -243,26 +283,28 @@ import { getBroker } from "@hedwigjs/broker";
 import { MessageBrokerDevTools } from "@hedwigjs/devtools";
 import { registry } from "@my-org/topics";
 
-<MessageBrokerDevTools broker={getBroker()} registry={registry} />
+<MessageBrokerDevTools broker={getBroker()} registry={registry} enabled />
 ```
 
-`EventContract` is structurally compatible with the
-`TopicContractInfo` shape DevTools consumes — no adapter needed.
+`TopicContract` is structurally compatible with the `TopicContractInfo`
+shape DevTools consumes (`name`, `kind`, `description`, `examples`,
+`deprecatedBy`, `observability`) — no adapter needed.
 
 Use `TOPICS` at call sites when you'd rather have autocomplete than
 string literals:
 
 ```ts
-cartClient.emit(TOPICS.CART_ITEM_ADDED_V1, { sku: "CROISSANT", qty: 2 });
+toastBus.emit(TOPICS.NOTIFICATION_SHOW_V1, { kind: "success", title: "Order accepted" });
 ```
 
 ---
 
-## Adding an event
+## Adding a topic
 
-1. Create `src/domains/<domain>/<action>.v1.ts` — one event per file.
-2. Fill in `name` (must match the path), `description`, `payload`,
-   and at least an `examples.happy` fixture.
+1. Create `src/domains/<domain>/<action>.v1.ts` — one topic per file.
+2. Fill in `name` (must match the path), `kind`, `description`,
+   `payload`, and at least an `examples.happy` fixture. A request also
+   needs `response`; an event may add `retention`.
 3. `npm run dev` picks it up automatically; `npm run build` produces
    the final `dist/`.
 
@@ -290,6 +332,9 @@ Both versions ship side by side in the generated registry. Consumers
 migrate at their own pace; DevTools shows the deprecation warning on
 every v1 message so nothing rots silently.
 
+Changing a topic's kind is a breaking change too — a request that
+becomes an event changes who answers — so it is a new version as well.
+
 ---
 
 ## When to use — and when not to
@@ -308,8 +353,9 @@ every v1 message so nothing rots silently.
   lives outside TypeScript.
 - You want a different file layout or naming convention.
 
-In both cases, `@hedwigjs/broker` accepts your `Topic` +
-`TopicPayloads` types as generic parameters. Nothing forces the
+In both cases, `@hedwigjs/client` accepts your `Topic` +
+`TopicPayloads` types as generic parameters, plus an optional
+`TopicContracts` map for kind-aware verbs. Nothing forces the
 starter — see
 [Bring your own contracts](../../docs/content/guides/bring-your-own-contracts.md).
 
