@@ -387,6 +387,15 @@ step; it goes away once DevTools and the reference stand have moved.
 - Hardcoded version numbers stripped from docs — `package.json` stays
   the single source of truth so docs don't drift on every bump.
 - Empty `scripts/` and `tooling/` placeholder dirs removed.
+- Documentation audit (2026-09-13) and rewrite against the code: every
+  package README, the root README, the stand README, the registry
+  template README, the guides and the doc indexes now describe the
+  runtime/SDK split (`@hedwigjs/client` for modules), topic kinds with
+  contract-declared retention, remote clients instead of bridges, the
+  React/Vue adapters with bound hooks, and DevTools on React 18/19.
+  RFC-0003 is marked implemented; RFC-0001 and the mock-bus era guide
+  `demo-architecture.md` are retired with pointers. Complete
+  `RoutingReason` and system-event tables in the broker README.
 
 ## [0.1.0] — 2026-08-29
 

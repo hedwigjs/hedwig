@@ -107,10 +107,13 @@ or in a `hedwig-adapter-*` community naming convention.
 
 ## Reference use-cases in `examples/advanced/`
 
-Two ad-hoc adapters exist today and will become one-liners once first-party
-packages ship:
+Two ad-hoc adapters existed when this was written. They became remote
+clients, not adapter packages: the WebSocket now lives in
+`examples/advanced/shell/src/remotes.ts` (`createRemoteClient` over
+`{ kind: 'websocket' }`), the iframe in `mfe/checkout/src/App.tsx` via
+`useRemoteClient` from `@hedwigjs/react` — see RFC 0003.
 
-| Current file | Future adapter |
+| File at the time | Planned adapter (never built) |
 | --- | --- |
 | `mfe/notifications/src/hooks/useNotificationsSocket.ts` | `@hedwigjs/adapter-websocket` |
 | `mfe/checkout/src/App.tsx` (postMessage handler) | `@hedwigjs/adapter-postmessage` |

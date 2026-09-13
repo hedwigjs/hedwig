@@ -1,8 +1,9 @@
 # RFCs
 
 Short design records for non-trivial decisions. One decision per file. Each
-RFC has a stable number and a status: `Draft`, `Accepted`, `Superseded`,
-`Withdrawn`.
+RFC has a stable number and a status: `Draft`, `Accepted`, `Implemented`,
+`Superseded`, `Withdrawn`. A note that records facts rather than decides
+anything is `Informational`.
 
 We write an RFC when a decision:
 
@@ -18,4 +19,9 @@ We don't write an RFC for internal refactors, bugfixes, or reversible tweaks.
 | --- | --- | --- |
 | [0001](./0001-transport-adapters.md) | Transport adapters | Superseded by 0003 |
 | [0002](./0002-demo-audit-2026-08.md) | Audit note — `examples/advanced/` (2026-08) | Informational |
-| [0003](./0003-participants-runtime-sdk.md) | Participants, runtime/SDK split, links and the wire | Draft |
+| [0003](./0003-participants-runtime-sdk.md) | Participants, runtime/SDK split, links and the wire | Implemented (revision 2) |
+
+The normative output of 0003 is the wire specification under
+[`../spec/`](../spec/README.md), starting with
+[`envelope-v1.md`](../spec/envelope-v1.md). The RFC keeps the reasoning;
+the spec is what a peer implements.

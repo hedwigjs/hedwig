@@ -1,6 +1,6 @@
 # RFC 0003 — Participants, runtime/SDK split and the wire
 
-- **Status:** Draft, revision 2
+- **Status:** Implemented (revision 2)
 - **Created:** 2026-09-13 (rev. 1) · 2026-09-13 (rev. 2, after independent review)
 - **Owners:** —
 - **Supersedes:** [RFC 0001 — Transport adapters](./0001-transport-adapters.md)
@@ -545,7 +545,8 @@ One responder per `(client, topic)`. Replay is synchronous inside `on()`.
   `external` pill; request/response pairs are stitched by `correlationId`
   with latency; `wireId` is shown for cross-realm correlation.
 - New system events rendered: `remote.frame.rejected`, `remote.send.failed`,
-  `remote.gone`, `request.forwarded`, `response.received`, `request.timeout`.
+  `remote.destroyed`, `request.forwarded`, `response.received`,
+  `response.sent`, `request.timeout`, `state.retained`.
 - Handshake: the panel compares `runtimeVersion` with the runtime version
   it was built against under the semver rule (landed in step 1) and shows
   a header badge on mismatch.
@@ -598,7 +599,9 @@ pushed until the sequence is reviewed.
 
 Step 7 (topic kinds in contracts — registry, SDK verbs, retained state)
 landed 2026-09-13. Steps 8–10 (React/Vue adapters on the SDK, transport
-conformance kit and e2e, CI) follow and are tracked outside this RFC.
+conformance kit and e2e, CI) have landed as well: `@hedwigjs/react` and
+`@hedwigjs/vue`, `@hedwigjs/broker/conformance` with the Playwright suite in
+`examples/advanced/e2e/`, and the workflows under `.github/workflows/`.
 
 ## What changed in revision 2
 
