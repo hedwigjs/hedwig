@@ -156,7 +156,8 @@ export type SystemEventName =
   | "request.forwarded"
   | "response.received"
   | "request.timeout"
-  | "response.sent";
+  | "response.sent"
+  | "state.retained";
 
 export interface SystemEventLogEntry {
   /** Monotonic local id, assigned by the store on ingestion. */

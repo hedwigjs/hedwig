@@ -11,6 +11,12 @@ import type { ReactNode } from "react";
 export interface TopicContractInfo {
   /** Имя топика, например `"users.fetched.v1"`. */
   name: string;
+  /**
+   * Род топика из контракта: `event` (факт, рассылка), `request` (команда
+   * с ответом), `state` (текущее значение; рантайм хранит последнее).
+   * Без него DevTools показывает multicast / unicast по адресату.
+   */
+  kind?: "event" | "request" | "state";
   /** Человекочитаемое описание для UI. */
   description: string;
   /** Именованные фикстуры payload'а. Минимум — ключ `happy`. */

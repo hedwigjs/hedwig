@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 
 import { createClient } from '@hedwigjs/client';
 import type { RoutingResult } from '@hedwigjs/client';
-import type { NotificationStatusResponse, Topic, TopicPayloads } from '@hedwig-demo/contracts';
+import type { NotificationStatusResponse, Topic, TopicContracts, TopicPayloads } from '@hedwig-demo/contracts';
 
 import { t } from '../../../../shared/i18n/useLang';
 
@@ -57,7 +57,7 @@ export const RemoteRequestDemo: FC = () => {
   const clientRef = useRef<ReturnType<typeof createClient<Topic, TopicPayloads>> | null>(null);
 
   useEffect(() => {
-    clientRef.current = createClient<Topic, TopicPayloads>('remote-request-demo');
+    clientRef.current = createClient<Topic, TopicPayloads, TopicContracts>('remote-request-demo');
     return () => {
       clientRef.current?.destroy();
       clientRef.current = null;

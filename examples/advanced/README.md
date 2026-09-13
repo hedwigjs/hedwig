@@ -22,12 +22,12 @@ Everything on the domain lives under `/demo/advanced/` — root `/`
 | --------------- | --------------------- | --------------------------------------------------------------------------------- |
 | `shell`         | (host)                | Single-spa host. Installs ACL hooks, registers remote clients (WS/BroadcastChannel), mounts DevTools |
 | `menu`          | `menu`                | Dish grid. Sends `cart.add-item.v1` requests to the cart runtime                  |
-| `cart`          | `cart-store`, `cart-ui` | Cart runtime + UI. Owns the cart state, publishes `cart.snapshot.v1` with history |
+| `cart`          | `cart-store`, `cart-ui` | Cart runtime + UI. Owns the cart state, publishes the `state` topic `cart.snapshot.v1` |
 | `checkout`      | `checkout`            | Headless iframe controller. Handles `checkout.start.v1` request; the iframe is a remote client over postMessage |
 | `notifications` | `notifications-toast` | Toast panel. Subscribes to `notification.show.v1`                                  |
 | `ai-chat`       | `ai-chat`             | Streaming chat over SSE                                                            |
 | `analytics`     | `analytics`           | Semi-trusted read-only tracker — used as the ACL demo target                       |
-| `late-mount`    | `late-mount-demo`     | Extra card that mounts on demand — proves history-buffer replay                    |
+| `late-mount`    | `late-mount-demo`     | Extra card that mounts on demand — proves a `state` topic hands its retained value to late subscribers |
 
 ### Backend (Node/Express, joins the broker as remote clients)
 
@@ -80,8 +80,8 @@ live behind a wire as **remote clients** (`createRemoteClient`):
 checkout MFE registers its iframe (`checkout-iframe`, `postmessage`) and
 the AI chat registers one `ai-backend` remote per reply (`sse`). Each MFE
 creates its own typed `Client<Topic, TopicPayloads>` — commands go through
-`request()`, state broadcasts through `emit()` with `history: true` for
-late subscribers. The shell installs `useOnSubscribeHook` +
+`request()`, state through `emit()` on a `state` topic — the runtime
+retains the last value and hands it to late subscribers. The shell installs `useOnSubscribeHook` +
 `useBeforeSendHook` wired to a declarative ACL config — the same rules
 cover local and remote clients — and mounts `@hedwigjs/devtools` so
 message flow, subscribers (remote ones with a `remote` badge), history and

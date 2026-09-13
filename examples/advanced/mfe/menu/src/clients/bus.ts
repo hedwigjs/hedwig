@@ -1,5 +1,5 @@
 import { createClient } from '@hedwigjs/client';
-import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
+import type { Topic, TopicContracts, TopicPayloads } from '@hedwig-demo/contracts';
 
 /** Menu MFE's broker client. Module-singleton, imported by any menu-side code. */
-export const bus = createClient<Topic, TopicPayloads>('menu');
+export const bus = createClient<Topic, TopicPayloads, TopicContracts>('menu');

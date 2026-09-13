@@ -56,6 +56,15 @@
   letter-spacing: 0.03em;
 }
 
+/* A state topic: the runtime keeps its last value. */
+.kindState {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #3f3f0b;
+  color: #fde68a;
+}
+
 .kindUnicast {
   font-size: 10px;
   padding: 1px 5px;

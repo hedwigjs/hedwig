@@ -596,9 +596,9 @@ pushed until the sequence is reviewed.
 | 5 | Requests to/from remote clients (§7); DevTools pairing | L | done 2026-09-13 |
 | 6 | `@hedwigjs/client` package + handle (§1, §2): lazy proxy, gates, `ClientMeta`; demo modules on the SDK | M | done 2026-09-13 |
 
-Steps 7–10 (topic classes in contracts, React/Vue adapters on the SDK,
-transport conformance kit and e2e, CI) follow and are tracked outside this
-RFC.
+Step 7 (topic kinds in contracts — registry, SDK verbs, retained state)
+landed 2026-09-13. Steps 8–10 (React/Vue adapters on the SDK, transport
+conformance kit and e2e, CI) follow and are tracked outside this RFC.
 
 ## What changed in revision 2
 
@@ -696,6 +696,9 @@ the wire stateless.
 2. Default request timeout for remotes: on the remote (this RFC, 5 s) or a
    global `BrokerConfig.request.timeout` only.
 3. Topic-class contracts (step 7): one contract type with `kind`, or two.
+   Resolved 2026-09-13: one `TopicContract` union discriminated by `kind`
+   (`event` default, `request` with `response`, `state` with `retention`);
+   `EventContract` kept as a deprecated alias.
 
 ## Security notes
 

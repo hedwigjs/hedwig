@@ -1,5 +1,5 @@
 import { createClient } from '@hedwigjs/client';
-import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
+import type { Topic, TopicContracts, TopicPayloads } from '@hedwig-demo/contracts';
 
 /**
  * Notifications MFE is a pure READER on the bus — it only subscribes to
@@ -9,4 +9,4 @@ import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
  * MFE, so a direct write into local state is the right transport. Only
  * cross-MFE traffic goes through the broker.
  */
-export const toastBus = createClient<Topic, TopicPayloads>('notifications-toast');
+export const toastBus = createClient<Topic, TopicPayloads, TopicContracts>('notifications-toast');

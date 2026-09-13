@@ -131,6 +131,7 @@ describe("attachInspector", () => {
         "response.received",
         "request.timeout",
         "response.sent",
+        "state.retained",
         "broker.duplicate_copy",
         "hook.failed",
       ]),

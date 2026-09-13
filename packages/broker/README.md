@@ -146,6 +146,7 @@ import {
   };
   logger?: BrokerLogger; // see "Logger" below
   debug?: boolean;       // arms broker.$debug.send — default false
+  topics?: TopicKindMap; // TOPIC_KINDS from the registry: `state` topics are retained
 }
 ```
 
@@ -562,6 +563,37 @@ say it was a crash, not a policy decision. Opt into the old behaviour
 with `initBroker({ hooks: { failMode: 'open' } })` — the throwing hook
 is then skipped. `afterSend` hooks are observers and are always
 isolated.
+
+## Topic kinds and state
+
+A topic contract declares what the topic *is* (see
+`@hedwigjs/create-registry`): an **event** (a fact, fan-out via `emit`), a
+**request** (a command to one recipient that answers, via `request`) or
+**state** (a current value). The SDK enforces the verbs at compile time
+when a client is created with the registry's `TopicContracts`:
+
+```ts
+import { createClient } from '@hedwigjs/client';
+import type { Topic, TopicPayloads, TopicContracts } from '@my-org/topics';
+
+const bus = createClient<Topic, TopicPayloads, TopicContracts>('cart');
+bus.emit('cart.snapshot.v1', snapshot);            // state — ok
+bus.request('cart-store', 'cart.add-item.v1', …);  // request — answer type inferred
+bus.emit('cart.add-item.v1', …);                   // compile error: a request cannot be emitted
+```
+
+The runtime learns the kinds from `initBroker({ topics: TOPIC_KINDS })`
+and treats **state** topics specially: the last local multicast on each
+is retained and delivered to every new subscriber synchronously inside
+`on()`, flagged `replayed: true` (MQTT's retained message). No
+`history: true` at the emit site, no `replay` option at the subscriber;
+pass `{ retained: false }` to `on()` for live updates only. Retained
+values are independent of the history buffer, listed by
+`inspect.getRetained()`, and announced as `state.retained` on
+`$systemEvents`. Requests are never recorded to history —
+`RequestOptions` is `{ timeout }`.
+
+---
 
 ## Message history & replay
 

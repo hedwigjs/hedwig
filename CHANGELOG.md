@@ -260,6 +260,17 @@ step; it goes away once DevTools and the reference stand have moved.
 - Unicast history removed: `RequestOptions` is `{ timeout }`, a request
   is never recorded, the deprecation warning is gone.
 
+### Topic kinds on the stand and in DevTools (step 7, block 3)
+
+- Reference stand: `initBroker({ topics: TOPIC_KINDS })`; every client is
+  `createClient<Topic, TopicPayloads, TopicContracts>`; the cart snapshot
+  is emitted without `history: true` and read without `replay` — the
+  late-mount card now demonstrates retained state.
+- DevTools: kind from the registry on every message row, `retained` pill
+  for a state topic's initial delivery, `state.retained` in System Events.
+- Docs: guide `contract-based-topics.md`; broker README "Topic kinds and
+  state"; RFC-0003 open question 3 resolved (one contract type with `kind`).
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

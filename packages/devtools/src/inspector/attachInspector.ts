@@ -107,6 +107,10 @@ export function attachInspector(
   const unsubResponseSent = broker.$systemEvents.on("response.sent", (payload) => {
     store.pushSystemEvent("response.sent", payload);
   });
+  // A state topic's retained value was replaced.
+  const unsubStateRetained = broker.$systemEvents.on("state.retained", (payload) => {
+    store.pushSystemEvent("state.retained", payload);
+  });
   // Live counterpart of the hydrated realm-singleton event above — fires
   // when a lazily loaded remote brings its own copy of the library after
   // the panel is already attached.
@@ -153,6 +157,7 @@ export function attachInspector(
     unsubResponseReceived();
     unsubRequestTimeout();
     unsubResponseSent();
+    unsubStateRetained();
     unsubDuplicateCopy();
     unsubHookFailed();
     unsubSubscriptionRejected();

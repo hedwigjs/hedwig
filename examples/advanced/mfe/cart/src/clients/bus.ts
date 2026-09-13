@@ -1,5 +1,5 @@
 import { createClient } from '@hedwigjs/client';
-import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
+import type { Topic, TopicContracts, TopicPayloads } from '@hedwig-demo/contracts';
 
 /**
  * Cart MFE speaks the shared bus with two identities:
@@ -15,5 +15,5 @@ import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
  *   handlers per (client, topic), the views no longer need distinct
  *   client identities.
  */
-export const storeBus = createClient<Topic, TopicPayloads>('cart-store');
-export const uiBus = createClient<Topic, TopicPayloads>('cart-ui');
+export const storeBus = createClient<Topic, TopicPayloads, TopicContracts>('cart-store');
+export const uiBus = createClient<Topic, TopicPayloads, TopicContracts>('cart-ui');

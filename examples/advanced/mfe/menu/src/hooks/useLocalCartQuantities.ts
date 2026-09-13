@@ -12,14 +12,15 @@ import { bus } from '../clients/bus';
  * Menu MFE's read-only view of cart quantities.
  *
  * The cart MFE owns state and exposes it as a broadcast `cart.snapshot.v1`
- * (retained via `history: true`). The menu MFE:
+ * (a `state` topic — the runtime keeps the last one). The menu MFE:
  *   1. Subscribes to snapshots — that's the ONLY channel it needs to render
  *      per-item quantities on dish cards. No item-added/removed events
  *      are listened to — full state is delivered on every mutation.
  *   2. Sends **requests** to the cart-store for mutations. `add-item`
  *      handles both first-add and increment (runtime returns updated qty).
  *
- * `replay: { limit: 1 }` guards the late-joiner case — if cart already has
+ * The retained snapshot arrives synchronously inside `on()`, so a menu that
+ * mounts after items were added still shows the right quantities.
  * items when the menu mounts, the broker fires the handler once with the
  * last retained snapshot.
  */
@@ -36,7 +37,6 @@ export function useLocalCartQuantities() {
         }
         setQtyById(next);
       },
-      { replay: { limit: 1 } },
     );
   }, []);
 

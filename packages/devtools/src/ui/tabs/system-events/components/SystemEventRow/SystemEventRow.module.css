@@ -51,6 +51,7 @@
 .facetClient,
 .facetSubscription,
 .facetRemote,
+.facetState,
 .facetMessage,
 .facetBroker,
 .verbAdded,
@@ -76,6 +77,12 @@
 .facetSubscription {
   background: #164e63;
   color: #67e8f9;
+}
+
+/* State topics — a retained value changed. */
+.facetState {
+  background: #3f3f0b;
+  color: #fde68a;
 }
 
 /* Remote clients — participants behind a transport. */

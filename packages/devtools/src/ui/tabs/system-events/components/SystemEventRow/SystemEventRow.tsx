@@ -8,7 +8,7 @@ interface SystemEventRowProps {
   entry: SystemEventLogEntry;
 }
 
-type EventFacet = "client" | "subscription" | "remote" | "message" | "broker";
+type EventFacet = "client" | "subscription" | "remote" | "state" | "message" | "broker";
 type EventVerb = "added" | "removed" | "rejected" | "failed" | "warning" | "sent" | "received";
 
 function facetOf(name: SystemEventLogEntry["name"]): EventFacet {
@@ -19,6 +19,7 @@ function facetOf(name: SystemEventLogEntry["name"]): EventFacet {
   if (name.startsWith("hook.")) return "broker";
   if (name.startsWith("remote.")) return "remote";
   if (name.startsWith("request.") || name.startsWith("response.")) return "remote";
+  if (name.startsWith("state.")) return "state";
   return "broker";
 }
 
@@ -36,6 +37,7 @@ function verbOf(name: SystemEventLogEntry["name"]): EventVerb {
   if (name.endsWith("registered") && !name.endsWith("unregistered")) return "added";
   if (name.endsWith("added")) return "added";
   if (name.endsWith("created")) return "added";
+  if (name.endsWith("retained")) return "added";
   return "removed";
 }
 
@@ -97,6 +99,8 @@ function summarize(entry: SystemEventLogEntry): string {
   }
 
   if (source && target && topic) return `${source} → ${target} · ${topic}${reason ? ` · ${reason}` : ""}`;
+  // state.retained: topic + message id.
+  if (topic && messageId) return `${topic} · ${messageId}`;
   if (clientId && topic) return `${clientId} · ${topic}${reason ? ` · ${reason}` : ""}`;
   if (clientId) return clientId;
   return "";
@@ -106,6 +110,7 @@ const FACET_CLASS: Record<EventFacet, string> = {
   client: styles.facetClient,
   subscription: styles.facetSubscription,
   remote: styles.facetRemote,
+  state: styles.facetState,
   message: styles.facetMessage,
   broker: styles.facetBroker,
 };
