@@ -224,6 +224,13 @@ describe('createClient', () => {
     errorLog.mockRestore();
   });
 
+  test('on() with a wildcard throws before any runtime exists, same as the runtime would', () => {
+    const c = createClient<'a.*' | 'a.v1', { 'a.*': number; 'a.v1': number }>('strict');
+    expect(() => c.on('a.*', jest.fn())).toThrow(TypeError);
+    expect(() => c.on('a.v1', jest.fn())).not.toThrow();
+    c.destroy(); // stop polling for a runtime — later tests install one
+  });
+
   test('the queue is bounded: the oldest call is dropped with NACK RUNTIME_NOT_READY', async () => {
     const lazy = new LazyClient<string, Record<string, unknown>>('q', undefined, { sdkVersion: 'x', abi: ABI }, 2);
     const first = lazy.emit('t.1', 1);

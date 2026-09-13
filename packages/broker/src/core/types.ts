@@ -170,4 +170,21 @@ export interface BrokerConfig {
    * SDK's types. Keys are exact topic names.
    */
   topics?: TopicKindMap;
+
+  /**
+   * What happens to the object a module passes as `data`.
+   *
+   * - `'freeze'` (default): it is deep-frozen **in place** before entering
+   *   the pipeline — no copy, so nothing is paid on the hot path, but the
+   *   emitter's own object is frozen afterwards. Emit a snapshot if you
+   *   keep mutating the original.
+   * - `'clone'`: it is copied with `structuredClone` first and the copy is
+   *   frozen; the emitter keeps a mutable original. Costs one copy per
+   *   message, and a payload `structuredClone` cannot copy (functions,
+   *   class instances with methods, DOM nodes) is rejected with
+   *   `NACK SERIALIZATION_FAILED`.
+   *
+   * Binary views (`ArrayBuffer`, typed arrays) are never frozen either way.
+   */
+  payloads?: 'freeze' | 'clone';
 }

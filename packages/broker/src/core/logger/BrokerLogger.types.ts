@@ -11,6 +11,7 @@ export type BrokerLogEvent =
   | 'broker.subscribe.after_destroy'
   | 'broker.client.register.after_destroy'
   | 'broker.replay.no_retention'
+  | 'emit.payload.not_cloneable'
   | 'facade.createClient.reset'
   // Debug channel
   | 'debug.disabled'

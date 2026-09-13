@@ -78,6 +78,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   #remotes = new Map<string, RemoteClientImpl>();
   /** Topics declared `state` in the contracts registry (`BrokerConfig.topics`). */
   #stateTopics = new Set<string>();
+  #clonePayloads = false;
   /** Last multicast per `state` topic. */
   #inspect: Inspector<T, P>;
 
@@ -115,6 +116,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     this.logger = createSafeLogger(config?.logger ?? defaultLogger);
     this.#debugEnabled = config?.debug === true;
     this.#requestTimeout = config?.request?.timeout;
+    this.#clonePayloads = config?.payloads === 'clone';
     // Retention comes from the registry: a `state` topic keeps its last
     // value, an event keeps `retention.last` messages. The host only caps.
     this.#history = new MessageHistory(config?.history);
@@ -241,6 +243,14 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       this.logger.warn('broker.subscribe.after_destroy', { clientId, topic });
       return 0;
     }
+    // Subscriptions are exact: the index is keyed by topic name and live
+    // delivery never pattern-matches. Accepting `chat.*` here would replay
+    // history for it and then deliver nothing live — worse than an error.
+    if (typeof topic !== 'string' || topic.includes('*')) {
+      throw new TypeError(
+        `on(): '${String(topic)}' is not a topic name. Subscriptions take exact names; patterns are for accepts / forward and hooks.`,
+      );
+    }
 
     const hookResult = this.#hooks.onSubscribe(topic, clientId);
     if (!hookResult.allowed) {
@@ -272,7 +282,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     this.#systemEvents.emit('subscription.added', { clientId, topic, options });
 
     if (options?.replay) {
-      if (!this.#history.retainsMatching(topic)) {
+      if (!this.#history.retains(topic)) {
         // Nothing to replay: the topic's contract declares no `retention`
         // (or the host switched event retention off). Not an error — the
         // subscription is live — but worth a line in the log.
@@ -491,7 +501,20 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       return RoutingResult.create<R>('NACK', RoutingReason.BROKER_DESTROYED, 'Broker is destroyed');
     }
 
-    // Stage 1: Create Message and freeze once
+    // Stage 1: Create Message and freeze once. With `payloads: 'clone'` the
+    // emitter's object is copied first so it stays mutable on their side.
+    if (this.#clonePayloads && data !== undefined) {
+      try {
+        data = structuredClone(data);
+      } catch (error) {
+        this.logger.warn('emit.payload.not_cloneable', { topic, sender, error });
+        return RoutingResult.create<R>(
+          'NACK',
+          RoutingReason.SERIALIZATION_FAILED,
+          `Payload for '${topic}' cannot be copied with structuredClone (payloads: 'clone')`,
+        );
+      }
+    }
     const message = this.#createMessage(topic, sender, recipient, data);
 
     if (fromExternal) {

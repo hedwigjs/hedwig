@@ -161,6 +161,10 @@ export class LazyClient<
 
   on<K extends T>(topic: K, handler: HandlerFn<K, P[K]>, options?: SubscriptionOptions): () => void {
     if (this.#real) return this.#real.on(topic, handler, options);
+    // Same rule as the runtime, raised now rather than at bind time.
+    if (typeof topic !== 'string' || topic.includes('*')) {
+      throw new TypeError(`on(): '${String(topic)}' is not a topic name. Subscriptions take exact names.`);
+    }
     if (this.#blocked) return () => {};
     const sub: Subscription = { topic, handler, options, off: null, removed: false };
     this.#subscriptions.push(sub);

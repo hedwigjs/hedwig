@@ -29,7 +29,9 @@ export interface Client<
   readonly id: ClientID;
 
   /**
-   * Subscribe to a topic.
+   * Subscribe to a topic — an exact name. Patterns (`chat.*`) belong to
+   * `accepts` / `forward` on remote clients and to hooks; passing one here
+   * throws a `TypeError`.
    *
    * With `options.replay`, matching history entries are delivered to the
    * handler synchronously — before this call returns — oldest first, each
@@ -47,6 +49,10 @@ export interface Client<
   /**
    * Broadcast a message to every subscriber of `topic` (multicast).
    * Remote clients whose `forward` patterns match receive it as a frame.
+   *
+   * `data` is deep-frozen **in place** by the runtime (no copy) unless the
+   * host runs with `payloads: 'clone'` — emit a snapshot if you keep
+   * mutating the object you pass here.
    */
   emit<K extends T & EmitTopic<T, C>>(topic: K, data: P[K], options?: MessageOptions): Promise<RoutingResult>;
 
