@@ -1,7 +1,7 @@
 # Changesets
 
 Version-bump & release workflow for the `@hedwigjs/*` packages
-(`broker`, `devtools`, `create-registry`). Everything under
+(`client`, `broker`, `devtools`, `react`, `vue`, `create-registry`). Everything under
 `@hedwig-demo/*` (the reference-stand workspaces) is ignored — those
 are private and not published.
 

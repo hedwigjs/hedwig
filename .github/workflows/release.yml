@@ -12,6 +12,10 @@ name: Release
 # Required repository secret:
 #   NPM_TOKEN — granular access token with Read/Write on the @hedwigjs
 #               scope and "Bypass 2FA restrictions" enabled.
+#
+# Every publish carries npm provenance: the job has `id-token: write` and
+# `NPM_CONFIG_PROVENANCE=true`, so npm signs the package with a Sigstore
+# attestation linking it to this workflow run and commit.
 
 on:
   push:
@@ -28,7 +32,7 @@ jobs:
     permissions:
       contents: write       # create the Version Packages branch + push
       pull-requests: write  # open/update the Version Packages PR
-      id-token: write       # npm provenance (future)
+      id-token: write       # npm provenance attestation
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,11 +52,14 @@ jobs:
       - name: Build public packages
         # Publish artifact = each package's `dist/`. Build first so a merge
         # of the Version Packages PR ships the current sources, not a
-        # stale bundle from someone's laptop.
+        # stale bundle from someone's laptop. Order matters: client →
+        # broker → devtools → react → vue (the root script), then the CLI.
         run: |
-          npm run build -w @hedwigjs/broker
-          npm run build -w @hedwigjs/devtools
+          npm run build
           npm run build -w @hedwigjs/create-registry
+
+      - name: Unit tests before publishing
+        run: npm test
 
       - name: Changesets — create Version PR or publish
         id: changesets
@@ -68,6 +75,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
 
       - name: Summary
         if: always()

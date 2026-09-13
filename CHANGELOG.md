@@ -300,6 +300,20 @@ step; it goes away once DevTools and the reference stand have moved.
   to the backend, checkout iframe, cross-tab, DevTools) in Playwright's
   own headless Chromium; `npm run e2e` boots the stand itself.
 
+### CI, provenance, governance (step 10)
+
+- `ci.yml`: build in dependency order, `npm run typecheck` across every
+  workspace, unit suites, stale-codegen check for the contracts registry,
+  the Playwright stand suite (report uploaded on failure), and a
+  changeset check on pull requests.
+- `release.yml` builds all public packages, runs the unit suites and
+  publishes with npm provenance (`NPM_CONFIG_PROVENANCE`, OIDC
+  `id-token`). `deploy-stand.yml` builds client and react too and
+  triggers on their paths.
+- Governance minimum: `CODEOWNERS`, a pull-request checklist, Dependabot
+  (npm weekly, actions monthly), `.nvmrc`, a rewritten `CONTRIBUTING.md`
+  with the everyday commands and the release rules.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

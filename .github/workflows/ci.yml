@@ -1,0 +1,116 @@
+name: CI
+
+# Every push and pull request: build the public packages in dependency
+# order, typecheck every workspace, run the unit suites, then drive the
+# reference stand end to end in Playwright's own Chromium. Pull requests
+# additionally must carry a changeset for any public package they touch.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  check:
+    name: Build · typecheck · unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install (workspaces)
+        run: npm ci
+
+      - name: Build public packages (client → broker → devtools → react → vue → create-registry)
+        run: |
+          npm run build
+          npm run build -w @hedwigjs/create-registry
+
+      - name: Typecheck every workspace
+        run: npm run typecheck
+
+      - name: Unit tests (client, broker, devtools, react, vue, backend)
+        run: npm test
+
+      - name: Registry codegen is committed
+        # `index.generated.ts` must match its contracts — a stale one means
+        # somebody edited a contract and forgot `npm run build` there.
+        run: |
+          npm run build -w @hedwig-demo/contracts
+          git diff --exit-code -- examples/advanced/shared/contracts/src/index.generated.ts
+
+  e2e:
+    name: Reference stand · Playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install (workspaces)
+        run: npm ci
+
+      - name: Build public packages
+        run: npm run build
+
+      - name: Install Playwright Chromium
+        working-directory: examples/advanced
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the stand end to end
+        # The Playwright config boots the stand itself (`webServer`) and
+        # tears it down afterwards.
+        env:
+          CI: "1"
+        run: npm run e2e
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            examples/advanced/playwright-report
+            examples/advanced/test-results
+          retention-days: 7
+
+  changesets:
+    name: Changeset present
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install (workspaces)
+        run: npm ci
+
+      - name: Every touched public package has a changeset
+        # Fails when a package under packages/* changed since main without
+        # a .changeset/*.md describing the bump. Demo workspaces are
+        # ignored by .changeset/config.json.
+        run: npx changeset status --since=origin/${{ github.base_ref }}

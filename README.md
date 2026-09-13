@@ -1,5 +1,8 @@
 <div align="center">
 
+[![CI](https://github.com/hedwigjs/hedwig/actions/workflows/ci.yml/badge.svg)](https://github.com/hedwigjs/hedwig/actions/workflows/ci.yml)
+
+
 <img src="./docs/assets/hedwig-owl.png" alt="Hedwig — a friendly owl carrying an envelope" width="180" />
 
 <h1>Hedwig</h1>
