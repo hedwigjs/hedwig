@@ -8,7 +8,7 @@ what each topic is.
 
 | Kind      | Meaning                                                                  | Verb        | What the runtime does                                                |
 | --------- | ------------------------------------------------------------------------ | ----------- | -------------------------------------------------------------------- |
-| `event`   | A fact: "order paid". Whoever is subscribed now hears it.                | `emit()`    | Fan-out; optional `history: true` for explicit replay.               |
+| `event`   | A fact: "order paid". Whoever is subscribed now hears it.                | `emit()`    | Fan-out; `retention: { last: N }` keeps the last N for `replay`.     |
 | `request` | A command to one recipient that answers: "add item 8".                   | `request()` | Unicast, answer in `RoutingResult.data`; over a wire as `kind: 'request'`. Never recorded. |
 | `state`   | A current value: "cart has 2 items, 3360 ₽". Old values are worthless.   | `emit()`    | Retains the last value and hands it to every new subscriber on `on()`. |
 
@@ -102,8 +102,8 @@ coexist in the registry.
 
 ## What stays explicit
 
-- `history: true` on `emit()` remains for **events** that a late
-  subscriber may want replayed (with `replay` on `on()`); state does not
-  need it.
+- `replay` on `on()` remains the subscriber's choice for **events** that
+  declare `retention: { last: N }` in their contract — the runtime keeps
+  the last N of those; state needs neither.
 - `observability: true` marks telemetry-only topics so DevTools renders a
   `NACK NO_SUBSCRIBERS` on them neutrally.

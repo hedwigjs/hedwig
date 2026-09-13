@@ -4,224 +4,229 @@ import type {
   HistoryFilter,
   HistoryConfig,
   HistoryStats,
+  RetentionInfo,
 } from './MessageHistory.types';
 import { deepFreeze } from '../utils/deepFreeze';
 import { matchPattern } from '../utils/matchPattern';
 
+interface TopicBuffer<T extends string, P> {
+  kind: 'event' | 'state';
+  limit: number;
+  entries: HistoryEntry<T, P>[];
+}
+
 /**
- * MessageHistory - In-memory message history
+ * MessageHistory — retained messages, one bounded buffer per topic.
  *
- * Features:
- * - FIFO eviction when maxSize is reached
- * - TTL-based automatic cleanup
- * - Glob pattern matching for topics
- * - Immutable messages (deepFreeze)
- * - Efficient filtering
+ * What is retained is declared by the registry, not decided at the emit
+ * site: `retain(topic, limit)` is called once per topic that has
+ * `retention` in its contract (`state` topics with limit 1). A message on
+ * any other topic is not recorded. Because every topic has its own ring,
+ * a chatty topic can never evict another topic's messages.
+ *
+ * The host may cap event retention (`maxPerTopic`), expire it (`ttl`) or
+ * switch it off (`enabled: false`); `state` buffers ignore all three.
+ *
+ * Entries are frozen and carry a global sequence number, so queries across
+ * topics come back in emit order.
  */
 export class MessageHistory<T extends string, P extends Record<T, any>> {
-  #entries: HistoryEntry<T, P[T]>[] = [];
+  #buffers = new Map<string, TopicBuffer<T, P[T]>>();
   #sequence = 0;
-  #config: Required<HistoryConfig>;
+  readonly #enabled: boolean;
+  readonly #maxPerTopic: number | undefined;
+  readonly #ttl: number | undefined;
   #cleanupTimer?: ReturnType<typeof setInterval>;
 
-  constructor(config: HistoryConfig) {
-    // Apply defaults for optional fields
-    this.#config = {
-      enabled: config.enabled,
-      maxSize: config.maxSize ?? 1000,
-      ttl: config.ttl,
-    } as Required<HistoryConfig>;
+  constructor(config?: HistoryConfig) {
+    this.#enabled = config?.enabled ?? true;
+    this.#maxPerTopic = config?.maxPerTopic;
+    this.#ttl = config?.ttl;
+    if (this.#ttl !== undefined) this.#startCleanup();
+  }
 
-    // Start TTL cleanup if configured
-    if (this.#config.ttl !== undefined) {
-      this.#startCleanup();
-    }
+  /** Whether event retention is on (the host's `history.enabled`). */
+  get enabled(): boolean {
+    return this.#enabled;
   }
 
   /**
-   * Record a message to history
+   * Declare that `topic` keeps its last `limit` messages. Events are subject
+   * to the host's `enabled` switch and `maxPerTopic` cap; a `state` topic
+   * always keeps exactly one value.
    */
-  record(message: Message<T, P[T]>): void {
-    const entry: HistoryEntry<T, P[T]> = {
+  retain(topic: string, limit: number, kind: 'event' | 'state' = 'event'): void {
+    if (kind === 'event' && !this.#enabled) return;
+    let effective = kind === 'state' ? 1 : Math.floor(limit);
+    if (kind === 'event' && this.#maxPerTopic !== undefined) {
+      effective = Math.min(effective, this.#maxPerTopic);
+    }
+    if (!Number.isFinite(effective) || effective < 1) return;
+    const existing = this.#buffers.get(topic);
+    if (existing) {
+      existing.kind = kind;
+      existing.limit = effective;
+      this.#evict(existing);
+      return;
+    }
+    this.#buffers.set(topic, { kind, limit: effective, entries: [] });
+  }
+
+  /** Whether `topic` (exact name) retains messages. */
+  retains(topic: string): boolean {
+    return this.#buffers.has(topic);
+  }
+
+  /** Whether at least one retaining topic matches `pattern` (exact name or glob). */
+  retainsMatching(pattern: string): boolean {
+    for (const topic of this.#buffers.keys()) {
+      if (matchPattern(topic, pattern)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Record a message on its topic's buffer. Returns `false` (and records
+   * nothing) when the topic does not retain.
+   *
+   * Amortised O(1): the array is allowed to grow to twice the limit before
+   * the stale head is cut off in one splice; readers only ever look at the
+   * last `limit` entries (see {@link MessageHistory.live}).
+   */
+  record(message: Message<T, P[T]>): boolean {
+    const buffer = this.#buffers.get(message.topic);
+    if (!buffer) return false;
+    buffer.entries.push({
       message: deepFreeze(message),
       timestamp: message.timestamp,
       sequence: this.#sequence++,
-    };
+    });
+    if (buffer.entries.length >= buffer.limit * 2) this.#evict(buffer);
+    return true;
+  }
 
-    this.#entries.push(entry);
+  /** The entries a topic actually retains: the newest `limit` of its array. */
+  static live<T extends string, P>(buffer: TopicBuffer<T, P>): HistoryEntry<T, P>[] {
+    return buffer.entries.length > buffer.limit ? buffer.entries.slice(-buffer.limit) : buffer.entries;
+  }
 
-    // FIFO eviction if maxSize exceeded
-    if (this.#entries.length > this.#config.maxSize) {
-      this.#entries.shift();
-    }
+  /** The newest retained entry of `topic`, if any. */
+  last(topic: string): HistoryEntry<T, P[T]> | undefined {
+    const entries = this.#buffers.get(topic)?.entries;
+    return entries && entries.length > 0 ? entries[entries.length - 1] : undefined;
   }
 
   /**
-   * Query messages from history.
-   *
-   * Thin async wrapper over {@link querySync}, kept for API compatibility.
-   */
-  async query(filter?: HistoryFilter<T>): Promise<HistoryEntry<T, P[T]>[]> {
-    return this.querySync(filter);
-  }
-
-  /**
-   * Query messages from history, synchronously.
+   * Query retained messages across topics, synchronously.
    *
    * Replay uses this so the snapshot is taken on the subscriber's own
    * stack — before `on()` returns and before any live message emitted
-   * afterwards can land in the buffer. The returned array is a copy;
-   * entries recorded later (including by handlers invoked during replay)
-   * are not part of it.
+   * afterwards can land in a buffer. The returned array is a copy, in emit
+   * order (sequence); `limit` keeps the newest N.
    */
   querySync(filter?: HistoryFilter<T>): HistoryEntry<T, P[T]>[] {
-    let results = [...this.#entries];
+    let results: HistoryEntry<T, P[T]>[] = [];
+    const patterns = filter?.topics;
+    for (const [topic, buffer] of this.#buffers) {
+      if (patterns && patterns.length > 0 && !patterns.some((p) => matchPattern(topic, p))) continue;
+      results.push(...MessageHistory.live(buffer));
+    }
+    if (this.#buffers.size > 1) results.sort((a, b) => a.sequence - b.sequence);
 
-    // Filter by time range (since, until)
     if (filter?.since !== undefined) {
       results = results.filter((entry) => entry.timestamp >= filter.since!);
     }
     if (filter?.until !== undefined) {
       results = results.filter((entry) => entry.timestamp <= filter.until!);
     }
-
-    // Filter by topics (supports glob patterns)
-    if (filter?.topics && filter.topics.length > 0) {
-      results = results.filter((entry) =>
-        filter.topics!.some((pattern) => matchPattern(entry.message.topic, pattern)),
-      );
-    }
-
-    // Filter by sources
     if (filter?.sources && filter.sources.length > 0) {
       results = results.filter((entry) => filter.sources!.includes(entry.message.source));
     }
-
-    // Apply limit (last N messages)
     if (filter?.limit !== undefined && filter.limit > 0) {
       results = results.slice(-filter.limit);
     }
-
     return results;
   }
 
-  /**
-   * Clear messages from history
-   */
+  /** Thin async wrapper over {@link querySync}, kept for API compatibility. */
+  async query(filter?: HistoryFilter<T>): Promise<HistoryEntry<T, P[T]>[]> {
+    return this.querySync(filter);
+  }
+
+  /** Drop retained messages (all, or those matching `filter`). Buffers stay declared. */
   async clear(filter?: HistoryFilter<T>): Promise<void> {
-    if (!filter) {
-      // Clear all
-      this.#entries = [];
-      return;
+    for (const [topic, buffer] of this.#buffers) {
+      if (!filter) {
+        buffer.entries = [];
+        continue;
+      }
+      if (filter.topics && filter.topics.length > 0 && !filter.topics.some((p) => matchPattern(topic, p))) {
+        continue;
+      }
+      buffer.entries = buffer.entries.filter((entry) => {
+        if (filter.since !== undefined && entry.timestamp < filter.since) return true;
+        if (filter.until !== undefined && entry.timestamp > filter.until) return true;
+        if (filter.sources && filter.sources.length > 0 && !filter.sources.includes(entry.message.source)) {
+          return true;
+        }
+        return false;
+      });
     }
-
-    // Clear filtered entries
-    const toKeep = await this.#getInverseFilter(filter);
-    this.#entries = toKeep;
   }
 
-  /**
-   * Return a point-in-time snapshot of all entries (oldest → newest).
-   */
+  /** Every retained entry across topics, in emit order. */
   getSnapshot(): ReadonlyArray<HistoryEntry<T, P[T]>> {
-    return [...this.#entries];
+    return this.querySync();
   }
 
-  /**
-   * Get history statistics
-   */
+  /** Declared topics with their fill, plus totals. */
   getStats(): HistoryStats {
-    const count = this.#entries.length;
-
-    if (count === 0) {
-      return { count: 0 };
+    const topics: RetentionInfo[] = [];
+    let count = 0;
+    let oldest: number | undefined;
+    let newest: number | undefined;
+    for (const [topic, buffer] of this.#buffers) {
+      const live = MessageHistory.live(buffer);
+      topics.push({ topic, kind: buffer.kind, limit: buffer.limit, count: live.length });
+      count += live.length;
+      for (const entry of live) {
+        if (oldest === undefined || entry.timestamp < oldest) oldest = entry.timestamp;
+        if (newest === undefined || entry.timestamp > newest) newest = entry.timestamp;
+      }
     }
-
-    const oldestTimestamp = this.#entries[0]?.timestamp;
-    const newestTimestamp = this.#entries[count - 1]?.timestamp;
-    const memoryUsage = this.#estimateMemoryUsage();
-
-    return {
-      count,
-      oldestTimestamp,
-      newestTimestamp,
-      memoryUsage,
-    };
+    topics.sort((a, b) => a.topic.localeCompare(b.topic));
+    if (count === 0) return { count: 0, topics };
+    return { count, topics, oldestTimestamp: oldest, newestTimestamp: newest, memoryUsage: count * 100 };
   }
 
-  /**
-   * Cleanup and destroy
-   */
+  /** Stop the TTL timer and forget every buffer. */
   destroy(): void {
     if (this.#cleanupTimer) {
       clearInterval(this.#cleanupTimer);
       this.#cleanupTimer = undefined;
     }
-    this.#entries = [];
+    this.#buffers.clear();
   }
 
-  // ========================================
-  // PRIVATE METHODS
-  // ========================================
-
-  /**
-   * Get entries that should be kept (inverse of filter)
-   */
-  async #getInverseFilter(filter: HistoryFilter<T>): Promise<HistoryEntry<T, P[T]>[]> {
-    return this.#entries.filter((entry) => {
-      // Keep if outside time range
-      if (filter.since !== undefined && entry.timestamp < filter.since) {
-        return true;
-      }
-      if (filter.until !== undefined && entry.timestamp > filter.until) {
-        return true;
-      }
-
-      // Keep if topic doesn't match
-      if (filter.topics && filter.topics.length > 0) {
-        const matches = filter.topics.some((pattern) =>
-          matchPattern(entry.message.topic, pattern),
-        );
-        if (!matches) {
-          return true;
-        }
-      }
-
-      // Keep if source doesn't match
-      if (filter.sources && filter.sources.length > 0) {
-        if (!filter.sources.includes(entry.message.source)) {
-          return true;
-        }
-      }
-
-      // Don't keep (should be cleared)
-      return false;
-    });
+  #evict(buffer: TopicBuffer<T, P[T]>): void {
+    if (buffer.entries.length > buffer.limit) {
+      buffer.entries.splice(0, buffer.entries.length - buffer.limit);
+    }
   }
 
-  /**
-   * Start periodic TTL-based cleanup
-   */
+  /** Periodic TTL cleanup — event buffers only; state values never expire. */
   #startCleanup(): void {
-    const ttl = this.#config.ttl;
+    const ttl = this.#ttl;
     if (!ttl) return;
-
-    // Run cleanup every TTL/2 (or every minute, whichever is smaller)
     const interval = Math.min(ttl / 2, 60000);
-
     this.#cleanupTimer = setInterval(() => {
-      const now = Date.now();
-      const cutoff = now - ttl;
-
-      // Remove messages older than TTL
-      this.#entries = this.#entries.filter((entry) => entry.timestamp > cutoff);
+      const cutoff = Date.now() - ttl;
+      for (const buffer of this.#buffers.values()) {
+        if (buffer.kind !== 'event') continue;
+        buffer.entries = buffer.entries.filter((entry) => entry.timestamp > cutoff);
+      }
     }, interval);
-  }
-
-  /**
-   * Estimate memory usage (rough approximation)
-   */
-  #estimateMemoryUsage(): number {
-    return this.#entries.length * 100;
+    // Never keep a process alive just to expire retained messages.
+    (this.#cleanupTimer as { unref?: () => void }).unref?.();
   }
 }

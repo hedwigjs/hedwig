@@ -69,7 +69,7 @@ export type { Inspector } from './core/observability/inspect/Inspector';
 export type { VersionInfo } from './core/observability/inspect/Inspector.types';
 
 // ── History inspection ──────────────────────────────────────────────────
-export type { HistoryEntry, HistoryStats } from './core/history/MessageHistory.types';
+export type { HistoryEntry, HistoryStats, RetentionInfo } from './core/history/MessageHistory.types';
 
 // ── Remote clients & transports ─────────────────────────────────────────
 export type {

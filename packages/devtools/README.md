@@ -46,8 +46,8 @@ import { MessageBrokerDevTools } from '@hedwigjs/devtools';
 const isDev = process.env.NODE_ENV !== 'production';
 
 initBroker({
-  history: { enabled: true, maxSize: 200 },
-  debug: isDev, // arms the Debug tab's broker.$debug.send
+  topics: TOPIC_KINDS, // from the contracts registry — kinds and retention
+  debug: isDev,        // arms the Debug tab's broker.$debug.send
 });
 
 function App() {
@@ -94,7 +94,7 @@ Six tabs, each backed by one channel of broker observability.
 | ----------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | **Messages**      | `useBeforeSendHook` (pending) + `useAfterSendHook` (delivered / failed)                            | Live feed of every message. Topic, kind (`event` / `request` / `state` from the registry, else multicast / unicast), source, target, status, latency, delivery result, JSON payload preview. A state topic's initial delivery shows a `retained` pill. |
 | **Clients**       | `inspect.getClients()` + `subscription.*`, `client.*` and `remote.*` system events                 | Tree of every registered client and its subscriptions. Remote clients carry a `remote · <transport>` badge; their detail shows identity mode, `accepts` and forwarded topics. |
-| **Replay Buffer** | `inspect.getHistory()`                                                                             | Contents of the broker's history ring. Only populated when `initBroker({ history: { enabled: true } })`.    |
+| **Replay Buffer** | `inspect.getHistoryStats()` + `inspect.getHistory()`                                              | What the registry retains, per topic: events with `retention: { last: N }` and the last value of every `state` topic, each as `count of limit` with the messages underneath. Empty only when no contract declares retention. |
 | **System Events** | `$systemEvents.onAny`                                                                              | Unified log of lifecycle signals: `client.*`, `subscription.*`, `remote.*`, plus `*.rejected` security signals, `remote.frame.rejected` edge drops and `remote.send.failed` wire failures. |
 | **Debug**         | `broker.$debug.send`                                                                               | Compose and send a synthetic message through the full pipeline. Impersonate any source; multicast or unicast. Requires `initBroker({ debug: true })`; otherwise the tab explains how to arm the channel. |
 

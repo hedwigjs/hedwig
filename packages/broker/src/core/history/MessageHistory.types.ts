@@ -35,17 +35,28 @@ export interface HistoryFilter<T extends string = string> {
 }
 
 /**
- * Configuration for message history
+ * Host-side limits on retention — see `BrokerConfig.history`.
  */
 export interface HistoryConfig {
-  /** Enable message history */
-  enabled: boolean;
+  /** Event retention on/off (default true). State retention is unaffected. */
+  enabled?: boolean;
 
-  /** Maximum number of messages to keep in memory (default: 1000) */
-  maxSize?: number;
+  /** Upper bound on any event's declared `retention.last`. */
+  maxPerTopic?: number;
 
-  /** Time to live for messages (ms). undefined = no expiration */
+  /** Time to live (ms) for retained event messages. State values never expire. */
   ttl?: number;
+}
+
+/** One retained topic as declared by the registry, with its current fill. */
+export interface RetentionInfo {
+  topic: string;
+  /** `state` keeps one value for every new subscriber; `event` keeps `limit` for `replay`. */
+  kind: 'event' | 'state';
+  /** How many messages the topic keeps (after the host's `maxPerTopic` cap). */
+  limit: number;
+  /** How many it holds right now. */
+  count: number;
 }
 
 /**
@@ -73,8 +84,11 @@ export interface ReplayOptions {
  * Statistics about message history
  */
 export interface HistoryStats {
-  /** Total number of messages in history */
+  /** Total number of messages retained across all topics */
   count: number;
+
+  /** Every topic that retains messages (declared in the registry), with its fill. */
+  topics: ReadonlyArray<RetentionInfo>;
 
   /** Unix timestamp (ms) of oldest message */
   oldestTimestamp?: number;

@@ -16,7 +16,7 @@ import type { Topic, TopicPayloads } from '@my-org/topics';
 export const bus = createClient<Topic, TopicPayloads>('cart');
 
 bus.on('cart.add-item.v1', (msg) => { /* … */ });
-await bus.emit('cart.snapshot.v1', snapshot, { history: true });
+await bus.emit('cart.snapshot.v1', snapshot); // a `state` topic — the runtime keeps the last one
 const result = await bus.request<'checkout.start.v1', CheckoutStartResponse>('checkout', 'checkout.start.v1', payload);
 ```
 

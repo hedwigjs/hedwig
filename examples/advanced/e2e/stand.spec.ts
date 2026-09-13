@@ -102,6 +102,23 @@ test.describe('reference stand', () => {
     await expect(page.getByRole('status')).toContainText('E2E notification');
     const notification = (await seen(page)).find((m) => m.topic === 'notification.show.v1' && m.via === 'notifications-backend');
     expect(notification).toMatchObject({ source: 'notifications-backend', status: 'ACK' });
+
+    // The contract declares `retention: { last: 10 }`, so the frame that came
+    // over the WebSocket is kept for subscribers that arrive later.
+    const retained = await page.evaluate((slot) => {
+      const core = new Function(`return ${slot}`)() as {
+        inspect: {
+          getHistory(): Array<{ message: { topic: string; data: { title: string }; via?: string } }>;
+          getHistoryStats(): { topics: Array<{ topic: string; kind: string; limit: number; count: number }> };
+        };
+      };
+      return {
+        titles: core.inspect.getHistory().filter((e) => e.message.topic === 'notification.show.v1').map((e) => e.message.data.title),
+        policy: core.inspect.getHistoryStats().topics.find((t) => t.topic === 'notification.show.v1'),
+      };
+    }, BROKER_SLOT);
+    expect(retained.titles).toContain('E2E notification');
+    expect(retained.policy).toMatchObject({ kind: 'event', limit: 10 });
   });
 
   test('a request to the backend over WebSocket is answered', async ({ page }) => {
@@ -161,5 +178,10 @@ test.describe('reference stand', () => {
 
     await page.getByRole('tab', { name: /Messages/ }).click();
     await expect(page.locator('[data-mbdt-kind="state"]').first()).toBeVisible();
+
+    // Replay Buffer shows what the registry declared, with the current fill.
+    await page.getByRole('tab', { name: /Replay Buffer/ }).click();
+    await expect(page.locator('[data-mbdt-retained="cart.snapshot.v1"]')).toContainText(/1 of 1/);
+    await expect(page.locator('[data-mbdt-retained="notification.show.v1"]')).toContainText(/of 10/);
   });
 });

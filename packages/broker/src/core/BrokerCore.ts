@@ -25,7 +25,7 @@ import type {
   BrokerConfig,
   MessageOptions,
   RequestOptions,
-  RetainedState,
+  TopicPolicy,
 } from './types';
 import type { BrokerLogger } from './logger/BrokerLogger.types';
 import type { BrokerClient } from './client/BrokerClient';
@@ -73,13 +73,12 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   #clientRegistry = new ClientRegistry<T, P>();
   #systemEvents: SystemEvents<T, P>;
   #backpressure: BackpressureHandler;
-  #history?: MessageHistory<T, P>;
-  #replay?: SubscriptionReplay<T, P>;
+  #history: MessageHistory<T, P>;
+  #replay: SubscriptionReplay<T, P>;
   #remotes = new Map<string, RemoteClientImpl>();
   /** Topics declared `state` in the contracts registry (`BrokerConfig.topics`). */
   #stateTopics = new Set<string>();
   /** Last multicast per `state` topic. */
-  #retained = new Map<string, RetainedState<T, P[T]>>();
   #inspect: Inspector<T, P>;
 
   /**
@@ -116,8 +115,17 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     this.logger = createSafeLogger(config?.logger ?? defaultLogger);
     this.#debugEnabled = config?.debug === true;
     this.#requestTimeout = config?.request?.timeout;
-    for (const [topic, kind] of Object.entries(config?.topics ?? {})) {
-      if (kind === 'state') this.#stateTopics.add(topic);
+    // Retention comes from the registry: a `state` topic keeps its last
+    // value, an event keeps `retention.last` messages. The host only caps.
+    this.#history = new MessageHistory(config?.history);
+    for (const [topic, entry] of Object.entries(config?.topics ?? {})) {
+      const policy: TopicPolicy = typeof entry === 'string' ? { kind: entry } : entry;
+      if (policy.kind === 'state') {
+        this.#stateTopics.add(topic);
+        this.#history.retain(topic, 1, 'state');
+      } else if (policy.kind === 'event' && policy.retention && policy.retention.last > 0) {
+        this.#history.retain(topic, policy.retention.last, 'event');
+      }
     }
 
     // System events first: the hooks registry reports failures through them.
@@ -130,10 +138,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     this.#backpressure = new BackpressureHandler(this.logger);
     this.#router = new Router(this.#subscriptions, this.logger);
 
-    if (config?.history?.enabled) {
-      this.#history = new MessageHistory(config.history);
-      this.#replay = new SubscriptionReplay(this.#history, this.#hooks, this.logger);
-    }
+    this.#replay = new SubscriptionReplay(this.#history, this.#hooks, this.logger);
 
     // Inspector is a read-only facade over internal state: it receives references,
     // not callbacks, so future snapshot methods can be added without changing wiring.
@@ -141,8 +146,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       this.#clientRegistry,
       this.#subscriptions,
       this.#remotes,
-      this.#retained,
-      () => this.#history,
+      this.#history,
       () => ({
         version: this.version,
         duplicateCopies: this.#duplicateCopies,
@@ -268,10 +272,13 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     this.#systemEvents.emit('subscription.added', { clientId, topic, options });
 
     if (options?.replay) {
-      if (!this.#replay) {
-        this.logger.warn('broker.replay.history_disabled', { clientId, topic });
+      if (!this.#history.retainsMatching(topic)) {
+        // Nothing to replay: the topic's contract declares no `retention`
+        // (or the host switched event retention off). Not an error — the
+        // subscription is live — but worth a line in the log.
+        this.logger.warn('broker.replay.no_retention', { clientId, topic });
       } else {
-        // Synchronous: the handler sees every matching history entry before
+        // Synchronous: the handler sees every matching retained entry before
         // `on()` returns, so nothing emitted afterwards can overtake or
         // duplicate them. See SubscriptionReplay for the reasoning.
         this.#replay.start(clientId, topic, wrappedHandler, options.replay);
@@ -280,8 +287,8 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       // A `state` topic hands its retained value to every new subscriber,
       // synchronously and before `on()` returns, exactly like a replay of
       // one entry. Nothing to do when nothing was emitted yet.
-      const last = this.#retained.get(topic);
-      if (last) this.#deliverRetained(clientId, last, wrappedHandler);
+      const last = this.#history.last(topic);
+      if (last) this.#deliverRetained(clientId, last.message, wrappedHandler);
     }
     return subscriptionId;
   }
@@ -292,8 +299,8 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
    * `REPLAY_DELIVERED` so observers see it, `beforeSend` skipped (the
    * message was validated when it was emitted).
    */
-  #deliverRetained(clientId: ClientID, last: RetainedState<T, P[T]>, handler: MessageHandler): void {
-    const replayed = deepFreeze({ ...last.message, replayed: true } as Message<T, P[T]>);
+  #deliverRetained(clientId: ClientID, last: Readonly<Message<T, P[T]>>, handler: MessageHandler): void {
+    const replayed = deepFreeze({ ...last, replayed: true } as Message<T, P[T]>);
     const log = (error: unknown) => {
       this.logger.error('replay.handler.failed', { messageId: replayed.id, topic: replayed.topic, clientId, error });
     };
@@ -367,7 +374,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
    * @param sender - Client ID of sender
    * @param recipient - Target recipient: specific ClientID (unicast) or '*' (multicast)
    * @param data - Message payload
-   * @param options - Message options (history)
+   * @param options - Message options (currently none)
    * @returns Promise resolving to RoutingResult with delivery status
    *
    * @internal Called by {@link BrokerClient.emit} / {@link BrokerClient.request}.
@@ -454,10 +461,10 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
    *  2. Run `beforeSend` hooks. If any hook denies, short-circuit with
    *     NACK(HOOK_REJECTED) — still fire `afterSend` so observers see the
    *     rejection.
-   *  3. Record to history — ONLY for local-origin messages that explicitly
-   *     opt in via `options.history`. External (injected) messages are
-   *     skipped: the sender-side broker has already recorded them; recording
-   *     again here would duplicate on every hop between realms.
+   *  3. Retain — only on topics whose contract declares it (`retention` on
+   *     an event, or a `state` topic). Origin does not matter: a frame from
+   *     a remote client is retained like a local emit, because replay is
+   *     local and never goes back on the wire.
    *  4. Route: unicast → one recipient, multicast (`*`) → all subscribers.
    *  5. Run `afterSend` hooks with the delivery result.
    *  6. Forward to remote clients — ONLY for local-origin multicasts.
@@ -530,20 +537,14 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       return result;
     }
 
-    // Stage 3: Record to history — every local multicast, unless the emitter
-    // opted this one out with `history: false`. A request is never recorded:
-    // replaying a command would re-run it with no requester to answer.
-    // External frames are not recorded either (see spec/delivery-semantics).
-    if (this.#history && !fromExternal && recipient === '*' && options?.history !== false) {
-      this.#history.record(frozenMessage);
-    }
-
-    // Stage 3b: retain `state` — the last local multicast per state topic,
-    // handed to every later subscriber. Independent of the history buffer.
-    if (!fromExternal && recipient === '*' && this.#stateTopics.has(topic)) {
-      const at = Date.now();
-      this.#retained.set(topic, { topic, message: frozenMessage, at });
-      this.#systemEvents.emit('state.retained', { topic, messageId: frozenMessage.id, at });
+    // Stage 3: retain. Only topics whose contract declares it keep anything:
+    // an event with `retention.last`, or a `state` topic (its last value).
+    // The origin does not matter — a frame from a remote client is retained
+    // like a local emit, because replay never goes back on the wire. A
+    // request is never recorded: replaying a command would re-run it with
+    // no requester to answer.
+    if (recipient === '*' && this.#history.record(frozenMessage) && this.#stateTopics.has(topic)) {
+      this.#systemEvents.emit('state.retained', { topic, messageId: frozenMessage.id, at: Date.now() });
     }
 
     // Stage 4: route. A unicast whose recipient is a remote client goes out
@@ -834,9 +835,8 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     this.#remotes.clear();
 
     this.#hooks.clear();
-    this.#retained.clear();
     this.#stateTopics.clear();
-    this.#history?.destroy();
+    this.#history.destroy();
     // Release per-handler backpressure strategies via the cleared entries,
     // then run destroy() as a belt-and-suspenders sweep for anything that
     // somehow escaped bookkeeping.

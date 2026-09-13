@@ -4,9 +4,9 @@ import type { BrokerLogger } from './logger/BrokerLogger.types';
 import type { Message } from './types';
 
 /**
- * `state` topics (RFC-0003 step 7): the runtime retains the last local
- * multicast per state topic and hands it to every new subscriber on `on()`,
- * flagged `replayed`, without any `history: true` at the emit site.
+ * `state` topics (RFC-0003 step 7): the runtime retains the last multicast
+ * per state topic — local or from a remote client — and hands it to every
+ * new subscriber on `on()`, flagged `replayed`. Nothing at the emit site.
  */
 
 type Topics = 'cart.snapshot.v1' | 'a.v1' | 'r.v1';
@@ -95,12 +95,16 @@ describe('state topics — retention', () => {
     core.destroy();
   });
 
-  test('a hook-rejected emit and an inbound frame from a remote are not retained', async () => {
+  test('a hook-rejected emit is not retained', async () => {
     const { core } = setup();
     core.useBeforeSendHook((m) => (m.source === 'intruder' ? { allowed: false, message: 'no' } : { allowed: true }));
     await new BrokerClient('intruder', core).emit('cart.snapshot.v1', { items: 99 });
     expect(core.inspect.getRetained()).toHaveLength(0);
+    core.destroy();
+  });
 
+  test('a state value that arrives from a remote client is retained too — a late local subscriber gets it', async () => {
+    const { core, events } = setup();
     let inbound: ((f: unknown) => void) | null = null;
     core.createRemoteClient('tabs', {
       transport: { send: jest.fn(), onMessage: (cb) => ((inbound = cb), () => {}), destroy: jest.fn() },
@@ -109,13 +113,22 @@ describe('state topics — retention', () => {
     });
     inbound!({ topic: 'cart.snapshot.v1', source: 'cart-store', target: '*', data: { items: 5 } });
     await tick();
-    expect(core.inspect.getRetained()).toHaveLength(0);
+
+    const retained = core.inspect.getRetained();
+    expect(retained).toHaveLength(1);
+    expect(retained[0]!.message).toMatchObject({ topic: 'cart.snapshot.v1', data: { items: 5 }, via: 'tabs' });
+    expect(events.filter(([n]) => n === 'state.retained')).toHaveLength(1);
+
+    const seen: Message[] = [];
+    new BrokerClient('late', core).on('cart.snapshot.v1', (m) => void seen.push(m));
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ data: { items: 5 }, replayed: true });
     core.destroy();
   });
 
   test('with a replay option the history replay wins and the retained value is not delivered twice', async () => {
-    const { core } = setup({ history: { enabled: true } });
-    await new BrokerClient('cart-store', core).emit('cart.snapshot.v1', { items: 4 }, { history: true });
+    const { core } = setup();
+    await new BrokerClient('cart-store', core).emit('cart.snapshot.v1', { items: 4 });
     const seen: Message[] = [];
     new BrokerClient('late', core).on('cart.snapshot.v1', (m) => void seen.push(m), { replay: { limit: 1 } });
     expect(seen).toHaveLength(1);
@@ -136,13 +149,11 @@ describe('state topics — retention', () => {
     expect(core.inspect.getRetained()).toHaveLength(0);
   });
 
-  test('a request is never recorded to history', async () => {
-    const { core } = setup({ history: { enabled: true } });
+  test('a request is never recorded, even on a topic that declares retention', async () => {
+    const { core } = setup({ topics: { 'cart.snapshot.v1': 'state', 'a.v1': 'event', 'r.v1': { kind: 'request', retention: { last: 5 } } } });
     const receiver = new BrokerClient('receiver', core);
     receiver.on('r.v1', () => 'ok');
-    // The type no longer allows `history` on a request; a stray flag from
-    // untyped code is ignored at runtime.
-    await new BrokerClient('s', core).request('receiver', 'r.v1', { q: 'x' }, { history: true } as never);
+    await new BrokerClient('s', core).request('receiver', 'r.v1', { q: 'x' });
     expect(core.inspect.getHistory()).toHaveLength(0);
     core.destroy();
   });

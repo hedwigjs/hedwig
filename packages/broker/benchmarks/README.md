@@ -29,8 +29,8 @@ so the memory bench can trigger `global.gc()` for reliable deltas.
 | 06 | `subscribe-cost` | `on` + `off` cycle, backpressure wrapper cost, HMR churn |
 | 07 | `backpressure-overhead` | throttle / debounce / rateLimit vs plain handler |
 | 08 | `multi-topic-isolation` | Dispatch stays O(1) across 10 → 10,000 unrelated topics |
-| 09 | `history-append` | `emit({ history: true })` at buffer sizes 100 / 1,000 / 10,000 |
-| 10 | `replay-cost` | `on({ replay: { limit: N } })` at 10 / 100 / 1,000 historical messages |
+| 09 | `history-append` | emit on a topic with `retention: { last: N }` at N = 100 / 1,000 / 10,000 |
+| 10 | `replay-cost` | `on({ replay: { limit: N } })` at 10 / 100 / 1,000 retained messages |
 | 11 | `remote-roundtrip` | Remote client forward + loopback inject overhead (proxy for cross-tab) |
 | 12 | `memory-footprint` | Heap Δ per subscription at 1k / 10k / 50k |
 | 13 | `devtools-attach` | Overhead of the observer shape DevTools installs |

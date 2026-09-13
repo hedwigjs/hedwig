@@ -14,8 +14,10 @@
  * - `request` — команда одному адресату через `request()`, с ответом
  *               (`response`). Через провод уходит как `kind: 'request'`.
  * - `state`   — текущее значение: «в корзине две позиции». Рантайм хранит
- *               последнее значение и отдаёт его новому подписчику сразу;
- *               флаг `history: true` на каждый вызов больше не нужен.
+ *               последнее значение и отдаёт его новому подписчику сразу.
+ *
+ * Событие может объявить `retention: { last: N }` — тогда рантайм держит
+ * последние N сообщений для опоздавших (`on(topic, fn, { replay })`).
  */
 export type TopicKind = "event" | "request" | "state";
 
@@ -50,6 +52,12 @@ interface TopicContractBase<TName extends string = string, TPayload = unknown> {
 export interface EventTopicContract<TName extends string = string, TPayload = unknown>
   extends TopicContractBase<TName, TPayload> {
   kind?: "event";
+  /**
+   * Сколько последних сообщений этого топика рантайм держит для подписчиков,
+   * которые придут позже: `on(topic, fn, { replay: { limit } })`. Без поля
+   * ничего не хранится — большинству событий это и не нужно.
+   */
+  retention?: { last: number };
 }
 
 /**
@@ -75,6 +83,16 @@ export interface StateTopicContract<TName extends string = string, TPayload = un
   kind: "state";
   /** Политика хранения. По умолчанию `{ last: 1 }`. */
   retention?: { last: 1 };
+}
+
+/**
+ * Запись реестра для рантайма: то, что кодогенерация кладёт в `TOPIC_KINDS`
+ * и хост передаёт в `initBroker({ topics: TOPIC_KINDS })` — род топика и,
+ * если объявлено, retention.
+ */
+export interface TopicPolicy {
+  kind: TopicKind;
+  retention?: { last: number };
 }
 
 export type TopicContract<

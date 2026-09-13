@@ -2,15 +2,28 @@ import { BrokerCore } from './BrokerCore';
 import { BrokerClient } from './client/BrokerClient';
 import type { Message } from './types';
 
-// Helper to create test broker with history enabled
-const createBrokerWithHistory = (maxSize = 100, ttl?: number) => {
-  return new BrokerCore({
-    history: {
-      enabled: true,
-      maxSize,
-      ttl,
-    },
-  });
+// The topics these tests emit, declared with `retention: { last: limit }`
+// the way a registry does it (`initBroker({ topics: TOPIC_KINDS })`). A
+// broker retains nothing on its own — retention is the contract's call.
+const RETAINED_TOPICS = [
+  'cart.add.v1',
+  'event.v1',
+  'feed.v1',
+  'message.v1',
+  'notification.new.v1',
+  'notification.v1',
+  'other.event.v1',
+  'search.v1',
+  'test.event.v1',
+  'user.login.v1',
+  'user.logout.v1',
+] as const;
+
+const retained = (limit: number) =>
+  Object.fromEntries(RETAINED_TOPICS.map((topic) => [topic, { kind: 'event' as const, retention: { last: limit } }]));
+
+const createBrokerWithHistory = (limit = 100, ttl?: number) => {
+  return new BrokerCore({ topics: retained(limit), history: { ttl } });
 };
 
 // Helper for sleep
@@ -23,51 +36,83 @@ const flushMicrotasks = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('BrokerCore - Message History & Replay', () => {
   describe('History recording', () => {
-    test('should use default maxSize when not specified', () => {
+    test('getHistoryStats lists every declared topic with its limit before anything is emitted', () => {
       const broker = new BrokerCore({
-        history: { enabled: true }, // No maxSize specified
+        topics: { 'feed.v1': { kind: 'event', retention: { last: 5 } }, 'cart.snapshot.v1': 'state', 'cmd.v1': 'request' },
       });
 
       const stats = broker.inspect.getHistoryStats();
       expect(stats.enabled).toBe(true);
-      // Should use default maxSize of 1000
+      expect(stats.count).toBe(0);
+      expect(stats.topics).toEqual([
+        { topic: 'cart.snapshot.v1', kind: 'state', limit: 1, count: 0 },
+        { topic: 'feed.v1', kind: 'event', limit: 5, count: 0 },
+      ]);
     });
 
     test('should record events when history is enabled', async () => {
       const broker = createBrokerWithHistory();
       const client = new BrokerClient('test-client', broker);
 
-      await client.emit('test.event.v1', { value: 1 }, { history: true });
+      await client.emit('test.event.v1', { value: 1 });
 
       const stats = broker.inspect.getHistoryStats();
       expect(stats.enabled).toBe(true);
       expect(stats.count).toBe(1);
     });
 
-    test('records every multicast event by default — no flag at the emit site', async () => {
-      const broker = createBrokerWithHistory();
+    test('records only topics whose contract declares retention; the emit site has no say', async () => {
+      const broker = new BrokerCore({
+        topics: { 'feed.v1': { kind: 'event', retention: { last: 10 } }, 'ui.menu-item-opened.v1': 'event' },
+      });
       const client = new BrokerClient('test-client', broker);
 
-      await client.emit('test.event.v1', { value: 1 });
-      await client.emit('other.event.v1', { value: 2 });
+      await client.emit('feed.v1', { value: 1 });
+      await client.emit('ui.menu-item-opened.v1', { value: 2 });
+      await client.emit('undeclared.v1', { value: 3 });
 
-      const topics = broker.inspect.getHistory().map((e) => e.message.topic);
-      expect(topics).toEqual(['test.event.v1', 'other.event.v1']);
+      expect(broker.inspect.getHistory().map((e) => e.message.topic)).toEqual(['feed.v1']);
     });
 
-    test('`history: false` keeps a message out of the buffer', async () => {
-      const broker = createBrokerWithHistory();
-      const client = new BrokerClient('test-client', broker);
+    test('a frame from a remote client is retained like a local emit when the topic declares retention', async () => {
+      const broker = new BrokerCore({ topics: { 'notification.show.v1': { kind: 'event', retention: { last: 10 } } } });
+      let inbound: ((frame: unknown) => void) | null = null;
+      broker.createRemoteClient('backend', {
+        transport: { send: jest.fn(), onMessage: (cb) => ((inbound = cb), () => {}), destroy: jest.fn() },
+        identity: { mode: 'fixed' },
+        accepts: ['notification.*'],
+      });
+      inbound!({ topic: 'notification.show.v1', source: 'backend', target: '*', data: { title: 'hi' } });
+      await sleep(0);
 
-      await client.emit('kept.v1', { value: 1 });
-      await client.emit('noisy.v1', { value: 2 }, { history: false });
-      await client.emit('kept.v1', { value: 3 });
+      const entries = broker.inspect.getHistory();
+      expect(entries).toHaveLength(1);
+      expect(entries[0]!.message).toMatchObject({ topic: 'notification.show.v1', source: 'backend', data: { title: 'hi' } });
 
-      const topics = broker.inspect.getHistory().map((e) => e.message.topic);
-      expect(topics).toEqual(['kept.v1', 'kept.v1']);
+      const seen: unknown[] = [];
+      new BrokerClient('late', broker).on('notification.show.v1', (m) => void seen.push(m.data), { replay: { limit: 10 } });
+      expect(seen).toEqual([{ title: 'hi' }]);
     });
 
-    test('a late subscriber replays events that were emitted without any flag', async () => {
+    test('the host can cap a declared limit (maxPerTopic) or switch event retention off (enabled: false)', async () => {
+      const capped = new BrokerCore({ topics: retained(100), history: { maxPerTopic: 2 } });
+      const c = new BrokerClient('c', capped);
+      for (let i = 1; i <= 4; i++) await c.emit('feed.v1', { n: i });
+      expect(capped.inspect.getHistory().map((e) => (e.message.data as { n: number }).n)).toEqual([3, 4]);
+      expect(capped.inspect.getHistoryStats().topics.find((t) => t.topic === 'feed.v1')?.limit).toBe(2);
+
+      const off = new BrokerCore({
+        topics: { ...retained(100), 'cart.snapshot.v1': 'state' },
+        history: { enabled: false },
+      });
+      const o = new BrokerClient('o', off);
+      await o.emit('feed.v1', { n: 1 });
+      await o.emit('cart.snapshot.v1', { items: 1 });
+      expect(off.inspect.getHistoryStats().enabled).toBe(false);
+      expect(off.inspect.getHistory().map((e) => e.message.topic)).toEqual(['cart.snapshot.v1']);
+    });
+
+    test('a late subscriber replays what the topic retained — nothing to remember at the emit site', async () => {
       const broker = createBrokerWithHistory();
       const producer = new BrokerClient('producer', broker);
       await producer.emit('feed.v1', { n: 1 });
@@ -80,24 +125,24 @@ describe('BrokerCore - Message History & Replay', () => {
       expect(seen).toEqual([1, 2]);
     });
 
-    test('should not record events when history is disabled', async () => {
-      const broker = new BrokerCore(); // No history config
+    test('a broker without a registry retains nothing', async () => {
+      const broker = new BrokerCore();
       const client = new BrokerClient('test-client', broker);
 
-      await client.emit('test.event.v1', { value: 1 }, { history: true });
+      await client.emit('test.event.v1', { value: 1 });
 
       const stats = broker.inspect.getHistoryStats();
-      expect(stats.enabled).toBe(false);
       expect(stats.count).toBe(0);
+      expect(stats.topics).toEqual([]);
     });
 
     test('should record multiple events', async () => {
       const broker = createBrokerWithHistory();
       const client = new BrokerClient('test-client', broker);
 
-      await client.emit('user.login.v1', { userId: '123' }, { history: true });
-      await client.emit('cart.add.v1', { itemId: '456' }, { history: true });
-      await client.emit('user.logout.v1', {}, { history: true });
+      await client.emit('user.login.v1', { userId: '123' });
+      await client.emit('cart.add.v1', { itemId: '456' });
+      await client.emit('user.logout.v1', {});
 
       const stats = broker.inspect.getHistoryStats();
       expect(stats.count).toBe(3);
@@ -113,7 +158,7 @@ describe('BrokerCore - Message History & Replay', () => {
         message: 'Blocked',
       }));
 
-      await client.emit('test.event.v1', { value: 1 }, { history: true });
+      await client.emit('test.event.v1', { value: 1 });
 
       // Blocked event should NOT be in history
       const stats = broker.inspect.getHistoryStats();
@@ -122,8 +167,8 @@ describe('BrokerCore - Message History & Replay', () => {
   });
 
   describe('Replay on subscribe - sticky event behavior', () => {
-    test('should warn when replay requested but history disabled', async () => {
-      const broker = new BrokerCore(); // No history
+    test('should warn when replay is requested on a topic that retains nothing', async () => {
+      const broker = new BrokerCore(); // no registry, so no retention
       const client = new BrokerClient('test-client', broker);
 
       const consoleWarn = jest.spyOn(console, 'warn').mockImplementation();
@@ -133,7 +178,7 @@ describe('BrokerCore - Message History & Replay', () => {
       });
 
       expect(consoleWarn).toHaveBeenCalledWith(
-        '[broker] broker.replay.history_disabled',
+        '[broker] broker.replay.no_retention',
         { clientId: 'test-client', topic: 'test.event.v1' },
       );
 
@@ -146,7 +191,7 @@ describe('BrokerCore - Message History & Replay', () => {
       const client2 = new BrokerClient('client2', broker);
 
       // Client1 emits event
-      await client1.emit('user.login.v1', { userId: '123' }, { history: true });
+      await client1.emit('user.login.v1', { userId: '123' });
 
       // Client2 subscribes later with replay
       const handler = jest.fn();
@@ -172,11 +217,11 @@ describe('BrokerCore - Message History & Replay', () => {
       const client2 = new BrokerClient('client2', broker);
 
       // Client1 emits multiple events
-      await client1.emit('notification.new.v1', { id: 1 }, { history: true });
-      await client1.emit('notification.new.v1', { id: 2 }, { history: true });
-      await client1.emit('notification.new.v1', { id: 3 }, { history: true });
-      await client1.emit('notification.new.v1', { id: 4 }, { history: true });
-      await client1.emit('notification.new.v1', { id: 5 }, { history: true });
+      await client1.emit('notification.new.v1', { id: 1 });
+      await client1.emit('notification.new.v1', { id: 2 });
+      await client1.emit('notification.new.v1', { id: 3 });
+      await client1.emit('notification.new.v1', { id: 4 });
+      await client1.emit('notification.new.v1', { id: 5 });
 
       // Client2 subscribes later with replay last 3
       const handler = jest.fn();
@@ -199,9 +244,9 @@ describe('BrokerCore - Message History & Replay', () => {
       const client2 = new BrokerClient('client2', broker);
 
       // Emit different event types
-      await client1.emit('user.login.v1', { userId: '123' }, { history: true });
-      await client1.emit('cart.add.v1', { itemId: '456' }, { history: true });
-      await client1.emit('user.logout.v1', {}, { history: true });
+      await client1.emit('user.login.v1', { userId: '123' });
+      await client1.emit('cart.add.v1', { itemId: '456' });
+      await client1.emit('user.logout.v1', {});
 
       // Subscribe to only user.login.v1
       const handler = jest.fn();
@@ -221,7 +266,7 @@ describe('BrokerCore - Message History & Replay', () => {
       const client1 = new BrokerClient('client1', broker);
       const client2 = new BrokerClient('client2', broker);
 
-      await client1.emit('other.event.v1', { value: 1 }, { history: true });
+      await client1.emit('other.event.v1', { value: 1 });
 
       const handler = jest.fn();
       client2.on('user.login.v1', handler, {
@@ -241,14 +286,14 @@ describe('BrokerCore - Message History & Replay', () => {
       const client2 = new BrokerClient('client2', broker);
 
       // Emit event 1
-      await client1.emit('message.v1', { id: 1 }, { history: true });
+      await client1.emit('message.v1', { id: 1 });
       await sleep(10);
       const since = Date.now();
       await sleep(10);
 
       // Emit event 2 & 3 after timestamp
-      await client1.emit('message.v1', { id: 2 }, { history: true });
-      await client1.emit('message.v1', { id: 3 }, { history: true });
+      await client1.emit('message.v1', { id: 2 });
+      await client1.emit('message.v1', { id: 3 });
 
       // Subscribe with since filter
       const handler = jest.fn();
@@ -270,14 +315,14 @@ describe('BrokerCore - Message History & Replay', () => {
       const client2 = new BrokerClient('client2', broker);
 
       // Emit events 1 & 2
-      await client1.emit('message.v1', { id: 1 }, { history: true });
-      await client1.emit('message.v1', { id: 2 }, { history: true });
+      await client1.emit('message.v1', { id: 1 });
+      await client1.emit('message.v1', { id: 2 });
       await sleep(10);
       const until = Date.now();
       await sleep(10);
 
       // Emit event 3 after timestamp
-      await client1.emit('message.v1', { id: 3 }, { history: true });
+      await client1.emit('message.v1', { id: 3 });
 
       // Subscribe with until filter
       const handler = jest.fn();
@@ -298,19 +343,19 @@ describe('BrokerCore - Message History & Replay', () => {
       const client1 = new BrokerClient('client1', broker);
       const client2 = new BrokerClient('client2', broker);
 
-      await client1.emit('message.v1', { id: 1 }, { history: true }); // Before since
+      await client1.emit('message.v1', { id: 1 }); // Before since
       await sleep(10);
       const since = Date.now();
       await sleep(10);
 
-      await client1.emit('message.v1', { id: 2 }, { history: true }); // In range
-      await client1.emit('message.v1', { id: 3 }, { history: true }); // In range
-      await client1.emit('message.v1', { id: 4 }, { history: true }); // In range
+      await client1.emit('message.v1', { id: 2 }); // In range
+      await client1.emit('message.v1', { id: 3 }); // In range
+      await client1.emit('message.v1', { id: 4 }); // In range
       await sleep(10);
       const until = Date.now();
       await sleep(10);
 
-      await client1.emit('message.v1', { id: 5 }, { history: true }); // After until
+      await client1.emit('message.v1', { id: 5 }); // After until
 
       // Subscribe with filters
       const handler = jest.fn();
@@ -333,8 +378,8 @@ describe('BrokerCore - Message History & Replay', () => {
       const client1 = new BrokerClient('client1', broker);
       const client2 = new BrokerClient('client2', broker);
 
-      await client1.emit('event.v1', { id: 1 }, { history: true });
-      await client1.emit('event.v1', { id: 2 }, { history: true });
+      await client1.emit('event.v1', { id: 1 });
+      await client1.emit('event.v1', { id: 2 });
 
       const handler = jest.fn();
       client2.on('event.v1', handler, { replay: { limit: 2 } });
@@ -350,9 +395,9 @@ describe('BrokerCore - Message History & Replay', () => {
       const client1 = new BrokerClient('client1', broker);
       const client2 = new BrokerClient('client2', broker);
 
-      await client1.emit('event.v1', { id: 1 }, { history: true });
-      await client1.emit('event.v1', { id: 2 }, { history: true });
-      await client1.emit('event.v1', { id: 3 }, { history: true });
+      await client1.emit('event.v1', { id: 1 });
+      await client1.emit('event.v1', { id: 2 });
+      await client1.emit('event.v1', { id: 3 });
 
       const seen: Array<{ id: number; replayed: boolean }> = [];
       client2.on(
@@ -363,7 +408,7 @@ describe('BrokerCore - Message History & Replay', () => {
         { replay: { limit: 3 } },
       );
       // Same tick as the subscription — this used to overtake the replay.
-      const live = client1.emit('event.v1', { id: 4 }, { history: true });
+      const live = client1.emit('event.v1', { id: 4 });
       await live;
       await flushMicrotasks();
 
@@ -380,8 +425,8 @@ describe('BrokerCore - Message History & Replay', () => {
       const store = new BrokerClient('store', broker);
       const lateView = new BrokerClient('late-view', broker);
 
-      await store.emit('event.v1', { id: 1 }, { history: true });
-      await store.emit('event.v1', { id: 2 }, { history: true });
+      await store.emit('event.v1', { id: 1 });
+      await store.emit('event.v1', { id: 2 });
 
       const seen: Array<{ id: number; replayed: boolean }> = [];
       lateView.on(
@@ -391,7 +436,7 @@ describe('BrokerCore - Message History & Replay', () => {
         },
         { replay: { limit: 1 } },
       );
-      await store.emit('event.v1', { id: 3 }, { history: true });
+      await store.emit('event.v1', { id: 3 });
       await flushMicrotasks();
 
       expect(seen).toEqual([
@@ -406,7 +451,7 @@ describe('BrokerCore - Message History & Replay', () => {
       const client2 = new BrokerClient('client2', broker);
       const client3 = new BrokerClient('client3', broker);
 
-      await client1.emit('event.v1', { id: 1 }, { history: true });
+      await client1.emit('event.v1', { id: 1 });
 
       const seenBy2: number[] = [];
       const seenBy3: number[] = [];
@@ -416,7 +461,7 @@ describe('BrokerCore - Message History & Replay', () => {
         (m) => {
           seenBy2.push(m.data.id);
           // Re-entrant emit while replay is in progress.
-          if (m.replayed) void client2.emit('event.v1', { id: 100 }, { history: true });
+          if (m.replayed) void client2.emit('event.v1', { id: 100 });
         },
         { replay: { limit: 10 } },
       );
@@ -429,7 +474,7 @@ describe('BrokerCore - Message History & Replay', () => {
     test('an async handler that rejects during replay is logged, not left as an unhandled rejection', async () => {
       const logged: Array<Record<string, unknown> | undefined> = [];
       const broker = new BrokerCore({
-        history: { enabled: true },
+        topics: retained(10),
         logger: {
           warn: () => {},
           error: (event, meta) => {
@@ -440,7 +485,7 @@ describe('BrokerCore - Message History & Replay', () => {
       const client1 = new BrokerClient('client1', broker);
       const client2 = new BrokerClient('client2', broker);
 
-      await client1.emit('event.v1', { id: 1 }, { history: true });
+      await client1.emit('event.v1', { id: 1 });
 
       client2.on('event.v1', async () => {
         throw new Error('async boom');
@@ -464,7 +509,7 @@ describe('BrokerCore - Message History & Replay', () => {
       const client1 = new BrokerClient('client1', broker);
       const client2 = new BrokerClient('client2', broker);
 
-      await client1.emit('event.v1', { id: 1 }, { history: true });
+      await client1.emit('event.v1', { id: 1 });
 
       const feed: string[] = [];
       broker.useAfterSendHook((m, result) => {
@@ -487,8 +532,8 @@ describe('BrokerCore - Message History & Replay', () => {
       const client2 = new BrokerClient('client2', broker);
 
       // Emit events
-      await client1.emit('event.v1', { id: 1 }, { history: true });
-      await client1.emit('event.v1', { id: 2 }, { history: true });
+      await client1.emit('event.v1', { id: 1 });
+      await client1.emit('event.v1', { id: 2 });
 
       // Subscribe with replay + throttle
       const handler = jest.fn();
@@ -509,7 +554,7 @@ describe('BrokerCore - Message History & Replay', () => {
       const client1 = new BrokerClient('client1', broker);
       const client2 = new BrokerClient('client2', broker);
 
-      await client1.emit('search.v1', { query: 'abc' }, { history: true });
+      await client1.emit('search.v1', { query: 'abc' });
 
       const handler = jest.fn();
       client2.on('search.v1', handler, {
@@ -534,9 +579,9 @@ describe('BrokerCore - Message History & Replay', () => {
       const client3 = new BrokerClient('client3', broker);
 
       // Emit events
-      await client1.emit('event.v1', { id: 1 }, { history: true });
-      await client1.emit('event.v1', { id: 2 }, { history: true });
-      await client1.emit('event.v1', { id: 3 }, { history: true });
+      await client1.emit('event.v1', { id: 1 });
+      await client1.emit('event.v1', { id: 2 });
+      await client1.emit('event.v1', { id: 3 });
 
       // Both clients subscribe with replay
       const handler2 = jest.fn();
@@ -562,7 +607,7 @@ describe('BrokerCore - Message History & Replay', () => {
       const receiver2 = new BrokerClient('receiver2', broker);
 
       // Send multicast event (recipient = '*')
-      await sender.emit('notification.v1', { message: 'Hello all' }, { history: true });
+      await sender.emit('notification.v1', { message: 'Hello all' });
 
       // Both receivers subscribe with replay
       const handler1 = jest.fn();
@@ -583,7 +628,7 @@ describe('BrokerCore - Message History & Replay', () => {
       const sender = new BrokerClient('sender', broker);
       const receiver = new BrokerClient('receiver', broker);
 
-      await sender.emit('event.v1', { value: 123 }, { history: true });
+      await sender.emit('event.v1', { value: 123 });
 
       const handler = jest.fn();
       receiver.on('event.v1', handler, { replay: { limit: 1 } });
@@ -617,7 +662,7 @@ describe('BrokerCore - Message History & Replay', () => {
       const client1 = new BrokerClient('client1', broker);
       const client2 = new BrokerClient('client2', broker);
 
-      await client1.emit('event.v1', { id: 1 }, { history: true });
+      await client1.emit('event.v1', { id: 1 });
 
       const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
@@ -646,7 +691,7 @@ describe('BrokerCore - Message History & Replay', () => {
       const broker = createBrokerWithHistory();
       const client = new BrokerClient('test-client', broker);
 
-      await client.emit('event.v1', { id: 1 }, { history: true });
+      await client.emit('event.v1', { id: 1 });
 
       expect(broker.inspect.getHistoryStats().count).toBe(1);
 
@@ -669,7 +714,7 @@ describe('BrokerCore - Message History & Replay', () => {
       const broker = createBrokerWithHistory(100, 1000); // 1 second TTL
       const client = new BrokerClient('test-client', broker);
 
-      await client.emit('event.v1', { id: 1 }, { history: true });
+      await client.emit('event.v1', { id: 1 });
 
       expect(broker.inspect.getHistoryStats().count).toBe(1);
 

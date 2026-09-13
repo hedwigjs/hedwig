@@ -327,24 +327,22 @@ step; it goes away once DevTools and the reference stand have moved.
   lockfile, not a workspace) that renders the built bundle under React
   18.3 in jsdom; wired into `npm test` so the guard runs in CI.
 
-### History records by default
+### Retention declared in the contract
 
-- With `history.enabled`, every multicast event is recorded; the
-  per-message `history: true` flag is no longer required (still
-  accepted), and `history: false` opts a single message out. Requests
-  and frames from remote clients are still never recorded. The DevTools
-  Replay Buffer tab on the stand was always empty because no emit site
-  set the flag after the move to `state` topics; now it shows what a
-  late subscriber would replay.
-
-### Bound hooks in the adapters
-
-- `@hedwigjs/react`: `bindHooks(bus)` returns `useTopic`, `useStateTopic`
-  and `useRequest` with the client closed over, so a module that owns one
-  client at module scope calls `useStateTopic('cart.snapshot.v1')` with
-  no client argument. `@hedwigjs/vue`: the same as `bindComposables`.
-  The stand's cart, menu and notifications MFEs export their bound hooks
-  from `clients/bus.ts`.
+- An event contract may declare `retention: { last: N }`; the runtime
+  keeps the last N messages of that topic in a buffer of its own and a
+  subscriber replays them with `on(topic, fn, { replay })`. `state`
+  topics keep their last value the same way. Events without `retention`
+  are not kept — most do not need to be. The registry's `TOPIC_KINDS`
+  carries the policy, so the host only passes it; `history` in
+  `initBroker` is reduced to caps (`maxPerTopic`, `ttl`, `enabled`).
+- The `history` flag on `emit()` is gone, and origin no longer matters:
+  a frame from a remote client is retained like a local emit, for events
+  and state alike (a state value pushed by the backend now reaches a
+  late local subscriber).
+- DevTools Replay Buffer shows the declared table — `notification.show.v1
+  · event · 3 of 10` — instead of an undifferentiated ring. On the stand
+  `notification.show.v1` keeps 10 and the chat transcript topics keep 50.
 
 ### Reference stand
 

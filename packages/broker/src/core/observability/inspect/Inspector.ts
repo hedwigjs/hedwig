@@ -25,23 +25,20 @@ export class Inspector<T extends string, P extends Record<T, any>> {
   #clients: ClientRegistry<T, P>;
   #subscriptions: Subscriptions<T>;
   #remotes: ReadonlyMap<string, RemoteClientImpl>;
-  #retained: ReadonlyMap<string, RetainedState<T, P[T]>>;
-  #getHistory: () => MessageHistory<T, P> | undefined;
+  #history: MessageHistory<T, P>;
   #getVersionInfo: () => VersionInfo;
 
   constructor(
     clients: ClientRegistry<T, P>,
     subscriptions: Subscriptions<T>,
     remotes: ReadonlyMap<string, RemoteClientImpl>,
-    retained: ReadonlyMap<string, RetainedState<T, P[T]>>,
-    getHistory: () => MessageHistory<T, P> | undefined,
+    history: MessageHistory<T, P>,
     getVersionInfo: () => VersionInfo,
   ) {
     this.#clients = clients;
     this.#subscriptions = subscriptions;
     this.#remotes = remotes;
-    this.#retained = retained;
-    this.#getHistory = getHistory;
+    this.#history = history;
     this.#getVersionInfo = getVersionInfo;
   }
 
@@ -101,29 +98,31 @@ export class Inspector<T extends string, P extends Record<T, any>> {
 
   /**
    * The retained (last) value of every `state` topic that has been
-   * emitted at least once. Independent of the history buffer.
+   * emitted at least once.
    */
   getRetained(): ReadonlyArray<RetainedState<T, P[T]>> {
-    return Array.from(this.#retained.values());
+    const out: RetainedState<T, P[T]>[] = [];
+    for (const info of this.#history.getStats().topics) {
+      if (info.kind !== 'state') continue;
+      const last = this.#history.last(info.topic);
+      if (last) out.push({ topic: last.message.topic, message: last.message, at: last.timestamp });
+    }
+    return out;
   }
 
   /**
-   * All messages currently stored in the replay buffer (oldest → newest).
-   * Returns an empty array when history is not enabled.
+   * Every retained message across topics (oldest → newest): events with
+   * `retention` in their contract and the last value of each `state` topic.
    */
   getHistory(): ReadonlyArray<HistoryEntry> {
-    const history = this.#getHistory();
-    if (!history) return [];
-    return history.getSnapshot();
+    return this.#history.getSnapshot();
   }
 
   /**
-   * Replay buffer statistics. Always returns `{ enabled: false, count: 0 }`
-   * when history is not enabled.
+   * Retention as declared by the registry, with each topic's fill, plus
+   * whether the host left event retention on (`history.enabled`).
    */
   getHistoryStats(): HistoryStats & { enabled: boolean } {
-    const history = this.#getHistory();
-    if (!history) return { count: 0, enabled: false };
-    return { ...history.getStats(), enabled: true };
+    return { ...this.#history.getStats(), enabled: this.#history.enabled };
   }
 }

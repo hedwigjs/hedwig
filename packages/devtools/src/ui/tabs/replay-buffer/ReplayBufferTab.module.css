@@ -104,3 +104,24 @@
   color: #374151;
   line-height: 1.6;
 }
+
+/* Kind pills — same palette as the Messages tab. */
+.kindEvent {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #164e63;
+  color: #67e8f9;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.kindState {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #3f3f0b;
+  color: #fde68a;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}

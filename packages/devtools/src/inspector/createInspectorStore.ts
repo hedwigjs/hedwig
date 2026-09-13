@@ -1,7 +1,6 @@
 import { VERSION, isCompatibleVersion } from "@hedwigjs/broker";
 import type { Message, RoutingResult, HistoryEntry } from "@hedwigjs/broker";
-import type {
-  InspectorSnapshot,
+import type { InspectorSnapshot,
   MessageLogEntry,
   ClientEntry,
   ClientSubscriptionEntry,
@@ -9,8 +8,7 @@ import type {
   MessageBrokerForDevTools,
   SystemEventLogEntry,
   SystemEventName,
-  VersionStatus,
-} from "./types";
+  VersionStatus, RetentionSnapshot } from "./types";
 import { serializeDataPreview, snapshotFrom, EMPTY_MESSAGES_FILTER } from "./types";
 import { createMessageRingBuffer, createRingBuffer } from "./ringLog";
 import { matchesAnyPattern } from "./matchPattern";
@@ -128,6 +126,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
   let clientsBase: ClientBase[] = [];
   let messagesFilter: MessagesFilter = { ...EMPTY_MESSAGES_FILTER };
   let historyEntries: ReadonlyArray<HistoryEntry> = [];
+  let historyStats: RetentionSnapshot = { count: 0, topics: [], enabled: true };
   let snapshotCache: InspectorSnapshot = snapshotFrom(
     [],
     totalSeen,
@@ -136,6 +135,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
     [],
     messagesFilter,
     [],
+    historyStats,
     [],
   );
 
@@ -172,6 +172,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
       clients,
       messagesFilter,
       historyEntries,
+      historyStats,
       systemEventsRing.toArray(),
     );
     listeners.forEach((l) => l());
@@ -239,6 +240,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
 
   function refreshHistory(broker: MessageBrokerForDevTools) {
     historyEntries = broker.inspect.getHistory();
+    historyStats = broker.inspect.getHistoryStats();
     emit();
   }
 

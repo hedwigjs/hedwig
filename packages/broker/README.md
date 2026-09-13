@@ -54,10 +54,9 @@ type TopicPayloads = {
   'cart.get-total.v1': void;
 };
 
-// 1. Host bootstrap — once, in the shell.
-initBroker<Topic, TopicPayloads>({
-  history: { enabled: true, maxSize: 200 },
-});
+// 1. Host bootstrap — once, in the shell. TOPIC_KINDS comes from the
+//    contracts registry: topic kinds and what is retained for late joiners.
+initBroker<Topic, TopicPayloads>({ topics: TOPIC_KINDS });
 
 // 2. Per-module client — typed.
 const cartClient = createClient<Topic, TopicPayloads>('cart');
@@ -139,14 +138,16 @@ import {
 
 ```ts
 {
-  history?: {
-    enabled: boolean;
-    maxSize?: number; // default 1000
-    ttl?: number;     // ms, undefined = no expiration
+  topics?: TopicKindMap; // TOPIC_KINDS from the registry: kinds, and what each topic retains
+  history?: {            // host-side caps only — what is retained comes from `topics`
+    enabled?: boolean;   // default true; false switches event retention off (state unaffected)
+    maxPerTopic?: number;// cap on any contract's `retention.last`
+    ttl?: number;        // ms, expire retained events; state values never expire
   };
   logger?: BrokerLogger; // see "Logger" below
   debug?: boolean;       // arms broker.$debug.send — default false
-  topics?: TopicKindMap; // TOPIC_KINDS from the registry: `state` topics are retained
+  hooks?: { failMode?: 'open' | 'closed' }; // default 'closed' — see "When a hook throws"
+  request?: { timeout?: number };           // default timeout for every request()
 }
 ```
 
@@ -605,53 +606,84 @@ bus.emit('cart.add-item.v1', …);                   // compile error: a request
 ```
 
 The runtime learns the kinds from `initBroker({ topics: TOPIC_KINDS })`
-and treats **state** topics specially: the last local multicast on each
-is retained and delivered to every new subscriber synchronously inside
-`on()`, flagged `replayed: true` (MQTT's retained message). No
-`history: true` at the emit site, no `replay` option at the subscriber;
-pass `{ retained: false }` to `on()` for live updates only. Retained
-values are independent of the history buffer, listed by
-`inspect.getRetained()`, and announced as `state.retained` on
-`$systemEvents`. Requests are never recorded to history —
+and treats **state** topics specially: the last multicast on each —
+local or from a remote client — is kept and delivered to every new
+subscriber synchronously inside `on()`, flagged `replayed: true` (MQTT's
+retained message). Nothing at the emit site, no `replay` option at the
+subscriber; pass `{ retained: false }` to `on()` for live updates only.
+Retained values are listed by `inspect.getRetained()` and announced as
+`state.retained` on `$systemEvents`. Requests are never recorded —
 `RequestOptions` is `{ timeout }`.
 
 ---
 
 ## Message history & replay
 
-The broker keeps an in-memory ring buffer of recent events. Enable it
-once in `initBroker` and every multicast event is recorded — nothing to
-remember at the emit site. A subscriber opts in to replay on `on()`.
+Some events are worth keeping for a subscriber that arrives later: the
+last ten notifications, a chat transcript, an activity feed. The topic's
+**contract** says so — `retention: { last: N }` on an event — and the
+runtime keeps that many, in a buffer of its own per topic. Nothing to
+remember at the emit site, nothing to configure in the host: the
+registry's `TOPIC_KINDS` already carries it. Events without `retention`
+are not kept at all; most events do not need to be.
+
+```ts
+// registry: domains/notification/show.v1.ts
+export default {
+  name: 'notification.show.v1',
+  kind: 'event',
+  retention: { last: 10 },
+  …
+} satisfies TopicContract;
+
+// host — as always
+initBroker({ topics: TOPIC_KINDS });
+
+// producer emits as usual — the runtime keeps the last 10
+void backend.emit('notification.show.v1', { kind: 'info', title });
+
+// late subscriber replays them, then goes live
+panel.on(
+  'notification.show.v1',
+  (msg) => showToast(msg.data),
+  { replay: { limit: 10 } },
+);
+```
+
+Per-topic buffers mean a chatty topic can never push another topic's
+messages out. A subscriber's `replay.limit` is bounded by the contract's
+`last`. Replay on a topic that retains nothing is not an error — the
+subscription is live — but the runtime logs `broker.replay.no_retention`
+so the omission is visible.
+
+Not kept, ever: requests (replaying a command would re-run it with
+nobody waiting for the answer). Kept regardless of origin: a frame that
+arrived from a remote client is retained like a local emit, because
+replay is local and never goes back on the wire (see
+[delivery semantics](../../docs/content/spec/delivery-semantics.md)).
+
+The host can only limit what the registry asked for:
 
 ```ts
 initBroker({
-  history: { enabled: true, maxSize: 500, ttl: 60_000 }, // 1 min TTL
+  topics: TOPIC_KINDS,
+  history: {
+    maxPerTopic: 100,  // cap any contract's `last`
+    ttl: 60_000,       // expire retained events after a minute
+    enabled: false,    // switch event retention off entirely (state is unaffected)
+  },
 });
-
-// Producer emits as usual — the event is recorded.
-void feedClient.emit('feed.item.v1', { id, title });
-
-// Late subscriber replays the most recent 10 items, then goes live.
-panelClient.on(
-  'feed.item.v1',
-  (msg) => appendItem(msg.data),
-  { replay: { limit: 10 } },
-);
-
-// Noisy or oversized? Keep this one out of the buffer.
-void pointerClient.emit('pointer.moved.v1', { x, y }, { history: false });
 ```
 
-Not recorded, ever: requests (replaying a command would re-run it with
-nobody waiting for the answer) and frames that arrived from a remote
-client (the buffer is local to this realm — see
-[delivery semantics](../../docs/content/spec/delivery-semantics.md)).
-The DevTools **Replay Buffer** tab shows exactly what a late subscriber
-would get.
+The DevTools **Replay Buffer** tab lists every retaining topic with its
+limit and current fill — `notification.show.v1 · event · 3 of 10` — so
+what a late subscriber would get is never a guess. `inspect.getHistory()`
+returns the retained entries, `inspect.getHistoryStats()` the table.
 
-If all you need is "the latest value for late joiners", declare the
-topic as `kind: 'state'` instead — see [Topic kinds and state](#topic-kinds-and-state).
-Retained state and the history buffer are independent.
+If all you need is "the latest value for late joiners", that is a
+`state` topic (above): one value, handed to every new subscriber without
+any option. Retention and state are the same mechanism with different
+numbers.
 
 Replayed messages carry `replayed: true` — handlers can tell historical
 traffic apart from live traffic. Replay is best-effort against a
@@ -823,8 +855,8 @@ cartClient.on('cart.get-total.v1', () => computeTotal());
 ### Late-joining subscriber gets last state
 
 ```ts
-// Producer:
-void cartClient.emit('cart.snapshot.v1', snapshot, { history: true });
+// Producer — `cart.snapshot.v1` is a `state` topic, the runtime keeps the last one:
+void cartClient.emit('cart.snapshot.v1', snapshot);
 
 // Late subscriber gets the most recent snapshot immediately:
 cartClient.on(

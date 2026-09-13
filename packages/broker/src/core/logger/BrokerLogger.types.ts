@@ -10,7 +10,7 @@ export type BrokerLogEvent =
   | 'broker.version_incompatible'
   | 'broker.subscribe.after_destroy'
   | 'broker.client.register.after_destroy'
-  | 'broker.replay.history_disabled'
+  | 'broker.replay.no_retention'
   | 'facade.createClient.reset'
   // Debug channel
   | 'debug.disabled'

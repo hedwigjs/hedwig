@@ -57,11 +57,15 @@ producer frame; a handler that must be idempotent keys on it. The same
 pair reaching two tabs through `broadcast-channel` is the intended
 fan-out, not a duplicate.
 
-## History
+## Retention
 
-External frames are not recorded in the receiving realm's history buffer;
-the producing realm recorded them (if it chose to). Recording them again
-would duplicate on every hop.
+What a realm keeps is declared by its registry (`retention` on an event
+contract, `kind: "state"` for a current value), not by the sender and not
+per frame. Origin does not matter: a frame received from a remote client
+is retained in the receiving realm exactly like a local emit, so a late
+local subscriber can replay it. Retention never re-sends anything on the
+wire — replay and retained-state delivery are local (`replayed: true`) —
+so a frame kept in several realms is not a duplicate on any hop.
 
 ## Hooks
 

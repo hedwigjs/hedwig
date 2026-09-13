@@ -148,7 +148,30 @@ function readKind(contract, content) {
         `set \`kind: "request"\` or remove it.`
     );
   }
-  return { kind: kind ?? "event", explicit: kind !== null };
+  const retentionMatch = content.match(/^\s*retention\s*:\s*\{\s*last\s*:\s*(\d+)\s*\}/m);
+  const retention = retentionMatch ? Number(retentionMatch[1]) : null;
+  const resolved = kind ?? "event";
+  if (retention !== null) {
+    if (resolved === "request") {
+      throw new Error(
+        `src/domains/${contract.relPath}: \`retention\` is not meaningful on a request — ` +
+          `a command is never replayed.`
+      );
+    }
+    if (resolved === "state" && retention !== 1) {
+      throw new Error(
+        `src/domains/${contract.relPath}: a state topic keeps exactly its last value — ` +
+          `\`retention: { last: 1 }\` or omit it.`
+      );
+    }
+    if (!Number.isInteger(retention) || retention < 1) {
+      throw new Error(
+        `src/domains/${contract.relPath}: \`retention.last\` must be a positive integer ` +
+          `(got ${retentionMatch[1]}).`
+      );
+    }
+  }
+  return { kind: resolved, explicit: kind !== null, retention: resolved === "event" ? retention : null };
 }
 
 async function validateNameMatchesPath(contract) {
@@ -171,9 +194,10 @@ async function validateNameMatchesPath(contract) {
     );
   }
 
-  const { kind, explicit } = readKind(contract, content);
+  const { kind, explicit, retention } = readKind(contract, content);
   contract.kind = kind;
   contract.kindExplicit = explicit;
+  contract.retention = retention;
 }
 
 function detectDuplicates(contracts) {
@@ -217,7 +241,7 @@ const HEADER = `// AUTO-GENERATED. DO NOT EDIT.
 
 function renderEmpty() {
   return `${HEADER}
-import type { TopicKind } from "./lib/contract";
+import type { TopicKind, TopicPolicy } from "./lib/contract";
 
 export const registry = {} as const;
 export type Topic = keyof typeof registry;
@@ -229,7 +253,7 @@ export type StateTopic = never;
 export type TopicResponses = {};
 export type TopicContracts = {};
 export const TOPICS = {} as const;
-export const TOPIC_KINDS = {} as const satisfies Record<string, TopicKind>;
+export const TOPIC_KINDS = {} as const satisfies Record<string, TopicKind | TopicPolicy>;
 `;
 }
 
@@ -249,11 +273,15 @@ function renderRegistry(contracts) {
     .join("\n");
 
   const kindEntries = contracts
-    .map((c) => `  "${c.topic}": "${c.kind}",`)
+    .map((c) =>
+      c.retention
+        ? `  "${c.topic}": { kind: "${c.kind}", retention: { last: ${c.retention} } },`
+        : `  "${c.topic}": "${c.kind}",`
+    )
     .join("\n");
 
   return `${HEADER}
-import type { TopicKind } from "./lib/contract";
+import type { TopicKind, TopicPolicy } from "./lib/contract";
 
 ${imports}
 
@@ -297,10 +325,14 @@ export const TOPICS = {
 ${topicsEntries}
 } as const;
 
-/** Роды топиков для рантайма: \`initBroker({ topics: TOPIC_KINDS })\`. */
+/**
+ * Реестр для рантайма: \`initBroker({ topics: TOPIC_KINDS })\` — род каждого
+ * топика и, где объявлено, \`retention\` (сколько последних сообщений
+ * держать для опоздавших подписчиков).
+ */
 export const TOPIC_KINDS = {
 ${kindEntries}
-} as const satisfies Record<Topic, TopicKind>;
+} as const satisfies Record<Topic, TopicKind | TopicPolicy>;
 `;
 }
 
@@ -328,13 +360,16 @@ async function build() {
   const noun = count === 1 ? "topic" : "topics";
   const byKind = { event: 0, request: 0, state: 0 };
   let implicit = 0;
+  let retained = 0;
   for (const c of contracts) {
     byKind[c.kind] += 1;
     if (!c.kindExplicit) implicit += 1;
+    if (c.retention) retained += 1;
   }
   console.log(
     `✔ Generated src/index.generated.ts (${count} ${noun}: ` +
-      `${byKind.event} event, ${byKind.request} request, ${byKind.state} state)`
+      `${byKind.event} event, ${byKind.request} request, ${byKind.state} state` +
+      `${retained > 0 ? `; ${retained} event(s) with retention` : ""})`
   );
   if (implicit > 0) {
     console.warn(

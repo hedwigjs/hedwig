@@ -39,8 +39,8 @@ import type { BrokerLogger } from '../logger/BrokerLogger.types';
  * Handlers are invoked in order but not awaited (same fire-and-forget rule as
  * multicast); an async handler's rejection is caught and logged.
  *
- * The class is instantiated by BrokerCore only when history is enabled, so its
- * `history` dependency is always present (no null-checks inside).
+ * Which topics have anything to replay is decided by the registry
+ * (`retention` in the contract); a topic without it simply yields no entries.
  */
 export class SubscriptionReplay<T extends string, P extends Record<T, any>> {
   #history: MessageHistory<T, P>;
@@ -84,8 +84,8 @@ export class SubscriptionReplay<T extends string, P extends Record<T, any>> {
     }
 
     for (const entry of entries) {
-      // History holds local multicasts only (requests are never recorded),
-      // so every entry is for every new subscriber.
+      // History holds multicasts only (requests are never recorded), so
+      // every entry is for every new subscriber.
       const replayedMessage: Message<T, P[T]> = {
         ...entry.message,
         replayed: true,

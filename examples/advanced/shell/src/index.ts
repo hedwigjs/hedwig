@@ -18,10 +18,13 @@ import { installAclHooks } from './security/installAclHooks';
 // `createClient(id)` will get a client bound to this instance (MF `shared:
 // singleton` ensures the module is not duplicated across remotes).
 initBroker<Topic, TopicPayloads>({
-  history: { enabled: true, maxSize: 50 },
-  // Topic kinds from the contracts registry. `state` topics (the cart
-  // snapshot) are retained by the runtime and handed to every new
-  // subscriber — no `history: true` at the emit site, no `replay` on `on()`.
+  // The contracts registry as the runtime needs it: every topic's kind and,
+  // where a contract declares it, `retention`. `state` topics (the cart
+  // snapshot) keep their last value for every new subscriber; events with
+  // `retention.last` (notifications, the chat transcript) keep that many
+  // for subscribers that ask for `replay`. Nothing else to set up here —
+  // what is retained is the registry's call; the host could only cap it
+  // (`history.maxPerTopic`, `history.ttl`).
   topics: TOPIC_KINDS,
   // Arms `broker.$debug.send` for the DevTools Debug tab. Off by default
   // in the broker so a production bundle cannot inject spoofed traffic;

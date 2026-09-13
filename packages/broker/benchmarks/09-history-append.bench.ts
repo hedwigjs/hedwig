@@ -1,11 +1,12 @@
 /**
  * 09 · History append cost
  *
- * `emit(topic, data, { history: true })` records into the message history
- * ring buffer. Cost dominated by the ring-buffer write + deep-freeze of the
- * message envelope. Should be O(1) regardless of buffer size.
+ * An emit on a topic whose contract declares `retention: { last: N }` is
+ * recorded into that topic's ring. Cost dominated by the ring write + the
+ * deep-freeze of the envelope. Should be O(1) regardless of `N`.
  *
- * We compare emit-with-history against a plain emit, at three buffer sizes.
+ * We compare an emit on a retained topic against one on a plain topic, at
+ * three retention sizes.
  */
 
 import type { Client } from '../src/core/client/Client.types';
@@ -20,7 +21,7 @@ function baseline() {
   return {
     beforeAll: () => {
       destroyBroker();
-      initBroker<T, P>({ history: { enabled: true, maxSize: 100 } });
+      initBroker<T, P>({ topics: { 'm.evt.v1': 'event' } });
       sender = createClient<T, P>('sender');
       createClient<T, P>('receiver').on('m.evt.v1', () => {});
     },
@@ -39,15 +40,15 @@ function scenario(bufferSize: number) {
   return {
     beforeAll: () => {
       destroyBroker();
-      initBroker<T, P>({ history: { enabled: true, maxSize: bufferSize } });
+      initBroker<T, P>({ topics: { 'm.evt.v1': { kind: 'event', retention: { last: bufferSize } } } });
       sender = createClient<T, P>('sender');
       createClient<T, P>('receiver').on('m.evt.v1', () => {});
       for (let i = 0; i < bufferSize; i++) {
-        void sender!.emit('m.evt.v1', { i }, { history: true });
+        void sender!.emit('m.evt.v1', { i });
       }
     },
     fn: () => {
-      void sender!.emit('m.evt.v1', { i: 1 }, { history: true });
+      void sender!.emit('m.evt.v1', { i: 1 });
     },
     afterAll: () => {
       sender = null;
@@ -60,7 +61,7 @@ async function run() {
   const bench = newBench();
 
   const b = baseline();
-  bench.add('emit (no history) — baseline', b.fn, {
+  bench.add('emit (no retention) — baseline', b.fn, {
     beforeAll: b.beforeAll,
     afterAll: b.afterAll,
   });
@@ -68,7 +69,7 @@ async function run() {
   for (const size of [100, 1_000, 10_000]) {
     const sc = scenario(size);
     bench.add(
-      `emit + history: true (buffer=${size.toLocaleString()})`,
+      `emit on a retained topic (last=${size.toLocaleString()})`,
       sc.fn,
       { beforeAll: sc.beforeAll, afterAll: sc.afterAll },
     );

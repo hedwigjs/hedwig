@@ -169,9 +169,9 @@ describe('BrokerCore.$debug.send', () => {
     expect(result.status).toBe('NACK');
   });
 
-  test('records to history when options.history is true, like real emits', async () => {
+  test('is retained like a real emit when the topic declares retention', async () => {
     const withHistory = new BrokerCore<Topics, Payloads>({
-      history: { enabled: true, maxSize: 10 },
+      topics: { 'x.v1': { kind: 'event', retention: { last: 10 } } },
       debug: true,
     });
 
@@ -180,7 +180,6 @@ describe('BrokerCore.$debug.send', () => {
       'x.v1',
       '*',
       { value: 42 },
-      { history: true },
     );
 
     const historyEntries = withHistory.inspect.getHistory();

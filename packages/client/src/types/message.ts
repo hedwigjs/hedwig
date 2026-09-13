@@ -57,17 +57,13 @@ export type HandlerFn<T extends string, P = unknown> = (
   message: Message<T, P>,
 ) => void | any | Promise<void | any>;
 
-/** Options for `emit()`. */
-export interface MessageOptions {
-  /**
-   * Keep this message in the history buffer for replay. When history is
-   * enabled in `initBroker`, every multicast event is recorded; pass
-   * `false` to keep a noisy or oversized message out of the buffer.
-   * Ignored for requests and when history is disabled.
-   * @default true
-   */
-  history?: boolean;
-}
+/**
+ * Options for `emit()`. Currently none: whether a message is kept for late
+ * subscribers is decided by the topic's contract (`retention`), not at the
+ * emit site.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface MessageOptions {}
 
 /**
  * Options for `request()`. A request is never recorded to history — a
@@ -84,9 +80,13 @@ export interface RequestOptions {
   timeout?: number;
 }
 
-/** Options for replaying history on subscribe. */
+/**
+ * Options for replaying retained messages on subscribe. Only topics whose
+ * contract declares `retention` keep anything; `state` topics keep their
+ * last value.
+ */
 export interface ReplayOptions {
-  /** Maximum number of historical messages to replay. */
+  /** Maximum number of retained messages to replay (bounded by the topic's `retention.last`). */
   limit?: number;
   /** Replay messages starting from this timestamp (Unix ms). */
   since?: number;
@@ -115,8 +115,10 @@ export interface SubscriptionOptions {
   backpressure?: BackpressureOptions;
 
   /**
-   * Replay history when subscribing. Synchronous: matching entries reach
-   * the handler before `on()` returns, oldest first, flagged `replayed`.
+   * Replay the topic's retained messages when subscribing. Synchronous:
+   * matching entries reach the handler before `on()` returns, oldest first,
+   * flagged `replayed`. A topic without `retention` in its contract has
+   * nothing to replay (the runtime logs `broker.replay.no_retention`).
    */
   replay?: ReplayOptions;
 

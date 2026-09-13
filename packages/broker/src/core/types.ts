@@ -1,5 +1,5 @@
 import type { BrokerLogger } from './logger/BrokerLogger.types';
-import type { ClientID, Message, SubscriptionOptions, TopicKindMap } from '@hedwigjs/client';
+import type { ClientID, Message, SubscriptionOptions, TopicKindMap, TopicPolicy } from '@hedwigjs/client';
 
 // ========================================
 // PUBLIC TYPES — owned by @hedwigjs/client
@@ -18,6 +18,7 @@ export type {
   SubscriptionOptions,
   TopicKind,
   TopicKindMap,
+  TopicPolicy,
   TopicContractsMap,
 } from '@hedwigjs/client';
 
@@ -85,15 +86,25 @@ export interface RetainedState<T extends string = string, P = any> {
  * Configuration for Broker
  */
 export interface BrokerConfig {
-  /** Message history configuration */
+  /**
+   * Host-side limits on retention. *What* is retained comes from the
+   * contracts (`topics`): an event with `retention: { last: N }` keeps its
+   * last N messages, a `state` topic keeps its last value. Nothing here is
+   * required — a host that passes no `history` retains exactly what the
+   * registry declares.
+   */
   history?: {
-    /** Enable message history */
-    enabled: boolean;
+    /**
+     * Switch event retention off entirely (`replay` then finds nothing).
+     * `state` topics keep their last value regardless.
+     * @default true
+     */
+    enabled?: boolean;
 
-    /** Maximum number of messages to keep in memory (default: 1000) */
-    maxSize?: number;
+    /** Upper bound on any event's declared `retention.last`. */
+    maxPerTopic?: number;
 
-    /** Time to live for messages (ms). undefined = no expiration */
+    /** Time to live (ms) for retained event messages. State values never expire. */
     ttl?: number;
   };
 
@@ -150,11 +161,13 @@ export interface BrokerConfig {
   };
 
   /**
-   * Topic kinds from the contracts registry (`TOPIC_KINDS`). The runtime
-   * uses it for `state` topics: the last multicast on each is retained and
-   * delivered to every new subscriber on `on()` (see
-   * `SubscriptionOptions.retained`). Events and requests need nothing from
-   * the runtime; their kinds are enforced by the SDK's types.
+   * The contracts registry as the runtime needs it (`TOPIC_KINDS`): each
+   * topic's kind and, for events, an optional `retention`. `state` topics
+   * keep their last multicast and hand it to every new subscriber on `on()`
+   * (see `SubscriptionOptions.retained`); events with `retention.last`
+   * keep that many recent messages for `on(topic, fn, { replay })`.
+   * Requests need nothing from the runtime; their kind is enforced by the
+   * SDK's types. Keys are exact topic names.
    */
   topics?: TopicKindMap;
 }

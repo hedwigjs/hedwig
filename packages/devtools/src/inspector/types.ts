@@ -3,6 +3,7 @@ import type {
   RoutingResult,
   SubscriptionOptions,
   HistoryEntry,
+  HistoryStats,
   SystemEventsEmitter,
   Inspector,
 } from "@hedwigjs/broker";
@@ -47,7 +48,10 @@ export interface MessageBrokerForDevTools {
   };
 }
 
-export type { HistoryEntry };
+export type { HistoryEntry, HistoryStats };
+
+/** `inspect.getHistoryStats()`: every retaining topic with its limit and fill. */
+export type RetentionSnapshot = HistoryStats & { enabled: boolean };
 
 export type LogStatus = "pending" | "delivered" | "failed";
 
@@ -236,8 +240,10 @@ export interface InspectorSnapshot {
   version: VersionStatus;
   clients: ReadonlyArray<ClientEntry>;
   messagesFilter: MessagesFilter;
-  /** Current contents of the broker's replay buffer (oldest → newest). */
+  /** Every retained message (oldest → newest): events with `retention` and the last value of each `state` topic. */
   historyEntries: ReadonlyArray<HistoryEntry>;
+  /** What the registry declared: each retaining topic, its limit and current fill. */
+  historyStats: RetentionSnapshot;
   /** Recent system events (oldest → newest). Ring-buffered by `maxEvents`. */
   systemEvents: ReadonlyArray<SystemEventLogEntry>;
 }
@@ -262,6 +268,7 @@ function snapshotFrom(
   clients: ClientEntry[],
   messagesFilter: MessagesFilter,
   historyEntries: ReadonlyArray<HistoryEntry>,
+  historyStats: RetentionSnapshot,
   systemEvents: ReadonlyArray<SystemEventLogEntry>,
 ): InspectorSnapshot {
   return {
@@ -272,6 +279,7 @@ function snapshotFrom(
     clients,
     messagesFilter,
     historyEntries,
+    historyStats,
     systemEvents,
   };
 }

@@ -1,7 +1,7 @@
 // AUTO-GENERATED. DO NOT EDIT.
 // Run `npm run build` to regenerate.
 
-import type { TopicKind } from "./lib/contract";
+import type { TopicKind, TopicPolicy } from "./lib/contract";
 
 import CartAddItemV1 from "./domains/cart/add-item.v1";
 import CartDecrementV1 from "./domains/cart/decrement.v1";
@@ -90,22 +90,26 @@ export const TOPICS = {
   UI_MENU_ITEM_OPENED_V1: "ui.menu-item-opened.v1",
 } as const;
 
-/** Роды топиков для рантайма: `initBroker({ topics: TOPIC_KINDS })`. */
+/**
+ * Реестр для рантайма: `initBroker({ topics: TOPIC_KINDS })` — род каждого
+ * топика и, где объявлено, `retention` (сколько последних сообщений
+ * держать для опоздавших подписчиков).
+ */
 export const TOPIC_KINDS = {
   "cart.add-item.v1": "request",
   "cart.decrement.v1": "request",
   "cart.remove-item.v1": "request",
   "cart.snapshot.v1": "state",
-  "chat.message-sent.v1": "event",
+  "chat.message-sent.v1": { kind: "event", retention: { last: 50 } },
   "chat.reply-cancelled.v1": "event",
   "chat.reply-chunk.v1": "event",
-  "chat.reply-completed.v1": "event",
+  "chat.reply-completed.v1": { kind: "event", retention: { last: 50 } },
   "chat.reply-started.v1": "event",
   "checkout.cancelled.v1": "event",
   "checkout.completed.v1": "event",
   "checkout.start.v1": "request",
-  "notification.show.v1": "event",
+  "notification.show.v1": { kind: "event", retention: { last: 10 } },
   "notification.status.v1": "request",
   "ui.menu-item-closed.v1": "event",
   "ui.menu-item-opened.v1": "event",
-} as const satisfies Record<Topic, TopicKind>;
+} as const satisfies Record<Topic, TopicKind | TopicPolicy>;

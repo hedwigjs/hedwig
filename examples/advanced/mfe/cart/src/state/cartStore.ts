@@ -62,7 +62,7 @@ function computeTotals(items: CartItem[]) {
  *    (`RoutingResult.data`).
  *  - Текущее состояние — топик рода **state** `cart.snapshot.v1`: рантайм
  *    удерживает последний snapshot и отдаёт его каждому новому подписчику
- *    сразу при `on()`. Ни `history: true` здесь, ни `replay` у подписчиков.
+ *    сразу при `on()`. Ничего на emit, ни `replay` у подписчиков.
  */
 export function startCartRuntime(): void {
   const rt = getRuntime();

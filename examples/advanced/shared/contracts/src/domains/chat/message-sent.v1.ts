@@ -3,6 +3,8 @@ import type { TopicContract } from "../../lib/contract";
 export default {
   name: "chat.message-sent.v1",
   kind: "event",
+  // Transcript topic: kept so a re-mounted chat view can replay the conversation.
+  retention: { last: 50 },
   description: "User sent a message to the AI assistant. Observability channel — nobody subscribes today except future devtools timeline.",
   observability: true,
   payload: {} as { id: string; text: string; at: number },

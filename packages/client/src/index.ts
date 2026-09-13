@@ -42,6 +42,7 @@ export type { Client, ClientOptions } from './types/client';
 export type {
   TopicKind,
   TopicKindMap,
+  TopicPolicy,
   TopicContractsMap,
   KindOf,
   EmitTopic,

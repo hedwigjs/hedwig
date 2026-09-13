@@ -30,7 +30,7 @@ function createInspectStub(options: InspectStubOptions = {}) {
     getClients: jest.fn(() => []),
     getSubscribedClientIds: jest.fn(() => []),
     getHistory: jest.fn(() => []),
-    getHistoryStats: jest.fn(() => ({ count: 0, enabled: false })),
+    getHistoryStats: jest.fn(() => ({ count: 0, topics: [], enabled: true })),
     getVersionInfo: jest.fn(() => ({
       version: VERSION,
       duplicateCopies: options.duplicateCopies ?? 0,
