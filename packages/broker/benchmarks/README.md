@@ -62,8 +62,7 @@ runners) is normalized.
 
 ## Why these tests
 
-See `docs/content/architecture/benchmark-rationale.md` (TBD) for the full
-rationale. Short version:
+In short (a longer rationale document is not written yet):
 - **1–5** are the "must-have" set — anyone evaluating the broker should see
   these numbers on the tin.
 - **6–10** cover operational cost of secondary features (backpressure,
@@ -71,10 +70,3 @@ rationale. Short version:
   implementations evolve.
 - **11–15** are diagnostic — memory leaks, GC jitter, cross-context, cold
   start. Run them when investigating a symptom, not on every PR.
-
-## Legacy
-
-`benchmarks-legacy/` still contains the pre-tsup-refactor bench scripts
-from the hse era. They target `dist/core/BrokerCore` and `InMemoryClient`
-paths that no longer exist. Kept for reference; the current suite here
-supersedes them.

@@ -1,16 +1,21 @@
 # @hedwigjs/devtools
 
 React DevTools panel for `@hedwigjs/broker`. Watch every message,
-inspect local and remote clients, replay the history buffer, catch
-hook-driven rejections, and hand-craft synthetic messages against a
-running broker — all from a docked panel you mount in your own app.
+inspect local and remote clients, see what the registry retains for
+late subscribers, catch hook-driven rejections, and hand-craft
+synthetic messages against a running broker — all from a docked panel
+you mount in your own app.
 
 ```bash
 npm install @hedwigjs/devtools
 ```
 
-Peer deps: `@hedwigjs/broker`, `react`, `react-dom` (React 18.2+ or 19 — the
-panel is built against the host's copy, including `react/jsx-runtime`).
+Peer dependencies: `@hedwigjs/broker`, and `react` / `react-dom` at
+`^18.2.0 || ^19.0.0`. React 18.2+ and React 19 are both supported: the
+panel is built against the host's copy of React (including
+`react/jsx-runtime`), and a React 18 smoke project
+(`packages/devtools/react18-smoke`) runs as part of the repository's
+`npm test`.
 
 > Pre-release. The panel props documented here are the stable surface;
 > anything marked *internal* may change.
@@ -88,17 +93,17 @@ they are incompatible — align `@hedwigjs/broker` and
 
 ## What the panel shows
 
-Six tabs, each backed by one channel of broker observability.
+Five tabs, each backed by one channel of broker observability.
 
-| Tab               | Source                                                                                            | Purpose                                                                                                     |
-| ----------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **Messages**      | `useBeforeSendHook` (pending) + `useAfterSendHook` (delivered / failed)                            | Live feed of every message. Topic, kind (`event` / `request` / `state` from the registry, else multicast / unicast), source, target, status, latency, delivery result, JSON payload preview. A state topic's initial delivery shows a `retained` pill. |
-| **Clients**       | `inspect.getClients()` + `subscription.*`, `client.*` and `remote.*` system events                 | Tree of every registered client and its subscriptions. Remote clients carry a `remote · <transport>` badge; their detail shows identity mode, `accepts` and forwarded topics. |
-| **Replay Buffer** | `inspect.getHistoryStats()` + `inspect.getHistory()`                                              | What the registry retains, per topic: events with `retention: { last: N }` and the last value of every `state` topic, each as `count of limit` with the messages underneath. Empty only when no contract declares retention. |
-| **System Events** | `$systemEvents.onAny`                                                                              | Unified log of lifecycle signals: `client.*`, `subscription.*`, `remote.*`, plus `*.rejected` security signals, `remote.frame.rejected` edge drops and `remote.send.failed` wire failures. |
-| **Debug**         | `broker.$debug.send`                                                                               | Compose and send a synthetic message through the full pipeline. Impersonate any source; multicast or unicast. Requires `initBroker({ debug: true })`; otherwise the tab explains how to arm the channel. |
+| Tab | Source | Purpose |
+| --- | --- | --- |
+| **Messages** | `useBeforeSendHook` (pending) + `useAfterSendHook` (delivered / failed) | Live feed of every message: topic, source → target, status, latency, delivery result, JSON payload preview. Each row carries a kind pill — `event` / `request` / `state` when the registry knows the topic, otherwise `multicast` / `unicast` from the wire shape — and, when they apply: `trace` (an `observability: true` topic, so `NACK NO_SUBSCRIBERS` is expected), `retained` (a state topic's last value delivered on subscribe) or `replay` (an event from the retention buffer), `via <remote id>` (the frame came in through that remote client), and `synthetic` (injected from the Debug tab). |
+| **Clients** | `inspect.getClients()`, refreshed on `client.*` and `subscription.*` system events | Tree of every registered client with sent / received counters and its subscriptions. Remote clients carry a `remote · <transport>` badge and count `forwarded` patterns instead of topics. The detail view shows the connect time, the `@hedwigjs/client` version that created a local client (when it came through the SDK), and for a remote: transport kind, identity mode, whether it can be the recipient of a `request()` (with the number of pending requests, or why not — fan-out or inbound-only transport) and its `accepts` patterns. |
+| **Replay Buffer** | `inspect.getHistoryStats()` + `inspect.getHistory()` | What the registry retains, per topic: events with `retention: { last: N }` and the last value of every `state` topic, each as `topic · kind · count of limit`, with the retained messages underneath. Empty only when no contract declares retention; says so when the host switched event retention off (`history.enabled: false`). |
+| **System Events** | `$systemEvents.on(<name>)` — one explicit subscription per event name | Log of every lifecycle signal the broker publishes: `client.registered` / `client.unregistered`, `subscription.added` / `subscription.removed` / `subscription.rejected`, `message.rejected`, `hook.failed`, `state.retained`, `remote.created` / `remote.destroyed`, `remote.frame.rejected`, `remote.send.failed`, `request.forwarded` / `response.received` / `request.timeout` / `response.sent`, and `broker.duplicate_copy`. |
+| **Debug** | `broker.$debug.send` | Compose and send a synthetic message through the full pipeline. Impersonate any source; multicast or unicast. Requires `initBroker({ debug: true })`; otherwise the tab explains how to arm the channel. |
 
-Rejections from hooks surface in three places at once:
+Rejections and wire-level signals show up in more than one place:
 
 - `subscription.rejected` → System Events tab (the security channel).
 - `message.rejected` → System Events tab, **and** the corresponding
@@ -113,6 +118,9 @@ Rejections from hooks surface in three places at once:
   (distinct from the red `rejected`, which is a policy decision). The
   sender's message still shows as delivered in Messages — the local
   delivery succeeded; only the wire dropped it.
+- `hook.failed` → System Events tab with the `failed` badge. Under the
+  default fail-closed mode the message also shows as `NACK HOOK_REJECTED`
+  in Messages; the event tells you it was a crash, not a policy decision.
 - Replayed and synthetic (DevTools-injected) messages are visually
   marked so you can distinguish them from live user traffic.
 
@@ -140,8 +148,11 @@ import type {
 | `toggleIcon`      | `ReactNode`                                                | built-in mascot PNG                         | Replace the FAB icon.                                                                             |
 | `rollup`          | `MessagesRollupConfig \| false`                            | `{ minCount: 5, windowMs: 1000 }`           | Collapse same-topic bursts. `false` disables rollup. See "Messages rollup".                       |
 
-`MessageBrokerDevToolsProps` and `DevToolsPanelPosition` are exported
-for callers that wrap the panel.
+Everything the package exports: `MessageBrokerDevTools`, the types
+`MessageBrokerDevToolsProps` and `DevToolsPanelPosition` (for callers
+that wrap the panel), `useTopicsRegistry` with the types
+`TopicsRegistry` and `TopicContractInfo` (see the next section), and
+`MessagesRollupConfig`.
 
 ---
 
@@ -154,6 +165,7 @@ any `Record<string, TopicContractInfo>` — one entry per topic — via the
 ```ts
 export interface TopicContractInfo {
   name: string;                       // 'cart.item-added.v1'
+  kind?: 'event' | 'request' | 'state'; // the contract's kind; drives the kind pill and the `retained` label
   description: string;                // shown in Debug tab + hover cards
   examples?: Readonly<Record<string, unknown>>; // 'happy' key is the default fixture
   deprecatedBy?: string;              // topic that replaces this one
@@ -161,10 +173,15 @@ export interface TopicContractInfo {
 }
 ```
 
+Without `kind` the Messages tab falls back to `multicast` / `unicast`
+from the wire shape. `useTopicsRegistry()` returns the registry passed
+to the panel (or `null`) — for anyone extending the panel's UI.
+
 Common producers:
 
-- `@hedwigjs/create-registry` — the opinionated starter kit; emits an
-  `EventContract`-shaped registry directly.
+- `@hedwigjs/create-registry` — the opinionated starter kit; its
+  `TopicContract` objects already have this shape (`name`, `kind`,
+  `description`, `examples`, …).
 - **Hand-written manifests** — a `.ts` file exporting a plain object.
 - **Codegen** — from Zod schemas, Protobuf, GraphQL, OpenAPI, or any
   other source. Adapt the output shape into `TopicContractInfo`.
@@ -254,10 +271,12 @@ is written, prime the history buffer for a replay test.
 
 ## Enabling in production
 
-By default the panel only renders when `process.env.NODE_ENV === 'development'`.
-This relies on the standard `DefinePlugin` / bundler substitution.
+`enabled` defaults to `false` and the panel has no `NODE_ENV` logic of
+its own — that expression would be evaluated when this library is
+built, not when yours is. You decide when it renders:
 
-- **Development builds** — the panel mounts as-is.
+- **Development builds** — pass `enabled` (or `enabled={isDev}` from
+  your own build flag).
 - **Preview / staging** — pass `enabled={someEnvFlag}` to gate it on
   a feature flag or query parameter (`?debug=1`), so you can toggle
   DevTools on for QA without shipping it to end users.
@@ -353,19 +372,25 @@ that wires up two channels:
   flips it to `delivered` or `failed` and stamps the `RoutingResult`.
   This is how the Messages tab shows a message before it's dispatched
   and updates it in place with the final outcome and latency.
-- **System events (lifecycle path)** — `$systemEvents.on('client.*')`,
-  `$systemEvents.on('subscription.*')`, and `$systemEvents.on('remote.*')`
-  drive the Clients tab and populate the System Events log.
-  `subscription.rejected` and `message.rejected` are surfaced separately
-  as security signals; `remote.frame.rejected` and `remote.send.failed`
-  are log-only, since the remote client is still registered.
+- **System events (lifecycle path)** — one explicit
+  `$systemEvents.on(<name>, …)` subscription per event the broker
+  publishes (`on()` takes exact names; there are no wildcard patterns and
+  the panel does not use `onAny`). `client.registered` /
+  `client.unregistered` and `subscription.added` / `subscription.removed`
+  also refresh the Clients tab; everything else is log-only.
+  `subscription.rejected` and `message.rejected` are the security
+  signals; `remote.frame.rejected` and `remote.send.failed` do not touch
+  the Clients tab, since the remote client is still registered.
   `broker.duplicate_copy` (the library bundled twice in one realm) is
   hydrated from `inspect.getVersionInfo()` on attach, because it fires
-  at app bootstrap before any panel exists.
+  at app bootstrap before any panel exists; the live event is subscribed
+  too, for a copy that arrives later.
 - **Snapshots (initial hydration)** — `inspect.getClients()`,
-  and `inspect.getHistory()` prime state on attach and refresh on each
-  system event, so the tabs are correct even for remote clients that
-  were registered *before* the panel mounted.
+  `inspect.getHistory()` and `inspect.getHistoryStats()` prime state on
+  attach and refresh on the relevant events (clients on lifecycle
+  events, the replay buffer after every `afterSend`), so the tabs are
+  correct even for remote clients that were registered *before* the
+  panel mounted.
 
 On unmount everything unsubscribes — the broker is left exactly as it
 was before the panel attached. Nothing on the broker knows or cares

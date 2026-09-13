@@ -55,10 +55,10 @@ function CheckoutModal({ iframeWindow }: { iframeWindow: Window | null }) {
 | `useClient(id, options?)` | `Client \| null` | Created in a layout effect (StrictMode-safe: never two clients with one id), destroyed on unmount, `null` on the first render. Pass `TopicContracts` as the third type parameter for kind-aware verbs. |
 | `useTopic(client, topic, handler, options?)` | — | Subscribed while mounted; the latest handler is always called; re-subscribes only when `client` / `topic` change. Accepts a module-scope client too. |
 | `useStateTopic(client, topic, initial?)` | the value | A `state` topic's retained value is delivered synchronously inside `on()` and the subscription runs before paint — no flash of `initial`. |
-| `useRequest(client, recipient, topic, options?)` | `{ send, pending, result, reset }` | Answer type from the contract. Results arriving after unmount are dropped. `send` before the client exists resolves `NACK RUNTIME_NOT_READY`. |
+| `useRequest(client, recipient, topic, options?)` | `RequestHandle<D, R>` — `{ send, pending, result, reset }` | Answer type `R` from the contract. Results arriving after unmount are dropped. `send` before the client exists resolves `NACK RUNTIME_NOT_READY`. `RequestHandle` is exported. |
 | `useRemoteClient(id, options \| null, deps?)` | `RemoteClient \| null` | Created when options are present, recreated when `deps` change, destroyed on cleanup (transport closed, pending requests `REMOTE_GONE`). |
 | `useRuntimeReady()` | `boolean` | Whether the host's runtime exists yet. |
-| `bindHooks(client)` | `{ client, useTopic, useStateTopic, useRequest }` | The three data hooks with `client` filled in — see below. |
+| `bindHooks(client)` | `BoundHooks` — `{ client, useTopic, useStateTopic, useRequest }` | The three data hooks with `client` filled in — see below. `BoundHooks` is exported. |
 
 ## Bound hooks: skip the client argument
 

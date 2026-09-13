@@ -1,6 +1,6 @@
 # Support matrix
 
-Status: **Descriptive**, updated with every runtime release. Current: `@hedwigjs/broker` 0.2 (unreleased), wire `v: 1`.
+Status: **Descriptive**, updated with every runtime release. Latest published runtime: `@hedwigjs/broker` 0.1.1; this page tracks `main` (unreleased changes included). Wire `v: 1`.
 
 ## Built-in transports
 
@@ -54,5 +54,8 @@ first response matching its `correlationId`.
 
 `broker.capabilities` is a `Set` of stable strings: `transport.postmessage`,
 `transport.message-port`, `transport.websocket`, `transport.sse`,
-`transport.broadcast-channel`. An SDK checks these before relying on a
-feature; a missing entry means the runtime predates it.
+`transport.broadcast-channel`, `wire.v1` (this envelope) and
+`remote.requests` (requests to and from remote clients). The same set is
+on the SDK handle (`hasCapability(name)` in `@hedwigjs/client`). An SDK
+checks these before relying on a feature; a missing entry means the
+runtime predates it.

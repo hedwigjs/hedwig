@@ -1,6 +1,6 @@
 # Wire envelope v1
 
-Status: **Normative** · Schema: [`envelope-v1.schema.json`](../../../packages/broker/spec/envelope-v1.schema.json) · Since: `@hedwigjs/broker` 0.2
+Status: **Normative** · Schema: [`envelope-v1.schema.json`](../../../packages/broker/spec/envelope-v1.schema.json) · Since: the first `@hedwigjs/broker` release after 0.1.1 (on `main`, unreleased)
 
 A frame is one JSON value carried by a transport between a Hedwig runtime
 and a remote client. There are two shapes: a **message** (`kind: event`
@@ -108,9 +108,10 @@ Nothing that fails here reaches a hook.
 2. Structural check equivalent to the schema (`MALFORMED`).
 3. `v` and `kind` support (`UNSUPPORTED`).
 4. Echo guard (`ECHO`).
-5. For messages: `topic` in the remote's `accepts` (`TOPIC_NOT_ACCEPTED`). For responses: a matching pending request by `correlationId` on **this** remote client; unmatched responses are dropped silently.
-6. Identity mode (`SOURCE_MISMATCH`, `SOURCE_NOT_ALLOWED`; a missing `source` under `prefix` is `MALFORMED`).
-7. Pipeline: `beforeSend` hooks, routing, `afterSend` hooks. A `kind: 'request'` is routed as a unicast to `target` and **always** answered over the same transport — the handler's result, or `NACK` with `NOT_SUBSCRIBED`, `HANDLER_FAILED`, `HOOK_REJECTED`, `SERIALIZATION_FAILED`. A request without `id` and `correlationId` is routed but cannot be answered.
+5. Responses stop here: a `kind: 'response'` is matched to a pending request by `correlationId` on **this** remote client, bypassing `accepts` and the identity mode; an unmatched response is dropped silently.
+6. For messages: `topic` in the remote's `accepts` (`TOPIC_NOT_ACCEPTED`).
+7. Identity mode (`SOURCE_MISMATCH`, `SOURCE_NOT_ALLOWED`; a missing `source` under `prefix` is `MALFORMED`).
+8. Pipeline: `beforeSend` hooks, routing, `afterSend` hooks. A `kind: 'request'` is routed as a unicast to `target` and **always** answered over the same transport — the handler's result, or `NACK` with `NOT_SUBSCRIBED`, `HANDLER_FAILED`, `HOOK_REJECTED`, `SERIALIZATION_FAILED`. A request without `id` and `correlationId` is routed but cannot be answered.
 
 ## Requests
 
@@ -130,7 +131,8 @@ Those reasons are local and never appear in a response frame.
 `replayed`, `fromExternal`, `synthetic`, `via`, `wireId` and `ext` on the
 runtime's `Message` never go on the wire. Outbound frames are built from
 the message (`v`, `id`, `origin`, `kind`, `topic`, `source`, `target`,
-`data`, `timestamp`), not by serialising the internal object.
+`data`, `timestamp` — plus `correlationId` and `deadline` for a request),
+not by serialising the internal object.
 
 ## Evolution
 

@@ -40,10 +40,10 @@ useRemoteClient('checkout-iframe', () =>
 | `useClient(id, options?)` | `Client` | Created synchronously in setup, destroyed on scope dispose. Third type parameter `TopicContracts` for kind-aware verbs. |
 | `useTopic(client, topic, handler, options?)` | — | `client` may be a plain client, a ref, or a getter; the subscription follows it and ends with the scope. |
 | `useStateTopic(client, topic, initial?)` | `ShallowRef` | Holds a `state` topic's retained value as soon as it returns; updates on every emit. |
-| `useRequest(client, recipient, topic, options?)` | `{ send, pending, result, reset }` | `pending` and `result` are refs; answer type from the contract; `send` never rejects. |
-| `useRemoteClient(id, options)` | `ShallowRef<RemoteClient \| null>` | `options` is a ref or getter; `null` means no remote. Recreated on change, destroyed on `null` and on dispose. |
+| `useRequest(client, recipient, topic, options?)` | `RequestHandle<D, R>` — `{ send, pending, result, reset }` | `pending` is a `Ref<boolean>`, `result` a `ShallowRef`; answer type `R` from the contract; `send` never rejects. `RequestHandle` is exported. |
+| `useRemoteClient(id, options)` | `ShallowRef<RemoteClient \| null>` | `options` is a `MaybeRefOrGetter`: a plain options object, a ref, or a getter; `null` / `undefined` means no remote. Recreated when the source changes, destroyed on `null` and on dispose (transport closed, pending requests `REMOTE_GONE`). |
 | `useRuntimeReady()` | `Ref<boolean>` | Whether the host's runtime exists yet. |
-| `bindComposables(client)` | `{ client, useTopic, useStateTopic, useRequest }` | The three data composables with `client` filled in — see below. |
+| `bindComposables(client)` | `BoundComposables` — `{ client, useTopic, useStateTopic, useRequest }` | The three data composables with `client` filled in — see below. `BoundComposables` is exported. |
 
 ## Bound composables: skip the client argument
 
@@ -70,6 +70,22 @@ const status = useRequest('notifications-backend', 'notification.status.v1');
 
 For a client owned by the scope (`useClient`) keep the unbound
 composables and pass the client.
+
+## Lifecycle rules
+
+- A scope-owned client (`useClient`) is destroyed on scope dispose;
+  subscriptions made through `useTopic` end with it. Module-scope clients
+  (`export const bus = createClient(...)`) are not owned by any scope and
+  stay.
+- `useRemoteClient` calls `createRemoteClient` from `@hedwigjs/client`,
+  which needs a live runtime: when no runtime exists it throws
+  `RUNTIME_NOT_PROVIDED` — from `useRemoteClient()` itself when the options
+  are present during setup (the watcher is immediate), otherwise from the
+  watcher when the source first yields options. Gate it with
+  `useRuntimeReady()` in modules that may mount before the host called
+  `initBroker()`: return `null` from the getter until `ready.value` is
+  `true`.
+- A subscription denied by an `onSubscribe` hook throws from the watcher.
 
 Works inside components and inside `effectScope()`; everything is released
 with `onScopeDispose`.

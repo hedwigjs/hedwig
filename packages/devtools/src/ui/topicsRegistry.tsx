@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 /**
  * Минимальная форма одного контракта, которую DevTools требует от реестра.
  *
- * Совместима со shape'ом `EventContract` из `@hedwigjs/create-registry`,
+ * Совместима со shape'ом `TopicContract` из `@hedwigjs/create-registry`,
  * но описана локально, чтобы DevTools не зависел от какого-либо
  * конкретного registry-пакета.
  */
