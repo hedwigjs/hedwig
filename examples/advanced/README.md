@@ -20,18 +20,18 @@ Everything on the domain lives under `/demo/advanced/` — root `/`
 
 | Module          | Client id             | Role                                                                              |
 | --------------- | --------------------- | --------------------------------------------------------------------------------- |
-| `shell`         | (host)                | Single-spa host. Installs ACL hooks, wires bridges (WS/SSE/BroadcastChannel), mounts DevTools |
+| `shell`         | (host)                | Single-spa host. Installs ACL hooks, registers remote clients (WS/BroadcastChannel), mounts DevTools |
 | `menu`          | `menu`                | Dish grid. Sends `cart.add-item.v1` requests to the cart runtime                  |
 | `cart`          | `cart-store`, `cart-ui` | Cart runtime + UI. Owns the cart state, publishes `cart.snapshot.v1` with history |
-| `checkout`      | `checkout`            | Headless iframe controller. Handles `checkout.start.v1` request; PostMessage bridge to iframe |
+| `checkout`      | `checkout`            | Headless iframe controller. Handles `checkout.start.v1` request; the iframe is a remote client over postMessage |
 | `notifications` | `notifications-toast` | Toast panel. Subscribes to `notification.show.v1`                                  |
 | `ai-chat`       | `ai-chat`             | Streaming chat over SSE                                                            |
 | `analytics`     | `analytics`           | Semi-trusted read-only tracker — used as the ACL demo target                       |
 | `late-mount`    | `late-mount-demo`     | Extra card that mounts on demand — proves history-buffer replay                    |
 
-### Backend (Node/Express, reaches the broker via transport bridges)
+### Backend (Node/Express, joins the broker as remote clients)
 
-| Module                  | Bridge          | Role                                                             |
+| Remote client id        | Transport       | Role                                                             |
 | ----------------------- | --------------- | ---------------------------------------------------------------- |
 | `notifications-backend` | WebSocket       | Pushes `notification.show.v1` to every subscriber                 |
 | `ai-backend`            | SSE             | Streams `chat.reply-chunk.v1` + `chat.reply-completed.v1`         |
@@ -73,15 +73,18 @@ the backend also localizes.
 
 ## Architecture in one paragraph
 
-The shell boots one `initBroker()` and registers all bridges:
-`WebSocketTransport` → `/ws/notifications`, `SSETransport` →
-`/ai/stream`, `BroadcastChannelTransport` → cross-tab cart sync,
-`PostMessageTransport` → checkout iframe. Each MFE creates its own
-typed `Client<Topic, TopicPayloads>` — commands go through `request()`,
-state broadcasts through `emit()` with `history: true` for late
-subscribers. The shell installs `useOnSubscribeHook` +
-`useBeforeSendHook` wired to a declarative ACL config, and mounts
-`@hedwigjs/devtools` so message flow, subscribers, bridges, history and
+The shell boots one `initBroker()` and registers the participants that
+live behind a wire as **remote clients** (`createRemoteClient`):
+`notifications-backend` over `{ kind: 'websocket' }` → `/ws/notifications`,
+`tabs` over `{ kind: 'broadcast-channel' }` → cross-tab cart sync. The
+checkout MFE registers its iframe (`checkout-iframe`, `postmessage`) and
+the AI chat registers one `ai-backend` remote per reply (`sse`). Each MFE
+creates its own typed `Client<Topic, TopicPayloads>` — commands go through
+`request()`, state broadcasts through `emit()` with `history: true` for
+late subscribers. The shell installs `useOnSubscribeHook` +
+`useBeforeSendHook` wired to a declarative ACL config — the same rules
+cover local and remote clients — and mounts `@hedwigjs/devtools` so
+message flow, subscribers (remote ones with a `remote` badge), history and
 hook rejections are all visible live at the bottom of the page.
 
 ---
@@ -90,7 +93,7 @@ hook rejections are all visible live at the bottom of the page.
 
 ```
 examples/advanced/
-├── shell/                # bootstrap host: broker init, ACL, bridges, DevTools
+├── shell/                # bootstrap host: broker init, ACL, remote clients, DevTools
 ├── mfe/
 │   ├── menu/             # product grid
 │   ├── cart/             # runtime + UI + late-mount demo (multiple bootstraps)
@@ -149,8 +152,13 @@ Let's Encrypt every ~60 days).
   fire back `NACK HOOK_REJECTED` (send) / throw (subscribe), and
   `subscription.rejected` + `message.rejected` land in the DevTools
   System Events tab as a distinct security channel.
-- **`notifications-backend` (WS)** and **`ai-backend` (SSE)** — same
-  broker semantics reachable across a transport bridge. Frontend
-  subscribers don't know or care where the message originated.
-- **Checkout iframe (PostMessage)** — bridge to a cross-origin document;
-  `PostMessageTransport.allowedOrigins` acts as the trust boundary.
+- **`notifications-backend` (WS)** and **`ai-backend` (SSE)** — remote
+  clients: same broker semantics across a transport. Frontend subscribers
+  don't know or care where the message originated; DevTools shows
+  `via <remote>` on each such message.
+- **Checkout iframe (postMessage)** — a remote client in a cross-origin
+  document; `allowedOrigins` (inbound) and `targetOrigin` (outbound) are
+  both mandatory and act as the trust boundary.
+- **Other tabs (BroadcastChannel)** — one remote client `tabs` with
+  `prefix` identity: a snapshot from another tab's `cart-store` arrives
+  as `tab:cart-store`, so the ACL can tell it from the local one.

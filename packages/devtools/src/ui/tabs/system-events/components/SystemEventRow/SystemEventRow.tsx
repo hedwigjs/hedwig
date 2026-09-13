@@ -8,7 +8,7 @@ interface SystemEventRowProps {
   entry: SystemEventLogEntry;
 }
 
-type EventFacet = "client" | "subscription" | "bridge" | "message" | "broker";
+type EventFacet = "client" | "subscription" | "bridge" | "remote" | "message" | "broker";
 type EventVerb = "added" | "removed" | "rejected" | "failed" | "warning";
 
 function facetOf(name: SystemEventLogEntry["name"]): EventFacet {
@@ -17,6 +17,7 @@ function facetOf(name: SystemEventLogEntry["name"]): EventFacet {
   if (name.startsWith("message.")) return "message";
   if (name.startsWith("broker.")) return "broker";
   if (name.startsWith("hook.")) return "broker";
+  if (name.startsWith("remote.")) return "remote";
   return "bridge";
 }
 
@@ -30,6 +31,7 @@ function verbOf(name: SystemEventLogEntry["name"]): EventVerb {
   if (name.startsWith("broker.")) return "warning";
   if (name.endsWith("registered") && !name.endsWith("unregistered")) return "added";
   if (name.endsWith("added")) return "added";
+  if (name.endsWith("created")) return "added";
   return "removed";
 }
 
@@ -41,11 +43,25 @@ function summarize(entry: SystemEventLogEntry): string {
   const target = typeof p.target === "string" ? p.target : undefined;
   const topic = typeof p.topic === "string" ? p.topic : undefined;
   const bridgeId = typeof p.bridgeId === "string" ? p.bridgeId : undefined;
+  const remoteId = typeof p.remoteId === "string" ? p.remoteId : undefined;
+  const transportKind = typeof p.kind === "string" && remoteId ? p.kind : undefined;
+  const identity = typeof p.identity === "string" ? p.identity : undefined;
   const reason = typeof p.reason === "string" ? p.reason : undefined;
   const messageId = typeof p.messageId === "string" ? p.messageId : undefined;
   const version = typeof p.version === "string" ? p.version : undefined;
   const copyVersion = typeof p.copyVersion === "string" ? p.copyVersion : undefined;
   const copies = typeof p.copies === "number" ? p.copies : undefined;
+
+  // remote.*: created (kind + identity), frame.rejected (reason + what the
+  // frame claimed), send.failed (topic + reason), destroyed (id only).
+  if (remoteId) {
+    if (transportKind && identity) return `${remoteId} · ${transportKind} · identity ${identity}`;
+    if (reason && topic && messageId) return `${remoteId} · ${topic} · ${messageId} · ${reason}`;
+    if (reason) {
+      return `${remoteId} · ${reason}${source ? ` · claimed source ${source}` : ""}${topic ? ` · ${topic}` : ""}`;
+    }
+    return remoteId;
+  }
 
   // hook.failed: which hook crashed and what the broker did about it.
   const hookKind = typeof p.kind === "string" ? p.kind : undefined;
@@ -83,6 +99,7 @@ const FACET_CLASS: Record<EventFacet, string> = {
   client: styles.facetClient,
   subscription: styles.facetSubscription,
   bridge: styles.facetBridge,
+  remote: styles.facetRemote,
   message: styles.facetMessage,
   broker: styles.facetBroker,
 };

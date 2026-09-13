@@ -67,6 +67,8 @@ export interface MessageLogEntry {
   subscriberCount?: number;
   replayed?: boolean;
   fromExternal?: boolean;
+  /** Id of the remote client whose transport delivered the message. */
+  via?: string;
   /** Message was fired via `broker.$debug.send` (DevTools spoof / test). */
   synthetic?: boolean;
   dataPreview?: string;
@@ -146,7 +148,11 @@ export type SystemEventName =
   | "bridge.added"
   | "bridge.removed"
   | "bridge.send.failed"
-  | "bridge.message.invalid";
+  | "bridge.message.invalid"
+  | "remote.created"
+  | "remote.destroyed"
+  | "remote.frame.rejected"
+  | "remote.send.failed";
 
 export interface SystemEventLogEntry {
   /** Monotonic local id, assigned by the store on ingestion. */
@@ -167,9 +173,29 @@ export interface ClientSubscriptionEntry {
   lastReceivedAt: number | null;
 }
 
+/**
+ * Remote-side details of a client that lives behind a transport
+ * (`broker.createRemoteClient`). Mirrors the broker's `RemoteClientInfo`.
+ */
+export interface RemoteClientEntry {
+  /** Transport kind: a built-in (`websocket`, `sse`, …) or `custom`. */
+  kind: string;
+  identity: "fixed" | "allow" | "prefix";
+  duplex: boolean;
+  fanout: boolean;
+  /** `duplex && !fanout` — the remote may be the recipient of a request. */
+  requests: boolean;
+  /** Topics the remote may inject. */
+  accepts: ReadonlyArray<string>;
+  /** Requests in flight to the remote. */
+  pending: number;
+}
+
 export interface ClientEntry {
   id: string;
   connectedAt: number;
+  /** Present for remote clients; its `subscriptions` are `forward` patterns. */
+  remote?: RemoteClientEntry;
   /** Unix ms of the last message sent or received by this client. Null if none. */
   lastActiveAt: number | null;
   /** Messages sent by this client visible in the current ring buffer. */

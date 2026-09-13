@@ -67,8 +67,10 @@ export const ACL: AclRules = {
     },
   },
 
-  // ── Bridge-injected sources — messages coming in from the backend ───
-  // via WS/SSE/PostMessage transports. They only send, never subscribe.
+  // ── Remote clients — participants behind a transport ────────────────
+  // (`broker.createRemoteClient`). Same rules as anyone else: `subscribe`
+  // covers what the shell forwards to them, `send` covers what they may
+  // inject. The backend, the AI stream and the checkout iframe only send.
   'notifications-backend': {
     subscribe: [],
     send: { '*': ['notification.show.v1'] },
@@ -82,6 +84,19 @@ export const ACL: AclRules = {
   'checkout-iframe': {
     subscribe: [],
     send: { '*': ['checkout.completed.v1'] },
+  },
+
+  // Other tabs over BroadcastChannel. The remote client `tabs` is
+  // subscribed (`forward`) to our cart snapshots; whatever a tab sends us
+  // is attributed to `tab:<its client id>` (prefix identity), so the cart
+  // store of another tab needs its own send rule.
+  tabs: {
+    subscribe: ['cart.snapshot.v1'],
+    send: {},
+  },
+  'tab:cart-store': {
+    subscribe: [],
+    send: { '*': ['cart.snapshot.v1'] },
   },
 
   // ── Semi-trusted — the ACL demo target. ─────────────────────────────

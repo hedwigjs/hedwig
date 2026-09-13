@@ -20,7 +20,7 @@ export interface CreateInspectorStoreOptions {
   maxEvents: number;
 }
 
-type ClientBase = Pick<ClientEntry, "id" | "connectedAt"> & {
+type ClientBase = Pick<ClientEntry, "id" | "connectedAt" | "remote"> & {
   subscriptions: Array<Pick<ClientSubscriptionEntry, "topic" | "options">>;
 };
 
@@ -40,6 +40,16 @@ function computeLastReceivedAt(
     ) {
       return new Date(e.createdAt).getTime();
     }
+  }
+  return null;
+}
+
+/** Newest local multicast matching a remote's forward pattern. */
+function computeLastForwardedAt(pattern: string, entries: MessageLogEntry[]): number | null {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i]!;
+    if (e.fromExternal || e.target !== "*") continue;
+    if (matchesAnyPattern(e.topic, [pattern])) return new Date(e.createdAt).getTime();
   }
   return null;
 }
@@ -79,6 +89,31 @@ function computeReceivedCount(clientId: string, entries: MessageLogEntry[]): num
   return count;
 }
 
+/**
+ * Activity of a remote client is not keyed by its own id: what it injects
+ * carries the peer's identity (`tab:cart-store`) with `via === id`, and
+ * what it receives is every local multicast matching its `forward`
+ * patterns (never listed among recipient ids). Same shape as the local
+ * counters so the Clients tab can treat both alike.
+ */
+function computeRemoteActivity(
+  base: ClientBase,
+  entries: MessageLogEntry[],
+): Pick<ClientEntry, "sentCount" | "receivedCount" | "lastActiveAt"> {
+  const forward = base.subscriptions.map((s) => s.topic);
+  let sentCount = 0;
+  let receivedCount = 0;
+  let lastActiveAt: number | null = null;
+  for (const e of entries) {
+    const sent = e.via === base.id || e.source === base.id;
+    const received = !e.fromExternal && matchesAnyPattern(e.topic, forward);
+    if (sent) sentCount++;
+    if (received) receivedCount++;
+    if (sent || received) lastActiveAt = new Date(e.createdAt).getTime();
+  }
+  return { sentCount, receivedCount, lastActiveAt };
+}
+
 export function createInspectorStore(options: CreateInspectorStoreOptions) {
   const { maxEvents } = options;
   const ring = createMessageRingBuffer(maxEvents);
@@ -111,18 +146,28 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
 
   function emit() {
     const entries = ring.toArray();
-    const clients: ClientEntry[] = clientsBase.map((base) => ({
-      id: base.id,
-      sentCount: computeSentCount(base.id, entries),
-      receivedCount: computeReceivedCount(base.id, entries),
-      connectedAt: base.connectedAt,
-      lastActiveAt: computeLastActiveAt(base.id, entries),
-      subscriptions: base.subscriptions.map((sub) => ({
-        topic: sub.topic,
-        options: sub.options,
-        lastReceivedAt: computeLastReceivedAt(base.id, sub.topic, entries),
-      })),
-    }));
+    const clients: ClientEntry[] = clientsBase.map((base) => {
+      const activity = base.remote
+        ? computeRemoteActivity(base, entries)
+        : {
+            sentCount: computeSentCount(base.id, entries),
+            receivedCount: computeReceivedCount(base.id, entries),
+            lastActiveAt: computeLastActiveAt(base.id, entries),
+          };
+      return {
+        id: base.id,
+        remote: base.remote,
+        connectedAt: base.connectedAt,
+        ...activity,
+        subscriptions: base.subscriptions.map((sub) => ({
+          topic: sub.topic,
+          options: sub.options,
+          lastReceivedAt: base.remote
+            ? computeLastForwardedAt(sub.topic, entries)
+            : computeLastReceivedAt(base.id, sub.topic, entries),
+        })),
+      };
+    });
     const bridges: BridgeEntry[] = bridgesBase.map((base) => {
       let sentThroughCount = 0;
       let receivedFromCount = 0;
@@ -223,6 +268,17 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
     clientsBase = broker.inspect.getClients().map((info) => ({
       id: info.id,
       connectedAt: info.connectedAt,
+      remote: info.remote
+        ? {
+            kind: info.remote.kind,
+            identity: info.remote.identity,
+            duplex: info.remote.duplex,
+            fanout: info.remote.fanout,
+            requests: info.remote.requests,
+            accepts: info.remote.accepts,
+            pending: info.remote.pending,
+          }
+        : undefined,
       subscriptions: info.subscriptions.map((sub) => ({
         topic: sub.topic,
         options: sub.options,
@@ -252,6 +308,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
       kind: message.target === "*" ? "multicast" : "unicast",
       replayed: message.replayed,
       fromExternal: message.fromExternal,
+      via: message.via,
       synthetic: message.synthetic,
       dataPreview: serializeDataPreview(message.data),
     };
@@ -285,6 +342,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
         ...prev,
         replayed: message.replayed ?? prev.replayed,
         fromExternal: message.fromExternal ?? prev.fromExternal,
+        via: message.via ?? prev.via,
         synthetic: message.synthetic ?? prev.synthetic,
         dataPreview: prev.dataPreview ?? serializeDataPreview(message.data),
         latencyMs,
@@ -304,6 +362,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
         subscriberCount,
         replayed: message.replayed,
         fromExternal: message.fromExternal,
+        via: message.via,
         synthetic: message.synthetic,
         dataPreview: serializeDataPreview(message.data),
         latencyMs,

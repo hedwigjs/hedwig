@@ -128,6 +128,27 @@ step; it goes away once DevTools and the reference stand have moved.
   (`CLIENT_ID_TAKEN`); `inspect.getClients()` lists remotes with a
   `remote` block; `remote.created` / `remote.destroyed` events.
 
+### DevTools and reference stand — remote clients (RFC-0003 step 3b)
+
+- Clients tab lists remote clients next to local ones with a
+  `remote · <transport>` badge; the detail view shows transport, identity
+  mode, whether requests are possible, `accepts` and the forwarded
+  topics. Sent/received counters for a remote count what came in through
+  it (`via`) and what was forwarded to it.
+- Messages tab shows `via <remote>` instead of the bare `external` pill.
+- System Events tab renders `remote.created`, `remote.destroyed`,
+  `remote.frame.rejected` (with reason and what the frame claimed) and
+  `remote.send.failed` under a `remote` facet.
+- Reference stand runs on remote clients only, no `addBridge` left:
+  `notifications-backend` over `{ kind: 'websocket' }` (registered before
+  the socket opens; the runtime tears it down on close, reconnect stays in
+  the shell), `tabs` over `{ kind: 'broadcast-channel' }` with `prefix`
+  identity (a snapshot from another tab arrives as `tab:cart-store`),
+  `checkout-iframe` over `{ kind: 'postmessage' }` with both origins,
+  `ai-backend` over `{ kind: 'sse' }` per reply. ACL gained rules for
+  `tabs` (may be forwarded `cart.snapshot.v1`) and `tab:cart-store` (may
+  send it); the same hooks now cover local and remote participants.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

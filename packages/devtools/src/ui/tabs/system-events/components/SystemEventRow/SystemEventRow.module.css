@@ -46,6 +46,7 @@
 .facetClient,
 .facetSubscription,
 .facetBridge,
+.facetRemote,
 .facetMessage,
 .facetBroker,
 .verbAdded,
@@ -72,6 +73,12 @@
 }
 
 .facetBridge {
+  background: #0b3b0f;
+  color: #86efac;
+}
+
+/* Remote clients — same green family as bridges, which they replace. */
+.facetRemote {
   background: #0b3b0f;
   color: #86efac;
 }

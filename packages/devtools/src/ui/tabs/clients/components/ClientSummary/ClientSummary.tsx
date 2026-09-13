@@ -28,8 +28,19 @@ export function ClientSummary({ client, isOpen, onNavigate }: ClientSummaryProps
     <div className={styles.main}>
       <span className={styles.toggle}>{isOpen ? "−" : "+"}</span>
       <span className={styles.clientId}>{client.id}</span>
+      {client.remote && (
+        <span
+          className={styles.badgeRemote}
+          title={`Remote client over ${client.remote.kind} · identity ${client.remote.identity}`}
+          data-mbdt-remote={client.remote.kind}
+        >
+          remote · {client.remote.kind}
+        </span>
+      )}
       <span className={styles.badge}>
-        {subCount} topic{subCount === 1 ? "" : "s"}
+        {client.remote
+          ? `${subCount} forwarded`
+          : `${subCount} topic${subCount === 1 ? "" : "s"}`}
       </span>
 
       <span className={styles.counters}>

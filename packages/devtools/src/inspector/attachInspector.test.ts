@@ -128,9 +128,127 @@ describe("attachInspector", () => {
         "bridge.removed",
         "bridge.send.failed",
         "bridge.message.invalid",
+        "remote.created",
+        "remote.destroyed",
+        "remote.frame.rejected",
+        "remote.send.failed",
         "broker.duplicate_copy",
         "hook.failed",
       ]),
+    );
+  });
+
+  it("logs remote.frame.rejected into the System Events ring without refreshing clients", () => {
+    const { broker } = createMockBroker();
+    const store = createInspectorStore({ maxEvents: 20 });
+    const on = broker.$systemEvents.on as jest.Mock;
+    const getClients = broker.inspect.getClients as jest.Mock;
+
+    attachInspector(broker, store);
+    const callsBefore = getClients.mock.calls.length;
+
+    const listener = on.mock.calls.find(([event]) => event === "remote.frame.rejected")?.[1];
+    expect(listener).toBeDefined();
+    listener({ remoteId: "backend", reason: "SOURCE_MISMATCH", source: "cart", topic: "a.v1" });
+
+    expect(store.getSnapshot().systemEvents.at(-1)).toEqual(
+      expect.objectContaining({
+        name: "remote.frame.rejected",
+        payload: expect.objectContaining({ remoteId: "backend", reason: "SOURCE_MISMATCH" }),
+      }),
+    );
+    expect(getClients.mock.calls.length).toBe(callsBefore);
+  });
+
+  it("records remote clients from the inspect snapshot with their remote block", () => {
+    const { broker } = createMockBroker();
+    (broker.inspect.getClients as jest.Mock).mockReturnValue([
+      { id: "cart", connectedAt: 1, subscriptions: [{ topic: "a.v1", handlerCount: 1 }] },
+      {
+        id: "backend",
+        connectedAt: 2,
+        subscriptions: [{ topic: "cart.*", handlerCount: 0 }],
+        remote: {
+          kind: "websocket",
+          identity: "fixed",
+          duplex: true,
+          fanout: false,
+          requests: true,
+          accepts: ["notification.*"],
+          pending: 0,
+        },
+      },
+    ]);
+    const store = createInspectorStore({ maxEvents: 20 });
+
+    attachInspector(broker, store);
+
+    const clients = store.getSnapshot().clients;
+    expect(clients.find((c) => c.id === "cart")?.remote).toBeUndefined();
+    expect(clients.find((c) => c.id === "backend")?.remote).toEqual({
+      kind: "websocket",
+      identity: "fixed",
+      duplex: true,
+      fanout: false,
+      requests: true,
+      accepts: ["notification.*"],
+      pending: 0,
+    });
+    expect(clients.find((c) => c.id === "backend")?.subscriptions.map((s) => s.topic)).toEqual(["cart.*"]);
+  });
+
+  it("counts a remote client's activity by `via` and by forwarded multicasts", () => {
+    const { broker, fireBefore, fireAfter } = createMockBroker();
+    (broker.inspect.getClients as jest.Mock).mockReturnValue([
+      {
+        id: "tabs",
+        connectedAt: 2,
+        subscriptions: [{ topic: "cart.*", handlerCount: 0 }],
+        remote: {
+          kind: "broadcast-channel",
+          identity: "prefix",
+          duplex: true,
+          fanout: true,
+          requests: false,
+          accepts: ["cart.*"],
+          pending: 0,
+        },
+      },
+    ]);
+    const store = createInspectorStore({ maxEvents: 20 });
+    attachInspector(broker, store);
+
+    // Injected by the other tab: source is the prefixed peer, via is the remote.
+    const inbound = makeTestMessage({ id: "in", topic: "cart.snapshot.v1", source: "tab:cart-store", target: "*", fromExternal: true, via: "tabs" });
+    fireBefore(inbound);
+    fireAfter(inbound, makeAck());
+    // Local multicast on a forwarded topic: sent to the remote.
+    const outbound = makeTestMessage({ id: "out", topic: "cart.snapshot.v1", source: "cart-store", target: "*" });
+    fireBefore(outbound);
+    fireAfter(outbound, makeAck());
+    // Unrelated local traffic.
+    const other = makeTestMessage({ id: "other", topic: "menu.opened.v1", source: "menu", target: "*" });
+    fireBefore(other);
+    fireAfter(other, makeAck());
+
+    const tabs = store.getSnapshot().clients.find((c) => c.id === "tabs")!;
+    expect(tabs.sentCount).toBe(1);
+    expect(tabs.receivedCount).toBe(1);
+    expect(tabs.lastActiveAt).not.toBeNull();
+    expect(tabs.subscriptions[0]!.lastReceivedAt).not.toBeNull();
+  });
+
+  it("keeps `via` on a message delivered by a remote client", () => {
+    const { broker, fireBefore, fireAfter } = createMockBroker();
+    const store = createInspectorStore({ maxEvents: 20 });
+    attachInspector(broker, store);
+
+    const m = makeTestMessage({ id: "r1", fromExternal: true, via: "backend" });
+    fireBefore(m);
+    fireAfter(m, makeAck());
+
+    expect(store.getSnapshot().entries[0]).toEqual(
+      expect.objectContaining({ id: "r1", fromExternal: true, via: "backend" }),
     );
   });
 

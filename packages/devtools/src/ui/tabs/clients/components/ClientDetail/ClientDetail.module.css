@@ -120,6 +120,12 @@
   cursor: default;
 }
 
+.accepts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .subscriptions {
   display: flex;
   flex-direction: column;

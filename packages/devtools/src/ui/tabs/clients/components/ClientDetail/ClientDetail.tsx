@@ -12,6 +12,7 @@ interface ClientDetailProps {
 
 export function ClientDetail({ client, onNavigate }: ClientDetailProps): ReactNode {
   const connectedDate = new Date(client.connectedAt);
+  const remote = client.remote;
 
   return (
     <div className={styles.detail}>
@@ -22,7 +23,48 @@ export function ClientDetail({ client, onNavigate }: ClientDetailProps): ReactNo
             {connectedDate.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3 })}
           </span>
         </div>
+        {remote && (
+          <>
+            <div className={styles.meta}>
+              <span className={styles.metaLabel}>Transport</span>
+              <span className={styles.metaValue}>{remote.kind}</span>
+            </div>
+            <div className={styles.meta}>
+              <span className={styles.metaLabel}>Identity</span>
+              <span className={styles.metaValue}>{remote.identity}</span>
+            </div>
+            <div className={styles.meta}>
+              <span className={styles.metaLabel}>Requests</span>
+              <span
+                className={styles.metaValue}
+                title={
+                  remote.requests
+                    ? "Duplex, one peer — may be the recipient of a request()"
+                    : remote.fanout
+                      ? "Fan-out transport: many peers, requests refused"
+                      : "Inbound-only transport: requests refused"
+                }
+              >
+                {remote.requests ? `yes${remote.pending > 0 ? ` · ${remote.pending} pending` : ""}` : "no"}
+              </span>
+            </div>
+          </>
+        )}
       </div>
+
+      {remote && (
+        <div className={styles.accepts}>
+          <div className={styles.subsTitle}>Accepts (may inject)</div>
+          {remote.accepts.length === 0 && (
+            <div className={styles.noSubs}>Nothing — every inbound frame is dropped.</div>
+          )}
+          {remote.accepts.map((pattern) => (
+            <div key={pattern} className={styles.subRow}>
+              <div className={styles.subTopic}>{pattern}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Activity row */}
       <div className={styles.activity}>
@@ -79,7 +121,7 @@ export function ClientDetail({ client, onNavigate }: ClientDetailProps): ReactNo
 
       {client.subscriptions.length > 0 && (
         <div className={styles.subscriptions}>
-          <div className={styles.subsTitle}>Subscriptions</div>
+          <div className={styles.subsTitle}>{remote ? "Forwarded topics (subscriptions)" : "Subscriptions"}</div>
           {client.subscriptions.map((sub) => (
             <div key={sub.topic} className={styles.subRow}>
               <div className={styles.subTopic}>{sub.topic}</div>
@@ -104,7 +146,9 @@ export function ClientDetail({ client, onNavigate }: ClientDetailProps): ReactNo
       )}
 
       {client.subscriptions.length === 0 && (
-        <div className={styles.noSubs}>No active subscriptions.</div>
+        <div className={styles.noSubs}>
+          {remote ? "Nothing forwarded — the remote receives no local messages." : "No active subscriptions."}
+        </div>
       )}
     </div>
   );

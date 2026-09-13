@@ -1,7 +1,8 @@
 import type { FC } from 'react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import { getBroker, PostMessageTransport } from '@hedwigjs/broker';
+import { getBroker } from '@hedwigjs/broker';
+import type { RemoteClient } from '@hedwigjs/broker';
 import type {
   CartItem,
   CartRemoveItemResponse,
@@ -25,7 +26,7 @@ const IFRAME_ORIGIN = new URL(IFRAME_URL_BASE).origin;
 // `parentOrigin` lets the iframe target its postMessage at us instead of '*'.
 const IFRAME_URL = `${IFRAME_URL_BASE}?lang=${getLang()}&parentOrigin=${encodeURIComponent(window.location.origin)}`;
 
-const BRIDGE_ID = 'checkout-iframe';
+const REMOTE_ID = 'checkout-iframe';
 
 type PendingOrder = {
   items: CartItem[];
@@ -115,41 +116,45 @@ export const App: FC = () => {
     });
   }, []);
 
-  // Bridge lifecycle: attach when the iframe reports ready, detach on close.
-  // Tracked via ref because the callback identity must be stable across
-  // re-renders of the modal.
-  const removeBridgeRef = useRef<(() => void) | null>(null);
+  // Remote client lifecycle: the iframe becomes a remote client when it
+  // reports ready and is destroyed on close. Tracked via ref because the
+  // callback identity must be stable across re-renders of the modal.
+  const remoteRef = useRef<RemoteClient | null>(null);
 
   const onIframeReady = useCallback((win: Window) => {
-    // Rebuild the bridge every time a new iframe loads (React may recreate
+    // Rebuild the remote every time a new iframe loads (React may recreate
     // the element between opens/closes).
-    removeBridgeRef.current?.();
+    remoteRef.current?.destroy();
 
     const broker = getBroker<Topic, TopicPayloads>();
-    const transport = new PostMessageTransport({
-      target: win,
-      origin: IFRAME_ORIGIN,
-    });
-    removeBridgeRef.current = broker.addBridge(BRIDGE_ID, {
-      transport,
-      forward: ['checkout.completed.v1'],
-      // The iframe may only speak as itself; a frame claiming another
-      // client id is dropped at the bridge (`bridge.message.invalid`).
-      allowedSources: ['checkout-iframe'],
+    remoteRef.current = broker.createRemoteClient(REMOTE_ID, {
+      // Both origins are mandatory: `allowedOrigins` is the inbound trust
+      // boundary, `targetOrigin` keeps our frames from reaching whatever
+      // else might get loaded into the window.
+      transport: {
+        kind: 'postmessage',
+        target: win,
+        allowedOrigins: [IFRAME_ORIGIN],
+        targetOrigin: IFRAME_ORIGIN,
+      },
+      // The iframe may only speak as itself (`fixed` identity) and only
+      // about the outcome; anything else is dropped at the edge as
+      // `remote.frame.rejected`. Nothing is forwarded to it.
+      accepts: ['checkout.completed.v1'],
     });
   }, []);
 
   useEffect(() => {
     if (!pending) {
-      removeBridgeRef.current?.();
-      removeBridgeRef.current = null;
+      remoteRef.current?.destroy();
+      remoteRef.current = null;
     }
   }, [pending]);
 
   useEffect(() => {
     return () => {
-      removeBridgeRef.current?.();
-      removeBridgeRef.current = null;
+      remoteRef.current?.destroy();
+      remoteRef.current = null;
     };
   }, []);
 

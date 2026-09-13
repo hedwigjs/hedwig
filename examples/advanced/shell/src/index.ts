@@ -8,9 +8,9 @@ import { renderChrome } from './chrome/renderChrome';
 import { registerMicrofrontends } from './registerMicrofrontends';
 import { mountDevTools } from './devtools';
 import {
-  installBackendNotificationsBridge,
-  installCrossTabCartBridge,
-} from './bridges';
+  installBackendNotificationsRemote,
+  installCrossTabCartRemote,
+} from './remotes';
 import { installAclHooks } from './security/installAclHooks';
 
 // Bring up the broker once for this browser realm — every MFE that calls
@@ -32,8 +32,8 @@ async function main() {
   renderChrome();
   // Lazy chunk — does not block the rest of the boot sequence.
   void mountDevTools();
-  installBackendNotificationsBridge();
-  installCrossTabCartBridge();
+  installBackendNotificationsRemote();
+  installCrossTabCartRemote();
   await registerMicrofrontends();
 }
 

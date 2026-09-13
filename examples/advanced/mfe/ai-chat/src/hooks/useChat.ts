@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { getBroker, SSETransport } from '@hedwigjs/broker';
+import { getBroker } from '@hedwigjs/broker';
+import type { RemoteClient } from '@hedwigjs/broker';
 import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
 
 import { getLang } from '../../../../shared/i18n/useLang';
@@ -19,7 +20,7 @@ export type ChatMessage = {
 // Baked at build time by webpack's EnvironmentPlugin (see webpack.config.js).
 const BACKEND_URL = process.env.AI_STREAM_URL as string;
 
-const BRIDGE_ID = 'ai-backend-stream';
+const REMOTE_ID = 'ai-backend';
 
 const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -27,13 +28,15 @@ const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice
  * Chat state driven entirely by broker traffic.
  *
  * Wire:
- *  1. `send()` opens an EventSource against the backend and attaches an
- *     SSETransport bridge that injects `chat.reply-chunk.v1` and
- *     `chat.reply-completed.v1` into the local broker.
+ *  1. `send()` registers the backend as a remote client over SSE
+ *     (`createRemoteClient('ai-backend', { transport: { kind: 'sse' } })`)
+ *     that may inject `chat.reply-chunk.v1` and `chat.reply-completed.v1`
+ *     into the local broker.
  *  2. Two `bus.on(...)` subscribers (filtered by replyId) update React
  *     state as chunks arrive and mark the message complete at the end.
- *  3. Cancel closes the EventSource (server sees `res.on('close')` and
- *     stops), then emits `chat.reply-cancelled.v1` locally.
+ *  3. Cancel destroys the remote, which closes the EventSource (server
+ *     sees `res.on('close')` and stops), then emits
+ *     `chat.reply-cancelled.v1` locally.
  *
  * Every event is on the bus — DevTools sees the whole timeline
  * (message-sent, reply-started, N × reply-chunk, reply-completed) with
@@ -47,12 +50,14 @@ export function useChat() {
   // Per-request state — kept in refs because the bus subscribers are
   // long-lived and need to know which replyId is currently active.
   const activeReplyIdRef = useRef<string | null>(null);
-  const activeRemoveBridgeRef = useRef<(() => void) | null>(null);
+  const activeRemoteRef = useRef<RemoteClient | null>(null);
   const bufferRef = useRef<string>('');
 
   const teardownActive = useCallback(() => {
-    activeRemoveBridgeRef.current?.();
-    activeRemoveBridgeRef.current = null;
+    // Destroying the remote closes its EventSource — the remote owns the
+    // transport.
+    activeRemoteRef.current?.destroy();
+    activeRemoteRef.current = null;
     activeReplyIdRef.current = null;
     bufferRef.current = '';
     setStreaming(false);
@@ -144,29 +149,20 @@ export function useChat() {
       bufferRef.current = '';
       setStreaming(true);
 
-      // SSETransport opens its own EventSource against the URL and owns
-      // the socket lifetime — teardownActive() calls transport.destroy()
-      // which closes it. Bridge is per-request because the endpoint is
-      // per-request (backend closes the stream after `chat.reply-completed`);
-      // otherwise the browser would auto-reconnect and re-run the reply.
+      // The AI backend is a remote client over SSE — inbound-only, so it
+      // can never be asked, only listened to. One remote per request
+      // because the endpoint is per request (backend closes the stream
+      // after `chat.reply-completed`); otherwise the browser would
+      // auto-reconnect and re-run the reply. `fixed` identity: every frame
+      // on this stream is `ai-backend`, and it may only inject the two
+      // reply topics.
       const url = `${BACKEND_URL}?prompt=${encodeURIComponent(trimmed)}&replyId=${encodeURIComponent(replyId)}&lang=${getLang()}`;
-      const transport = new SSETransport({ url });
 
       const broker = getBroker<Topic, TopicPayloads>();
-      const removeBridge = broker.addBridge(BRIDGE_ID, {
-        transport,
-        forward: ['chat.reply-chunk.v1', 'chat.reply-completed.v1'],
-        // The stream may only speak as the AI backend.
-        allowedSources: ['ai-backend'],
+      activeRemoteRef.current = broker.createRemoteClient(REMOTE_ID, {
+        transport: { kind: 'sse', url },
+        accepts: ['chat.reply-chunk.v1', 'chat.reply-completed.v1'],
       });
-
-      // Teardown closure captures the exact transport/bridge for this
-      // request. `broker.addBridge` returns a removal fn, and the
-      // transport we manage explicitly since the bridge doesn't own it.
-      activeRemoveBridgeRef.current = () => {
-        removeBridge();
-        transport.destroy();
-      };
     },
     [isStreaming],
   );

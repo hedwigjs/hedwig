@@ -110,6 +110,23 @@ export function attachInspector(
   const unsubBridgeMessageInvalid = broker.$systemEvents.on("bridge.message.invalid", (payload) => {
     store.pushSystemEvent("bridge.message.invalid", payload);
   });
+  // Remote clients (`broker.createRemoteClient`). Lifecycle is mirrored by
+  // `client.registered` / `client.unregistered`, which already refresh the
+  // Clients tab; these entries are log-only. `remote.frame.rejected` is an
+  // inbound frame dropped at the edge before any hook (no Messages row);
+  // `remote.send.failed` is an outbound frame the transport could not carry.
+  const unsubRemoteCreated = broker.$systemEvents.on("remote.created", (payload) => {
+    store.pushSystemEvent("remote.created", payload);
+  });
+  const unsubRemoteDestroyed = broker.$systemEvents.on("remote.destroyed", (payload) => {
+    store.pushSystemEvent("remote.destroyed", payload);
+  });
+  const unsubRemoteFrameRejected = broker.$systemEvents.on("remote.frame.rejected", (payload) => {
+    store.pushSystemEvent("remote.frame.rejected", payload);
+  });
+  const unsubRemoteSendFailed = broker.$systemEvents.on("remote.send.failed", (payload) => {
+    store.pushSystemEvent("remote.send.failed", payload);
+  });
   // Live counterpart of the hydrated realm-singleton event above — fires
   // when a lazily loaded remote brings its own copy of the library after
   // the panel is already attached.
@@ -152,6 +169,10 @@ export function attachInspector(
     unsubBridgeRemoved();
     unsubBridgeSendFailed();
     unsubBridgeMessageInvalid();
+    unsubRemoteCreated();
+    unsubRemoteDestroyed();
+    unsubRemoteFrameRejected();
+    unsubRemoteSendFailed();
     unsubDuplicateCopy();
     unsubHookFailed();
     unsubSubscriptionRejected();

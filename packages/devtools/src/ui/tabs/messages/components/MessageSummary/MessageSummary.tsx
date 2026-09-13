@@ -81,7 +81,17 @@ export function MessageSummary({ entry, open }: MessageSummaryProps): ReactNode 
           </span>
         )}
         {entry.replayed && <span className={styles.pill}>replay</span>}
-        {entry.fromExternal && <span className={styles.pill}>external</span>}
+        {entry.via ? (
+          <span
+            className={`${styles.pill} ${styles.pillVia}`}
+            title={`Delivered by remote client '${entry.via}'`}
+            data-mbdt-via={entry.via}
+          >
+            via {entry.via}
+          </span>
+        ) : (
+          entry.fromExternal && <span className={styles.pill}>external</span>
+        )}
         {entry.synthetic && (
           <span className={`${styles.pill} ${styles.pillSynthetic}`}>synthetic</span>
         )}
