@@ -89,11 +89,36 @@ describe('locator gates', () => {
     expect(hasCapability('transport.websocket')).toBe(false);
   });
 
-  test('handle below MIN_RUNTIME → RUNTIME_TOO_OLD', () => {
+  test('handle below MIN_RUNTIME → RUNTIME_TOO_OLD: getRuntime throws, whenRuntimeReady rejects, createClient degrades', async () => {
     installHandle({ runtimeVersion: '0.0.1' });
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => getRuntime()).toThrow(expect.objectContaining({ code: 'RUNTIME_TOO_OLD' }));
     expect(getRuntimeInfo()).toBeNull();
-    expect(() => createClient('x')).toThrow(expect.objectContaining({ code: 'RUNTIME_TOO_OLD' }));
+    // A promise-returning function reports the gate as a rejection, not a throw.
+    await expect(whenRuntimeReady()).rejects.toMatchObject({ code: 'RUNTIME_TOO_OLD' });
+
+    // A module must load on a stale host: no throw at module scope, a blocked client instead.
+    const c = createClient<'a.v1', { 'a.v1': number }>('x');
+    expect(c).toBeInstanceOf(LazyClient);
+    expect((c as LazyClient<any, any>).blocked).toMatchObject({ code: 'RUNTIME_TOO_OLD' });
+    const off = c.on('a.v1', jest.fn());
+    expect(typeof off).toBe('function');
+    await expect(c.emit('a.v1', 1)).resolves.toMatchObject({ status: 'NACK', reason: 'RUNTIME_TOO_OLD' });
+    await expect(c.request('y', 'a.v1', 1)).resolves.toMatchObject({ status: 'NACK', reason: 'RUNTIME_TOO_OLD' });
+    expect(errorLog).toHaveBeenCalledTimes(1);
+    errorLog.mockRestore();
+  });
+
+  test('a lazy client that waits for a runtime and gets a too-old one blocks itself and settles its queue', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const c = createClient<'a.v1', { 'a.v1': number }>('late');
+    const pending = c.emit('a.v1', 1);
+    installHandle({ runtimeVersion: '0.0.1' });
+    await new Promise((r) => setTimeout(r, 80)); // polling interval in Node
+    await expect(pending).resolves.toMatchObject({ status: 'NACK', reason: 'RUNTIME_TOO_OLD' });
+    expect((c as LazyClient<any, any>).blocked).not.toBeNull();
+    expect((c as LazyClient<any, any>).queued).toBe(0);
+    errorLog.mockRestore();
   });
 
   test('a usable handle reports info and capabilities', () => {
@@ -168,6 +193,35 @@ describe('createClient', () => {
     expect(real.calls.slice(-2)).toEqual(['off:b.v1', 'emit:b.v1:3']);
     c.destroy();
     expect(real.calls.at(-1)).toBe('destroy');
+  });
+
+  test('binding is isolated per subscription: a rejected one does not stop the others or the queue', async () => {
+    const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const c = createClient<'denied.v1' | 'ok.v1', { 'denied.v1': number; 'ok.v1': number }>('guarded');
+    c.on('denied.v1', jest.fn());
+    c.on('ok.v1', jest.fn());
+    const emitted = c.emit('ok.v1', 7);
+
+    const { clients } = installHandle({
+      createClient: (id, _options, meta) => {
+        const real = new FakeClient(id, meta.sdkVersion);
+        const on = real.on.bind(real);
+        real.on = (topic: string, handler: unknown) => {
+          if (topic === 'denied.v1') throw new Error('ACL: denied.v1 is not for you');
+          return on(topic, handler);
+        };
+        clients.set(id, real);
+        return real as never;
+      },
+    });
+    await new Promise((r) => setTimeout(r, 80));
+
+    const real = clients.get('guarded')!;
+    expect(real.calls).toEqual(['on:ok.v1', 'emit:ok.v1:7']);
+    await expect(emitted).resolves.toMatchObject({ status: 'ACK' });
+    expect(errorLog).toHaveBeenCalledTimes(1);
+    expect(String(errorLog.mock.calls[0]![0])).toContain("'denied.v1'");
+    errorLog.mockRestore();
   });
 
   test('the queue is bounded: the oldest call is dropped with NACK RUNTIME_NOT_READY', async () => {

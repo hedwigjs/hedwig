@@ -24,7 +24,11 @@ function meta(): ClientMeta {
  * `on()` records the subscription, `emit()` / `request()` queue (bounded,
  * default 64; overflow resolves the oldest with `NACK RUNTIME_NOT_READY`),
  * and everything flushes in order once the host calls `initBroker()`. A
- * runtime that is too old for this SDK throws `RUNTIME_TOO_OLD` at bind.
+ * runtime that is too old for this SDK never throws from here — a module
+ * must load even on a stale host — the proxy stays blocked instead: every
+ * `emit()` / `request()` answers `NACK RUNTIME_TOO_OLD`, `on()` records
+ * nothing, and the reason is logged once. `whenRuntimeReady()` rejects with
+ * the same error for code that wants to handle it.
  *
  * @example
  * import type { Topic, TopicPayloads } from '@my-org/topics';
@@ -42,19 +46,9 @@ export function createClient<
   if (runtime) {
     return runtime.createClient(id, options, meta()) as Client<T, P, C>;
   }
-  // No runtime, or one that is too old: the lazy proxy binds later and the
-  // version gate fires then, so a too-old runtime still surfaces as an error.
-  getRuntimeGateOrDefer();
+  // No runtime yet, or one that is too old: the lazy proxy binds when a
+  // usable runtime appears, or blocks itself (RUNTIME_TOO_OLD) — see LazyClient.
   return new LazyClient<T, P, C>(id, options, meta());
-}
-
-/** Throws `RUNTIME_TOO_OLD` now if a runtime exists but is too old; silent when none exists. */
-function getRuntimeGateOrDefer(): void {
-  try {
-    getRuntime();
-  } catch (error) {
-    if ((error as { code?: string }).code === 'RUNTIME_TOO_OLD') throw error;
-  }
 }
 
 /**

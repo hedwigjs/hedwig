@@ -73,7 +73,7 @@ property.
 | Code | When |
 | --- | --- |
 | `RUNTIME_NOT_PROVIDED` | No runtime in this realm (thrown by `createRemoteClient` and `getRuntime`; `createClient` proxies instead). |
-| `RUNTIME_TOO_OLD` | The runtime is older than this SDK's `MIN_RUNTIME`. Thrown by `createClient` / `createRemoteClient` / `getRuntime`; `whenRuntimeReady` rejects. Update `@hedwigjs/broker` in the host. |
+| `RUNTIME_TOO_OLD` | The runtime is older than this SDK's `MIN_RUNTIME`. Thrown by `createRemoteClient` / `getRuntime`; `whenRuntimeReady` rejects. `createClient` does **not** throw — a module must load even on a stale host — it returns a blocked client whose `emit` / `request` answer `NACK RUNTIME_TOO_OLD` and logs the reason once. Update `@hedwigjs/broker` in the host. |
 | `RUNTIME_ALREADY_PROVIDED` | Raised by the host's `initBroker()` when a handle for this ABI already exists but belongs to another provider. Not something a module sees. |
 | `CLIENT_ID_TAKEN` | A local or remote client with this id exists (thrown by the runtime through the handle). |
 | `TRANSPORT_UNSUPPORTED` | The descriptor `kind` is not in the runtime's capabilities. |

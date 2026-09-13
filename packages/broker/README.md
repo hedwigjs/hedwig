@@ -186,7 +186,7 @@ the same `code` property.
 | Code | Thrown by | When |
 | --- | --- | --- |
 | `RUNTIME_NOT_PROVIDED` | SDK | No runtime in this realm: `createRemoteClient()`, `getRuntime()`. `createClient()` returns a lazy client instead. |
-| `RUNTIME_TOO_OLD` | SDK | The runtime's version is below the SDK's `MIN_RUNTIME`. Raised by `createClient()` / `createRemoteClient()` / `getRuntime()`; `whenRuntimeReady()` rejects. Update `@hedwigjs/broker` in the host. |
+| `RUNTIME_TOO_OLD` | SDK | The runtime's version is below the SDK's `MIN_RUNTIME`. Raised by `createRemoteClient()` / `getRuntime()`; `whenRuntimeReady()` rejects; `createClient()` returns a blocked client that answers `NACK RUNTIME_TOO_OLD` instead of throwing at module scope. Update `@hedwigjs/broker` in the host. |
 | `RUNTIME_ALREADY_PROVIDED` | `initBroker()` | A handle for this ABI already exists in the realm but was not created through this package's realm slot — another provider of the runtime. One host boots one runtime. |
 | `CLIENT_ID_TAKEN` | runtime | `createClient()` / `createRemoteClient()` with an id that is in use. Local and remote clients share one namespace. See `ClientOptions.onConflict` under [Client](#client). |
 | `TRANSPORT_UNSUPPORTED` | runtime | A descriptor `kind` this runtime does not provide. `hasCapability('transport.<kind>')` tells ahead. |
