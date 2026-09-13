@@ -41,16 +41,14 @@ function summarize(entry: SystemEventLogEntry): string {
   const bridgeId = typeof p.bridgeId === "string" ? p.bridgeId : undefined;
   const reason = typeof p.reason === "string" ? p.reason : undefined;
   const messageId = typeof p.messageId === "string" ? p.messageId : undefined;
-  const protocolVersion = typeof p.protocolVersion === "number" ? p.protocolVersion : undefined;
+  const version = typeof p.version === "string" ? p.version : undefined;
+  const copyVersion = typeof p.copyVersion === "string" ? p.copyVersion : undefined;
   const copies = typeof p.copies === "number" ? p.copies : undefined;
-  const otherVersions = Array.isArray(p.otherVersions) ? (p.otherVersions as unknown[]) : undefined;
 
-  // Realm-singleton diagnostics.
-  if (protocolVersion !== undefined && copies !== undefined) {
-    return `protocol v${protocolVersion} · ${copies} extra ${copies === 1 ? "copy" : "copies"} of @hedwigjs/broker on this page`;
-  }
-  if (protocolVersion !== undefined && otherVersions) {
-    return `protocol v${protocolVersion} · other brokers in this realm: v${otherVersions.join(", v")}`;
+  // Realm-singleton diagnostics (broker.duplicate_copy).
+  if (version !== undefined && copies !== undefined) {
+    const who = copyVersion && copyVersion !== version ? ` (latest copy ${copyVersion})` : "";
+    return `broker ${version} · ${copies} extra ${copies === 1 ? "copy" : "copies"} of @hedwigjs/broker on this page${who}`;
   }
 
   // bridge.send.failed carries topic + messageId; lifecycle events only bridgeId.

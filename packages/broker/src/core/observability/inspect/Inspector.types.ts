@@ -1,18 +1,15 @@
 /**
- * Realm-singleton diagnostics, produced by `broker.inspect.getProtocolInfo()`.
+ * Realm-singleton diagnostics, produced by `broker.inspect.getVersionInfo()`.
  *
- * `duplicateCopies` and `otherProtocolVersions` are usually populated during
- * app bootstrap, before any observer has attached — tooling reads this
- * snapshot on attach instead of relying on having seen the live
- * `broker.duplicate_copy` / `broker.protocol_mismatch` events.
+ * `duplicateCopies` is usually populated during app bootstrap, before any
+ * observer has attached — tooling reads this snapshot on attach instead of
+ * relying on having seen the live `broker.duplicate_copy` events.
  */
-export interface ProtocolInfo {
-  /** Protocol version of this core (`PROTOCOL_VERSION` it was built with). */
-  protocolVersion: number;
-  /** How many other copies of the library adopted this instance so far. */
+export interface VersionInfo {
+  /** Package version of the copy that created this core. */
+  version: string;
+  /** How many other (compatible) copies of the library adopted this instance. */
   duplicateCopies: number;
-  /** Protocol versions of OTHER brokers that coexist in this realm. */
-  otherProtocolVersions: number[];
 }
 
 /**

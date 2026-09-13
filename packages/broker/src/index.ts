@@ -18,8 +18,8 @@
 // ── Entry points ────────────────────────────────────────────────────────
 export { initBroker, createClient, getBroker, destroyBroker } from './facade';
 
-// ── Protocol version (realm singleton key, DevTools handshake) ──────────
-export { PROTOCOL_VERSION } from './core/protocol';
+// ── Package version (realm singleton compatibility, DevTools handshake) ──
+export { VERSION, isCompatibleVersion } from './core/version';
 
 // ── Broker & Client contracts (public) ──────────────────────────────────
 export type { MessageBroker } from './core/MessageBroker';
@@ -61,7 +61,7 @@ export type {
   SystemAnyEventListener,
 } from './core/events/SystemEvents.types';
 export type { Inspector } from './core/observability/inspect/Inspector';
-export type { BridgeInfo, ProtocolInfo } from './core/observability/inspect/Inspector.types';
+export type { BridgeInfo, VersionInfo } from './core/observability/inspect/Inspector.types';
 
 // ── History inspection ──────────────────────────────────────────────────
 export type { HistoryEntry, HistoryStats } from './core/history/MessageHistory.types';

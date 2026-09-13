@@ -4,7 +4,7 @@ import type { Subscriptions } from '../../routing/Subscriptions';
 import type { Bridge } from '../../bridge/Bridge.types';
 import type { MessageHistory } from '../../history/MessageHistory';
 import type { HistoryEntry, HistoryStats } from '../../history/MessageHistory.types';
-import type { BridgeInfo, ProtocolInfo } from './Inspector.types';
+import type { BridgeInfo, VersionInfo } from './Inspector.types';
 
 /**
  * Inspector - read-only view over broker state.
@@ -26,29 +26,28 @@ export class Inspector<T extends string, P extends Record<T, any>> {
   #subscriptions: Subscriptions<T>;
   #bridges: ReadonlyMap<string, Bridge>;
   #getHistory: () => MessageHistory<T, P> | undefined;
-  #getProtocolInfo: () => ProtocolInfo;
+  #getVersionInfo: () => VersionInfo;
 
   constructor(
     clients: ClientRegistry<T, P>,
     subscriptions: Subscriptions<T>,
     bridges: ReadonlyMap<string, Bridge>,
     getHistory: () => MessageHistory<T, P> | undefined,
-    getProtocolInfo: () => ProtocolInfo,
+    getVersionInfo: () => VersionInfo,
   ) {
     this.#clients = clients;
     this.#subscriptions = subscriptions;
     this.#bridges = bridges;
     this.#getHistory = getHistory;
-    this.#getProtocolInfo = getProtocolInfo;
+    this.#getVersionInfo = getVersionInfo;
   }
 
   /**
-   * Realm-singleton diagnostics: this core's protocol version, how many
-   * other copies of the library adopted it, and which other protocol
-   * versions coexist in the realm. See {@link ProtocolInfo}.
+   * Realm-singleton diagnostics: this core's package version and how many
+   * other copies of the library adopted it. See {@link VersionInfo}.
    */
-  getProtocolInfo(): ProtocolInfo {
-    return this.#getProtocolInfo();
+  getVersionInfo(): VersionInfo {
+    return this.#getVersionInfo();
   }
 
   /**

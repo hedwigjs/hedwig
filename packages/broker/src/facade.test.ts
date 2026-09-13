@@ -1,5 +1,5 @@
 import { initBroker, getBroker, createClient, destroyBroker } from './facade';
-import { PROTOCOL_VERSION, GLOBAL_REGISTRY_KEY } from './core/protocol';
+import { VERSION, GLOBAL_REGISTRY_KEY, isCompatibleVersion } from './core/version';
 import type { BrokerLogger } from './core/logger/BrokerLogger.types';
 
 /**
@@ -22,40 +22,61 @@ function loadSecondCopy(): Facade {
   return mod;
 }
 
-function loadCopyWithProtocol(version: number): Facade {
+/** A copy of the library that reports a different package version. */
+function loadCopyWithVersion(version: string): Facade {
   let mod!: Facade;
   jest.isolateModules(() => {
-    jest.doMock('./core/protocol', () => ({
-      PROTOCOL_VERSION: version,
-      GLOBAL_REGISTRY_KEY: Symbol.for('@hedwigjs/broker'),
-    }));
+    jest.doMock('./core/version', () => {
+      const real = jest.requireActual('./core/version') as typeof import('./core/version');
+      return { ...real, VERSION: version };
+    });
     mod = require('./facade') as Facade;
   });
-  jest.dontMock('./core/protocol');
+  jest.dontMock('./core/version');
   return mod;
 }
 
-function recordingLogger(): BrokerLogger & { warns: Array<[string, unknown]> } {
-  const warns: Array<[string, unknown]> = [];
+function recordingLogger(): BrokerLogger & { calls: Array<[string, string, unknown]> } {
+  const calls: Array<[string, string, unknown]> = [];
   return {
-    warns,
+    calls,
     warn: (event, meta) => {
-      warns.push([event, meta]);
+      calls.push(['warn', event, meta]);
     },
-    error: () => {},
+    error: (event, meta) => {
+      calls.push(['error', event, meta]);
+    },
   };
 }
 
+describe('isCompatibleVersion', () => {
+  test.each([
+    ['0.2.3', '0.2.9', true],
+    ['0.2.3', '0.3.0', false],
+    ['0.2.3', '1.0.0', false],
+    ['1.4.0', '1.9.2', true],
+    ['1.4.0', '2.0.0', false],
+    ['0.0.0-dev', '0.0.0-dev', true],
+    ['weird', 'weird', true],
+    ['weird', '0.2.0', false],
+  ])('%s vs %s → %s', (a, b, expected) => {
+    expect(isCompatibleVersion(a, b)).toBe(expected);
+  });
+});
+
 describe('facade — realm singleton', () => {
   let consoleWarn: jest.SpyInstance;
+  let consoleError: jest.SpyInstance;
 
   beforeEach(() => {
     consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
     destroyBroker();
     consoleWarn.mockRestore();
+    consoleError.mockRestore();
   });
 
   test('initBroker is idempotent within one copy and does not report a duplicate', () => {
@@ -64,16 +85,12 @@ describe('facade — realm singleton', () => {
     const b = initBroker();
 
     expect(b).toBe(a);
-    expect(logger.warns.map(([e]) => e)).not.toContain('broker.duplicate_copy');
-    expect(a.inspect.getProtocolInfo()).toEqual({
-      protocolVersion: PROTOCOL_VERSION,
-      duplicateCopies: 0,
-      otherProtocolVersions: [],
-    });
+    expect(logger.calls.map(([, e]) => e)).not.toContain('broker.duplicate_copy');
+    expect(a.inspect.getVersionInfo()).toEqual({ version: VERSION, duplicateCopies: 0 });
   });
 
-  test('exposes protocolVersion on the instance', () => {
-    expect(initBroker().protocolVersion).toBe(PROTOCOL_VERSION);
+  test('exposes the package version on the instance', () => {
+    expect(initBroker().version).toBe(VERSION);
   });
 
   test('a second copy of the library reuses the instance created by the first', () => {
@@ -95,13 +112,13 @@ describe('facade — realm singleton', () => {
     copy.getBroker();
     copy.initBroker();
 
-    const dup = logger.warns.filter(([e]) => e === 'broker.duplicate_copy');
+    const dup = logger.calls.filter(([, e]) => e === 'broker.duplicate_copy');
     expect(dup).toHaveLength(1);
-    expect(dup[0]![1]).toEqual(
-      expect.objectContaining({ protocolVersion: PROTOCOL_VERSION, copies: 1 }),
+    expect(dup[0]![2]).toEqual(
+      expect.objectContaining({ version: VERSION, copyVersion: VERSION, copies: 1 }),
     );
     expect(events).toHaveLength(1);
-    expect(first.inspect.getProtocolInfo().duplicateCopies).toBe(1);
+    expect(first.inspect.getVersionInfo().duplicateCopies).toBe(1);
   });
 
   test('each additional copy increments the count', () => {
@@ -109,7 +126,7 @@ describe('facade — realm singleton', () => {
     loadSecondCopy().getBroker();
     loadSecondCopy().getBroker();
 
-    expect(first.inspect.getProtocolInfo().duplicateCopies).toBe(2);
+    expect(first.inspect.getVersionInfo().duplicateCopies).toBe(2);
   });
 
   test('a client created from the second copy registers on the shared broker and receives messages', async () => {
@@ -156,25 +173,35 @@ describe('facade — realm singleton', () => {
     );
   });
 
-  test('a copy speaking another protocol version gets its own broker and a protocol_mismatch warning', () => {
-    const first = initBroker();
-    const events: unknown[] = [];
-    first.$systemEvents.on('broker.protocol_mismatch', (p) => events.push(p));
+  describe('incompatible copy', () => {
+    test('initBroker / getBroker / createClient throw and never create a second broker', () => {
+      const logger = recordingLogger();
+      const first = initBroker({ logger });
+      const clientsBefore = first.inspect.getClients().length;
 
-    const logger = recordingLogger();
-    const other = loadCopyWithProtocol(99);
-    const foreign = other.initBroker({ logger });
+      const other = loadCopyWithVersion('0.9.0'); // VERSION is 0.0.0-dev in jest → different minor
 
-    expect(foreign).not.toBe(first);
-    expect(foreign.protocolVersion).toBe(99);
-    expect(logger.warns.find(([e]) => e === 'broker.protocol_mismatch')?.[1]).toEqual(
-      expect.objectContaining({ protocolVersion: 99, otherVersions: [PROTOCOL_VERSION] }),
-    );
-    expect(foreign.inspect.getProtocolInfo().otherProtocolVersions).toEqual([PROTOCOL_VERSION]);
-    // The first broker was created before the second existed, so it saw no mismatch.
-    expect(events).toHaveLength(0);
-    expect(getBroker()).toBe(first);
+      expect(() => other.initBroker()).toThrow(/already exists in this realm/);
+      expect(() => other.getBroker()).toThrow(/already exists in this realm/);
+      expect(() => other.createClient('x')).toThrow(/already exists in this realm/);
 
-    other.destroyBroker();
+      // Nothing was created or registered; the existing broker is untouched.
+      expect(getBroker()).toBe(first);
+      expect(first.inspect.getClients().length).toBe(clientsBefore);
+      expect(first.inspect.getVersionInfo().duplicateCopies).toBe(0);
+      expect(logger.calls).toContainEqual([
+        'error',
+        'broker.version_incompatible',
+        expect.objectContaining({ existing: VERSION, thisCopy: '0.9.0' }),
+      ]);
+    });
+
+    test('a compatible copy (same minor, different patch) adopts normally', () => {
+      const first = initBroker();
+      const other = loadCopyWithVersion('0.0.7-dev');
+
+      expect(other.getBroker()).toBe(first);
+      expect(first.inspect.getVersionInfo().duplicateCopies).toBe(1);
+    });
   });
 });

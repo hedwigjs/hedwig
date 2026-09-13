@@ -82,7 +82,7 @@
 }
 
 /* Protocol handshake failed: panel and core were built against different
-   PROTOCOL_VERSIONs. Amber, non-blocking — the panel still attaches. */
+   @hedwigjs/broker versions. Amber, non-blocking — the panel still attaches. */
 .badgeWarn {
   background: #713f12;
   color: #fef08a;

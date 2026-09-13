@@ -21,25 +21,18 @@ export interface SystemEventMap<T extends string, P extends Record<T, any>> {
   // ─── Realm singleton ──────────────────────────────────────────────────────
 
   /**
-   * Another copy of `@hedwigjs/broker` on this page adopted the existing
-   * instance through the realm registry (Module Federation without
-   * `singleton: true`, two bundlers, ESM + CJS duplicates). Everything
-   * still talks on one bus; the event exists so the duplication is
-   * visible instead of silent. `copies` counts adoptions so far.
+   * Another (compatible) copy of `@hedwigjs/broker` on this page adopted
+   * the existing instance through the realm registry (Module Federation
+   * without `singleton: true`, two bundlers, ESM + CJS duplicates).
+   * Everything still talks on one bus; the event exists so the duplication
+   * is visible instead of silent. `copies` counts adoptions so far. An
+   * INCOMPATIBLE copy never adopts — it throws at `initBroker` /
+   * `getBroker` / `createClient` instead.
    */
   'broker.duplicate_copy': {
-    protocolVersion: number;
+    version: string;
+    copyVersion: string;
     copies: number;
-    at: number;
-  };
-  /**
-   * A broker speaking a DIFFERENT protocol version already existed in this
-   * realm when this one was created. The two cannot share an instance:
-   * modules bundled with the other copy run on a separate bus.
-   */
-  'broker.protocol_mismatch': {
-    protocolVersion: number;
-    otherVersions: number[];
     at: number;
   };
 

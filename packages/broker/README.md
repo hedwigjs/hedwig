@@ -153,10 +153,10 @@ otherwise, so the broker never depends on an `https:` origin.
 ### One broker per realm
 
 "One broker" is guaranteed per **realm** — one window or worker — not
-per copy of the library. The instance lives in a non-enumerable
-registry on `globalThis` (`Symbol.for('@hedwigjs/broker')`) keyed by
-the exported `PROTOCOL_VERSION`, so every copy of `@hedwigjs/broker`
-that ends up on the page resolves to the same core:
+per copy of the library. The instance lives in a non-enumerable slot on
+`globalThis` (`Symbol.for('@hedwigjs/broker')`) together with the
+package version of the copy that created it, so every copy of
+`@hedwigjs/broker` that ends up on the page resolves to the same core:
 
 - Module Federation remotes bundled without `singleton: true`;
 - two applications built by different bundlers on one page;
@@ -168,13 +168,14 @@ logs `broker.duplicate_copy` and emits the same-named system event, so
 the duplication is visible in DevTools instead of silent. Everything
 still talks on one bus.
 
-`PROTOCOL_VERSION` is the version of the internal client ↔ core
-protocol, decoupled from the npm version. A copy that speaks a
-different protocol gets its **own** broker and a
-`broker.protocol_mismatch` warning listing the other versions — never a
-crash inside foreign code. Compatibility rule: a client bundle built
-against protocol `N` works with any core of protocol `N`. Pin it in
-Module Federation so a mismatch fails at load time, not at runtime:
+Compatibility follows semver: before 1.0 copies must share the same
+**minor**, from 1.0 on the same **major** (`isCompatibleVersion` is
+exported). An incompatible copy never gets its own broker — its
+`initBroker()`, `getBroker()` and `createClient()` throw with a message
+naming both versions, and the core logs `broker.version_incompatible`.
+Two buses on one page is a configuration error, so it fails loudly.
+Pin the version in Module Federation so a mismatch fails at load time,
+not at runtime:
 
 ```js
 shared: {
@@ -188,9 +189,9 @@ do not reach for `parent.globalThis` to share an instance — a frame's
 subscriptions would outlive the frame, and cross-realm objects break
 `instanceof`.
 
-`broker.protocolVersion` and `broker.inspect.getProtocolInfo()` expose
-the diagnostics (version, duplicate copies adopted, other versions in
-the realm). This registry is hygiene, not a security boundary: any
+`broker.version` and `broker.inspect.getVersionInfo()` expose the
+diagnostics (version, duplicate copies adopted). This slot is hygiene,
+not a security boundary: any
 script in the realm could already reach the broker through the module
 graph.
 
@@ -237,7 +238,7 @@ Returned by `initBroker()` / `getBroker()`.
 | `$systemEvents`                                   | push channel  | Subscribe to broker lifecycle events (clients, subscriptions, bridges, rejections).              |
 | `inspect`                                         | pull snapshot | Read-only view over clients, subscriptions, bridges, history.                                    |
 | `$debug.send(source, topic, target, data)`        | internal      | Inject a synthetic message through the full pipeline. Marked `synthetic: true`. For DevTools & tests. Requires `initBroker({ debug: true })`, otherwise resolves `NACK DEBUG_DISABLED`; `$debug.enabled` reports the state. |
-| `protocolVersion`                                 | readonly      | Internal client ↔ core protocol version (`PROTOCOL_VERSION`). See [One broker per realm](#one-broker-per-realm). |
+| `version`                                         | readonly      | Package version of the copy that created this core. See [One broker per realm](#one-broker-per-realm). |
 | `addBridge(id, { transport, forward })`           | wiring        | Register a bridge. Idempotent — an existing id is destroyed and replaced. Returns a remover.     |
 | `useBeforeSendHook(fn)`                           | extension     | Gate outgoing messages. Return `{ allowed: false, message }` to reject.                          |
 | `useAfterSendHook(fn)`                            | extension     | Observe delivery outcomes. Receives the frozen message + `RoutingResult`.                        |
@@ -565,8 +566,7 @@ user messages — infrastructure telemetry.
 
 | Event                    | Payload                                                    | Fired when                                                                 |
 | ------------------------ | ---------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `broker.duplicate_copy`  | `{ protocolVersion, copies, at }`                          | Another copy of the library adopted this instance through the realm registry. Still one bus. |
-| `broker.protocol_mismatch` | `{ protocolVersion, otherVersions, at }`                 | A broker of a different `PROTOCOL_VERSION` already existed in this realm; the two cannot share an instance. |
+| `broker.duplicate_copy`  | `{ version, copyVersion, copies, at }`                     | Another compatible copy of the library adopted this instance through the realm slot. Still one bus. |
 | `client.registered`      | `{ clientId, at }`                                         | `createClient(id)` registers a new id.                                      |
 | `client.unregistered`    | `{ clientId, at }`                                         | `client.destroy()` or broker teardown.                                      |
 | `subscription.added`     | `{ clientId, topic, options? }`                            | `client.on(topic, …)` succeeds.                                             |

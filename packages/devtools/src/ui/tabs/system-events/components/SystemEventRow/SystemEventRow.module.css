@@ -81,7 +81,7 @@
   color: #fdba74;
 }
 
-/* Realm-singleton diagnostics (broker.duplicate_copy, broker.protocol_mismatch). */
+/* Realm-singleton diagnostics (broker.duplicate_copy). */
 .facetBroker {
   background: #1e293b;
   color: #cbd5e1;

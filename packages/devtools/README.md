@@ -77,9 +77,10 @@ if (process.env.NODE_ENV !== 'production') {
 }
 ```
 
-On attach the panel compares the core's `protocolVersion` with the
-`PROTOCOL_VERSION` it was built against and shows a `protocol vX ≠ vY`
-badge in the header when they differ — align `@hedwigjs/broker` and
+On attach the panel compares the core's `version` with the
+`@hedwigjs/broker` version it was built against (same minor before 1.0,
+same major after) and shows a `broker X ≠ Y` badge in the header when
+they are incompatible — align `@hedwigjs/broker` and
 `@hedwigjs/devtools` versions in that case.
 
 ---
@@ -352,10 +353,9 @@ that wires up two channels:
   `subscription.rejected` and `message.rejected` are surfaced separately
   as security signals; `bridge.send.failed` is logged without touching
   the bridge list, since the bridge is still registered.
-  `broker.duplicate_copy` and `broker.protocol_mismatch` (the library
-  bundled twice / two protocol versions in one realm) are hydrated from
-  `inspect.getProtocolInfo()` on attach, because they fire at app
-  bootstrap before any panel exists.
+  `broker.duplicate_copy` (the library bundled twice in one realm) is
+  hydrated from `inspect.getVersionInfo()` on attach, because it fires
+  at app bootstrap before any panel exists.
 - **Snapshots (initial hydration)** — `inspect.getClients()`,
   `inspect.getHistory()`, and `inspect.getBridges()` prime state on
   attach and refresh on each system event, so the tabs are correct

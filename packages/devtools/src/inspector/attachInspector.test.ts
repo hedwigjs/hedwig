@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION } from "@hedwigjs/broker";
+import { VERSION } from "@hedwigjs/broker";
 import type { Message, RoutingResult } from "@hedwigjs/broker";
 import { attachInspector } from "./attachInspector";
 import { createInspectorStore } from "./createInspectorStore";
@@ -23,7 +23,6 @@ function createSystemEventsStub() {
 
 interface InspectStubOptions {
   duplicateCopies?: number;
-  otherProtocolVersions?: number[];
 }
 
 function createInspectStub(options: InspectStubOptions = {}) {
@@ -33,16 +32,15 @@ function createInspectStub(options: InspectStubOptions = {}) {
     getBridges: jest.fn(() => []),
     getHistory: jest.fn(() => []),
     getHistoryStats: jest.fn(() => ({ count: 0, enabled: false })),
-    getProtocolInfo: jest.fn(() => ({
-      protocolVersion: PROTOCOL_VERSION,
+    getVersionInfo: jest.fn(() => ({
+      version: VERSION,
       duplicateCopies: options.duplicateCopies ?? 0,
-      otherProtocolVersions: options.otherProtocolVersions ?? [],
     })),
   } as unknown as MessageBrokerForDevTools["inspect"];
 }
 
 interface MockBrokerOptions extends InspectStubOptions {
-  protocolVersion?: number | undefined;
+  version?: string | undefined;
 }
 
 function createMockBroker(options: MockBrokerOptions = {}) {
@@ -50,7 +48,7 @@ function createMockBroker(options: MockBrokerOptions = {}) {
   let afterHook: ((message: Readonly<Message>, result: RoutingResult) => void) | undefined;
 
   const broker: MessageBrokerForDevTools = {
-    protocolVersion: "protocolVersion" in options ? options.protocolVersion : PROTOCOL_VERSION,
+    version: "version" in options ? options.version : VERSION,
     useBeforeSendHook(
       fn: (message: Readonly<Message>) => { allowed: true } | { allowed: false; message: string },
     ) {
@@ -70,6 +68,7 @@ function createMockBroker(options: MockBrokerOptions = {}) {
     $systemEvents: createSystemEventsStub(),
     inspect: createInspectStub(options),
     $debug: {
+      enabled: true,
       send: jest.fn(async () => ({
         status: "ACK",
         reason: "DISPATCHED",
@@ -129,7 +128,6 @@ describe("attachInspector", () => {
         "bridge.removed",
         "bridge.send.failed",
         "broker.duplicate_copy",
-        "broker.protocol_mismatch",
       ]),
     );
   });
@@ -157,62 +155,52 @@ describe("attachInspector", () => {
     expect(refreshBridges.mock.calls.length).toBe(callsBefore);
   });
 
-  describe("protocol handshake", () => {
-    it("records a matching protocol version without flagging a mismatch", () => {
+  describe("version handshake", () => {
+    it("records a compatible core version without flagging a mismatch", () => {
       const { broker } = createMockBroker();
       const store = createInspectorStore({ maxEvents: 20 });
 
       attachInspector(broker, store);
 
-      expect(store.getSnapshot().protocol).toEqual({
-        expected: PROTOCOL_VERSION,
-        actual: PROTOCOL_VERSION,
+      expect(store.getSnapshot().version).toEqual({
+        expected: VERSION,
+        actual: VERSION,
         mismatch: false,
       });
     });
 
-    it("flags a mismatch when the core speaks a different PROTOCOL_VERSION", () => {
-      const { broker } = createMockBroker({ protocolVersion: PROTOCOL_VERSION + 1 });
+    it("flags a mismatch when the core is an incompatible @hedwigjs/broker version", () => {
+      const { broker } = createMockBroker({ version: "99.0.0" });
       const store = createInspectorStore({ maxEvents: 20 });
 
       attachInspector(broker, store);
 
-      expect(store.getSnapshot().protocol).toEqual({
-        expected: PROTOCOL_VERSION,
-        actual: PROTOCOL_VERSION + 1,
+      expect(store.getSnapshot().version).toEqual({
+        expected: VERSION,
+        actual: "99.0.0",
         mismatch: true,
       });
     });
 
-    it("does not flag a core that predates the protocolVersion field", () => {
-      const { broker } = createMockBroker({ protocolVersion: undefined });
+    it("does not flag a core that predates the version field", () => {
+      const { broker } = createMockBroker({ version: undefined });
       const store = createInspectorStore({ maxEvents: 20 });
 
       attachInspector(broker, store);
 
-      expect(store.getSnapshot().protocol.mismatch).toBe(false);
-      expect(store.getSnapshot().protocol.actual).toBeUndefined();
+      expect(store.getSnapshot().version.mismatch).toBe(false);
+      expect(store.getSnapshot().version.actual).toBeUndefined();
     });
 
-    it("hydrates broker.duplicate_copy and broker.protocol_mismatch from the inspect snapshot", () => {
-      const { broker } = createMockBroker({ duplicateCopies: 2, otherProtocolVersions: [7] });
+    it("hydrates broker.duplicate_copy from the inspect snapshot", () => {
+      const { broker } = createMockBroker({ duplicateCopies: 2 });
       const store = createInspectorStore({ maxEvents: 20 });
 
       attachInspector(broker, store);
 
-      const names = store.getSnapshot().systemEvents.map((e) => e.name);
-      expect(names).toEqual(
-        expect.arrayContaining(["broker.duplicate_copy", "broker.protocol_mismatch"]),
-      );
       const dup = store.getSnapshot().systemEvents.find((e) => e.name === "broker.duplicate_copy");
       expect(dup?.payload).toEqual(
-        expect.objectContaining({ copies: 2, hydrated: true }),
-      );
-      const mismatch = store
-        .getSnapshot()
-        .systemEvents.find((e) => e.name === "broker.protocol_mismatch");
-      expect(mismatch?.payload).toEqual(
-        expect.objectContaining({ otherVersions: [7], hydrated: true }),
+        expect.objectContaining({ version: VERSION, copies: 2, hydrated: true }),
       );
     });
 
@@ -224,7 +212,6 @@ describe("attachInspector", () => {
 
       const names = store.getSnapshot().systemEvents.map((e) => e.name);
       expect(names).not.toContain("broker.duplicate_copy");
-      expect(names).not.toContain("broker.protocol_mismatch");
     });
   });
 });

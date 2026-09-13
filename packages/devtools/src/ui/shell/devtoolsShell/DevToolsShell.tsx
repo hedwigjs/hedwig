@@ -91,7 +91,7 @@ export const DevToolsShell = ({
     store.getSnapshot,
     store.getSnapshot,
   );
-  const { attached, protocol } = snapshot;
+  const { attached, version } = snapshot;
 
   const boxStyle = useMemo(
     () => shellInlineStyle(layout),
@@ -139,13 +139,13 @@ export const DevToolsShell = ({
         >
           {attached ? "connected" : "disconnected"}
         </span>
-        {protocol.mismatch && (
+        {version.mismatch && (
           <span
             className={`${styles.badge} ${styles.badgeWarn}`}
-            title={`This panel was built against protocol v${protocol.expected}, the attached core speaks v${protocol.actual}. Tabs may render incomplete data — align @hedwigjs/broker and @hedwigjs/devtools versions.`}
-            data-mbdt-protocol-mismatch
+            title={`This panel was built against @hedwigjs/broker ${version.expected}, the attached core is ${version.actual}. Tabs may render incomplete data — align @hedwigjs/broker and @hedwigjs/devtools versions.`}
+            data-mbdt-version-mismatch
           >
-            protocol v{protocol.actual} ≠ v{protocol.expected}
+            broker {version.actual} ≠ {version.expected}
           </span>
         )}
         <span className={styles.spacer} />

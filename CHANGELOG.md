@@ -37,17 +37,18 @@ commit with a changeset; per-package notes will appear in
 - `initBroker()` works outside secure contexts (plain `http://` hosts):
   session ids fall back to `crypto.getRandomValues`.
 
-### Broker — one instance per realm, protocol version, debug gate
+### Broker — one instance per realm, version compatibility, debug gate
 
-- The broker now lives in a non-enumerable registry on `globalThis`
-  keyed by the new exported `PROTOCOL_VERSION`, so copies of the
-  library that reach the page twice (Module Federation without
-  `singleton: true`, two bundlers, ESM + CJS) share one instance. A
-  second copy is reported as `broker.duplicate_copy`; a copy speaking
-  another protocol version gets its own broker and
-  `broker.protocol_mismatch`. `broker.protocolVersion` and
-  `inspect.getProtocolInfo()` expose the diagnostics. Scope is one
-  realm: iframes and Workers keep their own broker plus a bridge.
+- The broker now lives in a non-enumerable slot on `globalThis`
+  together with its package version, so copies of the library that
+  reach the page twice (Module Federation without `singleton: true`,
+  two bundlers, ESM + CJS) share one instance. A compatible second copy
+  (same minor before 1.0, same major after) is reported as
+  `broker.duplicate_copy`; an incompatible copy throws from
+  `initBroker` / `getBroker` / `createClient` and never creates a second
+  bus. `VERSION`, `isCompatibleVersion`, `broker.version` and
+  `inspect.getVersionInfo()` are exported. Scope is one realm: iframes
+  and Workers keep their own broker plus a bridge.
 - `broker.$debug.send` requires `initBroker({ debug: true })`;
   otherwise `NACK DEBUG_DISABLED`. Off by default so production bundles
   cannot inject spoofed traffic by accident.

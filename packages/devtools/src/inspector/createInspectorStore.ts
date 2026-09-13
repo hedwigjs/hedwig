@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION } from "@hedwigjs/broker";
+import { VERSION, isCompatibleVersion } from "@hedwigjs/broker";
 import type { Message, RoutingResult, HistoryEntry } from "@hedwigjs/broker";
 import type {
   InspectorSnapshot,
@@ -10,7 +10,7 @@ import type {
   SystemEventLogEntry,
   SystemEventName,
   BridgeEntry,
-  ProtocolStatus,
+  VersionStatus,
 } from "./types";
 import { serializeDataPreview, snapshotFrom, EMPTY_MESSAGES_FILTER } from "./types";
 import { createMessageRingBuffer, createRingBuffer } from "./ringLog";
@@ -88,8 +88,8 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
   const listeners = new Set<() => void>();
   let totalSeen = 0;
   let attached = false;
-  let protocol: ProtocolStatus = {
-    expected: PROTOCOL_VERSION,
+  let version: VersionStatus = {
+    expected: VERSION,
     actual: undefined,
     mismatch: false,
   };
@@ -101,7 +101,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
     [],
     totalSeen,
     attached,
-    protocol,
+    version,
     [],
     messagesFilter,
     [],
@@ -144,7 +144,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
       entries,
       totalSeen,
       attached,
-      protocol,
+      version,
       clients,
       messagesFilter,
       historyEntries,
@@ -169,14 +169,15 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
   }
 
   /**
-   * Record the attached core's protocol version. `undefined` (core predates
-   * the field) is NOT treated as a mismatch — only a known, different value.
+   * Record the attached core's package version. `undefined` (core predates
+   * the field) is NOT treated as a mismatch — only a known, incompatible
+   * value under the semver rule (same minor before 1.0, same major after).
    */
-  function setProtocol(actual: number | undefined) {
-    protocol = {
-      expected: PROTOCOL_VERSION,
+  function setVersion(actual: string | undefined) {
+    version = {
+      expected: VERSION,
       actual,
-      mismatch: actual !== undefined && actual !== PROTOCOL_VERSION,
+      mismatch: actual !== undefined && !isCompatibleVersion(actual, VERSION),
     };
     emit();
   }
@@ -317,7 +318,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
     subscribe,
     getSnapshot,
     setAttached,
-    setProtocol,
+    setVersion,
     onBeforeSend,
     onAfterSend,
     clearLog,
