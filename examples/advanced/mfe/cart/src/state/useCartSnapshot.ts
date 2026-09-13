@@ -4,7 +4,7 @@ import { useStateTopic } from '../clients/bus';
 
 type Snapshot = TopicPayloads['cart.snapshot.v1'];
 
-const EMPTY: Snapshot = { items: [] as CartItem[], totalItems: 0, totalPrice: 0 };
+const EMPTY: Snapshot = { items: [] as CartItem[], totalItems: 0, totalPrice: 0, updatedAt: 0 };
 
 /**
  * Read-only view onto the cart snapshot in the bus. Views use this instead

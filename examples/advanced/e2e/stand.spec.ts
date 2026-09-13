@@ -163,6 +163,22 @@ test.describe('reference stand', () => {
     await expect.poll(async () => (await seen(page)).filter((m) => m.via === 'tabs').length).toBeGreaterThan(0);
     const fromTab = (await seen(page)).find((m) => m.via === 'tabs')!;
     expect(fromTab).toMatchObject({ topic: 'cart.snapshot.v1', source: 'tab:cart-store', status: 'ACK' });
+
+    // The stores converge, not just the pictures: this tab's own store
+    // adopted the snapshot, so removing the item here works and travels back.
+    await page.getByRole('complementary').getByRole('button', { name: /remove/i }).first().click();
+    await expect(page.getByRole('complementary')).toContainText(/cart is empty/i);
+    await expect(other.getByRole('complementary')).toContainText(/cart is empty/i);
+
+    // A third tab opening now must not wipe anyone: its boot snapshot is
+    // older than everything, so it is answered with the current cart.
+    await other.getByRole('button', { name: 'Add to cart' }).nth(2).click();
+    await expect(page.getByRole('complementary')).toContainText(/1 item/i);
+    const third = await context.newPage();
+    await third.goto('/');
+    await expect(third.getByRole('complementary')).toContainText(/1 item/i);
+    await expect(page.getByRole('complementary')).toContainText(/1 item/i);
+    await third.close();
     await other.close();
   });
 

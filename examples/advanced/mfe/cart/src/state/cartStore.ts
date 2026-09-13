@@ -1,4 +1,4 @@
-import type { CartItem } from '@hedwig-demo/contracts';
+import type { CartItem, TopicPayloads } from '@hedwig-demo/contracts';
 import type {
   CartAddItemResponse,
   CartDecrementResponse,
@@ -63,6 +63,14 @@ function computeTotals(items: CartItem[]) {
  *  - Текущее состояние — топик рода **state** `cart.snapshot.v1`: рантайм
  *    удерживает последний snapshot и отдаёт его каждому новому подписчику
  *    сразу при `on()`. Ничего на emit, ни `replay` у подписчиков.
+ *  - Другие вкладки. У каждой вкладки свой store; снапшоты ходят между
+ *    ними через remote `tabs` (BroadcastChannel) и приходят сюда как
+ *    `fromExternal`. Store сравнивает `updatedAt`: новее своего — принимает
+ *    молча (UI и retention этой вкладки уже получили тот же кадр напрямую,
+ *    переотправлять нечего), старее — отвечает своим текущим (так свежая
+ *    вкладка получает корзину), равен — молчит. Одна мутация = один кадр
+ *    в каждую соседнюю вкладку, без эха. Одновременная правка в двух
+ *    вкладках сходится к «кто позже, тот прав».
  */
 export function startCartRuntime(): void {
   const rt = getRuntime();
@@ -70,14 +78,38 @@ export function startCartRuntime(): void {
   rt.started = true;
 
   let state: CartState = {};
+  // Unix ms of the last mutation; 0 means "never touched" (the boot state),
+  // so a freshly opened tab never overwrites a tab that has a cart.
+  let updatedAt = 0;
 
   const emitSnapshot = () => {
     const items = Object.values(state);
     const { totalItems, totalPrice } = computeTotals(items);
     // `cart.snapshot.v1` is a `state` topic (see the contract): the runtime
     // retains this value and delivers it to late subscribers by itself.
-    void storeBus.emit('cart.snapshot.v1', { items, totalItems, totalPrice });
+    void storeBus.emit('cart.snapshot.v1', { items, totalItems, totalPrice, updatedAt });
   };
+
+  const touch = () => {
+    updatedAt = Date.now();
+  };
+
+  // Snapshots from other tabs (via the `tabs` remote). Own emits never come
+  // back here: the runtime excludes the sender from its own multicast.
+  storeBus.on('cart.snapshot.v1', (msg) => {
+    if (!msg.fromExternal) return;
+    const incoming: TopicPayloads['cart.snapshot.v1'] = msg.data;
+    if (incoming.updatedAt > updatedAt) {
+      // Adopt silently: this tab's UI and retention already have this very
+      // frame; re-emitting it would only echo it to every other tab.
+      state = Object.fromEntries(incoming.items.map((item) => [item.itemId, item]));
+      updatedAt = incoming.updatedAt;
+    } else if (incoming.updatedAt < updatedAt) {
+      // A tab that knows less (typically one that just opened): tell it.
+      emitSnapshot();
+    }
+    // Equal: nothing to do.
+  });
 
   storeBus.on('cart.add-item.v1', (msg): CartAddItemResponse => {
     const payload = msg.data;
@@ -96,6 +128,7 @@ export function startCartRuntime(): void {
           },
     };
 
+    touch();
     emitSnapshot();
     return {
       itemId: payload.itemId,
@@ -113,6 +146,7 @@ export function startCartRuntime(): void {
     if (current.quantity <= 1) {
       const { [itemId]: _dropped, ...rest } = state;
       state = rest;
+      touch();
       emitSnapshot();
       return { itemId, quantity: 0, subtotal: computeSubtotal(Object.values(state)) };
     }
@@ -121,6 +155,7 @@ export function startCartRuntime(): void {
       ...state,
       [itemId]: { ...current, quantity: nextQuantity },
     };
+    touch();
     emitSnapshot();
     return {
       itemId,
@@ -136,6 +171,7 @@ export function startCartRuntime(): void {
     }
     const { [itemId]: _dropped, ...rest } = state;
     state = rest;
+    touch();
     emitSnapshot();
     return {
       itemId,
@@ -144,7 +180,8 @@ export function startCartRuntime(): void {
     };
   });
 
-  // Fire an initial empty snapshot so late-joining subscribers (with `replay`)
-  // don't get `undefined` before any commands.
+  // The boot snapshot: empty, `updatedAt: 0`. Other tabs treat it as older
+  // than anything they have and answer with their cart — that is how a new
+  // tab picks up the state instead of wiping everyone else's.
   emitSnapshot();
 }
