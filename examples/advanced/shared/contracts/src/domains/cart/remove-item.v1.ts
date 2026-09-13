@@ -1,4 +1,4 @@
-import type { EventContract } from "../../lib/contract";
+import type { TopicContract } from "../../lib/contract";
 
 /**
  * Response returned by the cart runtime handler. `removed` is `false` when
@@ -12,10 +12,12 @@ export type CartRemoveItemResponse = {
 
 export default {
   name: "cart.remove-item.v1",
+  kind: "request",
+  response: {} as CartRemoveItemResponse,
   description:
     "Command: fully remove a line from the cart regardless of quantity. Handled by cart-store as a request.",
   payload: {} as { itemId: number },
   examples: {
     happy: { itemId: 8 },
   },
-} as const satisfies EventContract;
+} as const satisfies TopicContract;

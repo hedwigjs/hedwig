@@ -1,7 +1,8 @@
-import type { EventContract } from "../../lib/contract";
+import type { TopicContract } from "../../lib/contract";
 
 export default {
   name: "chat.message-sent.v1",
+  kind: "event",
   description: "User sent a message to the AI assistant. Observability channel — nobody subscribes today except future devtools timeline.",
   observability: true,
   payload: {} as { id: string; text: string; at: number },
@@ -13,4 +14,4 @@ export default {
       at: 1787431961500,
     },
   },
-} as const satisfies EventContract;
+} as const satisfies TopicContract;

@@ -1,4 +1,4 @@
-import type { EventContract } from "../../lib/contract";
+import type { TopicContract } from "../../lib/contract";
 
 /**
  * Response returned by the cart runtime handler.
@@ -13,10 +13,12 @@ export type CartDecrementResponse = {
 
 export default {
   name: "cart.decrement.v1",
+  kind: "request",
+  response: {} as CartDecrementResponse,
   description:
     "Command: decrement one unit of an existing cart line. Handled by cart-store as a request. If the current quantity is 1, the line is fully removed and the response reports quantity=0.",
   payload: {} as { itemId: number },
   examples: {
     single_unit: { itemId: 8 },
   },
-} as const satisfies EventContract;
+} as const satisfies TopicContract;

@@ -234,6 +234,18 @@ step; it goes away once DevTools and the reference stand have moved.
 - Root scripts: `npm run build` (client → broker → devtools) and
   `npm test` across packages and the demo backend.
 
+### Topic kinds in contracts (RFC-0003 step 7, block 1 — registry)
+
+- `TopicContract` with `kind: 'event' | 'request' | 'state'`
+  (`EventContract` stays as a deprecated alias). Requests declare their
+  answer as `response`; state topics may set `retention: { last: 1 }`.
+- Codegen validates kinds, emits `TopicKinds`, `EventTopic` /
+  `RequestTopic` / `StateTopic`, `TopicResponses`, `TopicContracts` and
+  the runtime map `TOPIC_KINDS`; contracts without `kind` are events
+  with a summary warning.
+- Reference stand contracts: five requests with `response`, the cart
+  snapshot as `state`, the rest explicit events.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

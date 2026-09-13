@@ -1,4 +1,4 @@
-import type { EventContract } from "../../lib/contract";
+import type { TopicContract } from "../../lib/contract";
 
 /**
  * Answer of the notifications backend: how many clients its WebSocket
@@ -15,10 +15,12 @@ export type NotificationStatusResponse = {
 
 export default {
   name: "notification.status.v1",
+  kind: "request",
+  response: {} as NotificationStatusResponse,
   description:
     "Request to the notifications backend (a remote client over WebSocket): connected clients and process uptime. Demonstrates a request answered across a transport — correlationId, deadline, and NACK TIMEOUT / REMOTE_GONE when the backend is away.",
   payload: {} as { includeLang?: boolean },
   examples: {
     happy: { includeLang: true },
   },
-} as const satisfies EventContract;
+} as const satisfies TopicContract;

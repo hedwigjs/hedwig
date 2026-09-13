@@ -14,10 +14,9 @@
 export * from "./index.generated.js";
 export * from "./shared-types.js";
 
-// Request/response type re-exports. Request contracts declare their input
-// as `payload` (picked up automatically by TopicPayloads) and their output
-// as a named `*Response` type — sender code imports these to type the
-// `bus.request<...>()` call site.
+// Request/response types. Each request contract declares its answer as
+// `response`; the generated `TopicResponses` map is the source of truth and
+// `request()` infers it. The named aliases stay for readability at call sites.
 export type { CartAddItemResponse } from "./domains/cart/add-item.v1.js";
 export type { CartDecrementResponse } from "./domains/cart/decrement.v1.js";
 export type { CartRemoveItemResponse } from "./domains/cart/remove-item.v1.js";

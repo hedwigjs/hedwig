@@ -17,6 +17,9 @@
  *   - Имя файла соответствует паттерну
  *   - Поле name внутри файла совпадает с derived-именем из пути
  *   - Нет дублей name
+ *   - `kind` (если указан) — один из event | request | state; у request
+ *     обязателен `response`, у остальных его быть не должно. Контракт без
+ *     `kind` считается событием (сводное предупреждение в конце сборки).
  *
  * Флаги:
  *   --watch  — наблюдать за src/domains/, инкрементально пересобирать
@@ -115,6 +118,39 @@ function deriveContract(file) {
 // Validation
 // ────────────────────────────────────────────────────────────────────
 
+const KINDS = new Set(["event", "request", "state"]);
+
+/**
+ * Reads `kind` (and whether `response` is declared) straight from the
+ * source text: the registry is TypeScript, so evaluating it here would
+ * need a compiler. A field on its own line, `kind: "request",` is all the
+ * convention asks for.
+ */
+function readKind(contract, content) {
+  const kindMatch = content.match(/^\s*kind\s*:\s*["']([^"']+)["']/m);
+  const hasResponse = /^\s*response\s*:/m.test(content);
+  const kind = kindMatch ? kindMatch[1] : null;
+  if (kind !== null && !KINDS.has(kind)) {
+    throw new Error(
+      `src/domains/${contract.relPath}: unknown kind "${kind}".\n` +
+        `  Expected one of: ${[...KINDS].join(" | ")}`
+    );
+  }
+  if (kind === "request" && !hasResponse) {
+    throw new Error(
+      `src/domains/${contract.relPath}: a request contract must declare \`response\` ` +
+        `(the handler's answer type, e.g. \`response: {} as { ok: true }\`).`
+    );
+  }
+  if (kind !== "request" && hasResponse) {
+    throw new Error(
+      `src/domains/${contract.relPath}: \`response\` is only meaningful on a request; ` +
+        `set \`kind: "request"\` or remove it.`
+    );
+  }
+  return { kind: kind ?? "event", explicit: kind !== null };
+}
+
 async function validateNameMatchesPath(contract) {
   const content = await readFile(contract.absolutePath, "utf-8");
   const nameMatch = content.match(/name\s*:\s*["']([^"']+)["']/);
@@ -134,6 +170,10 @@ async function validateNameMatchesPath(contract) {
         `  Expected (from path): "${contract.topic}"`
     );
   }
+
+  const { kind, explicit } = readKind(contract, content);
+  contract.kind = kind;
+  contract.kindExplicit = explicit;
 }
 
 function detectDuplicates(contracts) {
@@ -177,10 +217,19 @@ const HEADER = `// AUTO-GENERATED. DO NOT EDIT.
 
 function renderEmpty() {
   return `${HEADER}
+import type { TopicKind } from "./lib/contract";
+
 export const registry = {} as const;
 export type Topic = keyof typeof registry;
 export type TopicPayloads = {};
+export type TopicKinds = {};
+export type EventTopic = never;
+export type RequestTopic = never;
+export type StateTopic = never;
+export type TopicResponses = {};
+export type TopicContracts = {};
 export const TOPICS = {} as const;
+export const TOPIC_KINDS = {} as const satisfies Record<string, TopicKind>;
 `;
 }
 
@@ -199,7 +248,13 @@ function renderRegistry(contracts) {
     .map((c) => `  ${c.topicsKey}: "${c.topic}",`)
     .join("\n");
 
+  const kindEntries = contracts
+    .map((c) => `  "${c.topic}": "${c.kind}",`)
+    .join("\n");
+
   return `${HEADER}
+import type { TopicKind } from "./lib/contract";
+
 ${imports}
 
 export const registry = {
@@ -212,9 +267,40 @@ export type TopicPayloads = {
   [K in Topic]: (typeof registry)[K] extends { payload: infer P } ? P : never;
 };
 
+/** Род каждого топика; контракт без \`kind\` — событие. */
+export type TopicKinds = {
+  [K in Topic]: (typeof registry)[K] extends { kind: infer Kd extends TopicKind } ? Kd : "event";
+};
+
+export type EventTopic = { [K in Topic]: TopicKinds[K] extends "event" ? K : never }[Topic];
+export type RequestTopic = { [K in Topic]: TopicKinds[K] extends "request" ? K : never }[Topic];
+export type StateTopic = { [K in Topic]: TopicKinds[K] extends "state" ? K : never }[Topic];
+
+/** Тип ответа каждого запроса — из поля \`response\` контракта. */
+export type TopicResponses = {
+  [K in RequestTopic]: (typeof registry)[K] extends { response: infer R } ? R : unknown;
+};
+
+/**
+ * Род и тип ответа в одной карте — третий параметр
+ * \`createClient<Topic, TopicPayloads, TopicContracts>()\`: \`emit\` принимает
+ * только события и состояние, \`request\` только запросы, и выводит ответ.
+ */
+export type TopicContracts = {
+  [K in Topic]: {
+    kind: TopicKinds[K];
+    response: K extends RequestTopic ? TopicResponses[K] : never;
+  };
+};
+
 export const TOPICS = {
 ${topicsEntries}
 } as const;
+
+/** Роды топиков для рантайма: \`initBroker({ topics: TOPIC_KINDS })\`. */
+export const TOPIC_KINDS = {
+${kindEntries}
+} as const satisfies Record<Topic, TopicKind>;
 `;
 }
 
@@ -240,7 +326,21 @@ async function build() {
 
   const count = contracts.length;
   const noun = count === 1 ? "topic" : "topics";
-  console.log(`✔ Generated src/index.generated.ts (${count} ${noun})`);
+  const byKind = { event: 0, request: 0, state: 0 };
+  let implicit = 0;
+  for (const c of contracts) {
+    byKind[c.kind] += 1;
+    if (!c.kindExplicit) implicit += 1;
+  }
+  console.log(
+    `✔ Generated src/index.generated.ts (${count} ${noun}: ` +
+      `${byKind.event} event, ${byKind.request} request, ${byKind.state} state)`
+  );
+  if (implicit > 0) {
+    console.warn(
+      `  ${implicit} contract(s) without \`kind\` treated as events — add \`kind: "event"\` to make it explicit.`
+    );
+  }
 }
 
 async function buildSafe(throwOnError) {

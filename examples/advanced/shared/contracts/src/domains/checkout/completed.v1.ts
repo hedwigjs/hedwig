@@ -1,8 +1,9 @@
-import type { EventContract } from "../../lib/contract";
+import type { TopicContract } from "../../lib/contract";
 import type { CartItem } from "../../shared-types";
 
 export default {
   name: "checkout.completed.v1",
+  kind: "event",
   description: "Payment succeeded (iframe reported success via postMessage; checkout MFE rebroadcasts on the bus).",
   payload: {} as {
     orderId: string;
@@ -20,4 +21,4 @@ export default {
       acceptedAt: 1787431961281,
     },
   },
-} as const satisfies EventContract;
+} as const satisfies TopicContract;

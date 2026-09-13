@@ -114,29 +114,55 @@ Scripts in the generated package:
 
 ---
 
-## The `EventContract` shape
+## The contract shape
 
-Each event file exports a `default` object that `satisfies`
-`EventContract`. Codegen imports every event by default export, so
+Each topic file exports a `default` object that `satisfies`
+`TopicContract`. Codegen imports every topic by default export, so
 **named exports won't be picked up** — always use `export default`.
 
+Every topic has a **kind**. It is the thing that used to be decided at
+every call site:
+
+| `kind`    | Meaning                                                                 | Verb        | Extra field                 |
+| --------- | ----------------------------------------------------------------------- | ----------- | --------------------------- |
+| `event`   | A fact: "order paid". Fan-out to current subscribers.                   | `emit()`    | —                           |
+| `request` | A command to one recipient that answers.                                | `request()` | `response` — the answer type |
+| `state`   | A current value: "cart has 2 items". The runtime keeps the last one and hands it to every new subscriber. | `emit()` | `retention` (optional, `{ last: 1 }`) |
+
 ```ts
-// src/domains/notification/show.v1.ts
-import type { EventContract } from "../../lib/contract";
+// src/domains/notification/show.v1.ts — an event
+import type { TopicContract } from "../../lib/contract";
 
 export default {
   name: "notification.show.v1",
+  kind: "event",
   description: "Show a toast notification.",
-  payload: {} as {
-    kind: "success" | "info" | "warn" | "error";
-    title: string;
-    body?: string;
-  },
+  payload: {} as { kind: "success" | "info" | "warn" | "error"; title: string; body?: string },
   examples: {
     happy: { kind: "success", title: "Order accepted" },
     error: { kind: "error", title: "Payment failed" },
   },
-} satisfies EventContract;
+} satisfies TopicContract;
+
+// src/domains/cart/add-item.v1.ts — a request with its answer type
+export default {
+  name: "cart.add-item.v1",
+  kind: "request",
+  description: "Add a product to the cart; answers with the resulting line.",
+  payload: {} as { itemId: number; name: string; price: string },
+  response: {} as { itemId: number; quantity: number; subtotal: number },
+  examples: { happy: { itemId: 8, name: "Khachapuri", price: "890 ₽" } },
+} satisfies TopicContract;
+
+// src/domains/cart/snapshot.v1.ts — state
+export default {
+  name: "cart.snapshot.v1",
+  kind: "state",
+  retention: { last: 1 },
+  description: "Full cart after every mutation.",
+  payload: {} as { items: CartItem[]; totalItems: number; totalPrice: number },
+  examples: { empty: { items: [], totalItems: 0, totalPrice: 0 } },
+} satisfies TopicContract;
 ```
 
 Fields:
@@ -144,32 +170,44 @@ Fields:
 | Field            | Required | Purpose                                                                                     |
 | ---------------- | -------- | ------------------------------------------------------------------------------------------- |
 | `name`           | yes      | Topic string. Must match the path: `<domain>/<action>.v<N>.ts` → `"<domain>.<action>.v<N>"`. |
+| `kind`           | no¹      | `event` \| `request` \| `state`. See above.                                                 |
 | `description`    | yes      | Human-readable. Shown in DevTools and hover cards.                                          |
 | `payload`        | yes      | Payload type. Idiomatic: `{} as { ... }`.                                                   |
+| `response`       | request  | The handler's answer type. Required for `request`, forbidden otherwise (codegen checks).    |
+| `retention`      | no       | `state` only. `{ last: 1 }` — the only policy for now; the default.                         |
 | `examples`       | yes      | Named fixtures. `examples.happy` is the default seed used by DevTools' Debug tab.           |
 | `deprecatedBy`   | no       | Successor topic name. DevTools surfaces a warning.                                          |
 | `observability`  | no       | Mark telemetry-only topics so `NACK NO_SUBSCRIBERS` renders neutrally instead of red.       |
 
-The path-to-name convention is enforced by codegen — a mismatch fails
-the build with an explicit error.
+¹ A contract without `kind` is an event; codegen prints a summary
+warning so existing registries migrate at their own pace. `EventContract`
+remains as a deprecated alias of `TopicContract`.
+
+The path-to-name convention and the `kind` / `response` rules are enforced
+by codegen — a mismatch fails the build with an explicit error.
 
 ---
 
 ## Generated exports
 
 Codegen writes `src/index.generated.ts` and `src/index.ts` re-exports
-it. Consumers get four exports from the package root:
+it. Consumers get these exports from the package root:
 
 ```ts
-import { registry, TOPICS, type Topic, type TopicPayloads } from "@my-org/topics";
+import { registry, TOPICS, TOPIC_KINDS, type Topic, type TopicPayloads, type TopicContracts } from "@my-org/topics";
 ```
 
-| Export           | Kind    | Purpose                                                                                          |
-| ---------------- | ------- | ------------------------------------------------------------------------------------------------ |
-| `Topic`          | type    | String union of every topic. Drop into `createClient<Topic, TopicPayloads>('id')`.                |
-| `TopicPayloads`  | type    | `{ [topic]: payload }` map. Drop into `initBroker<Topic, TopicPayloads>({...})`.                   |
-| `TOPICS`         | value   | SCREAMING_SNAKE_CASE constants like `TOPICS.CART_ITEM_ADDED_V1 === "cart.item-added.v1"`.          |
-| `registry`       | value   | Full `Record<name, EventContract>`. Pass to `<MessageBrokerDevTools registry={registry} />`.      |
+| Export            | Kind  | Purpose                                                                                          |
+| ----------------- | ----- | ------------------------------------------------------------------------------------------------ |
+| `Topic`           | type  | String union of every topic.                                                                     |
+| `TopicPayloads`   | type  | `{ [topic]: payload }` map.                                                                      |
+| `TopicContracts`  | type  | `{ [topic]: { kind, response } }`. Third parameter of `createClient<Topic, TopicPayloads, TopicContracts>('id')`: `emit` accepts only events and state, `request` only requests, and the answer type is inferred. |
+| `TopicKinds`      | type  | `{ [topic]: 'event' \| 'request' \| 'state' }`.                                                  |
+| `EventTopic`, `RequestTopic`, `StateTopic` | type | Unions of topic names per kind.                                                  |
+| `TopicResponses`  | type  | `{ [request topic]: response }`.                                                                 |
+| `TOPICS`          | value | SCREAMING_SNAKE_CASE constants like `TOPICS.CART_ITEM_ADDED_V1 === "cart.item-added.v1"`.          |
+| `TOPIC_KINDS`     | value | `{ [topic]: kind }` for the runtime: `initBroker({ topics: TOPIC_KINDS })` turns on retention for state topics. |
+| `registry`        | value | Full `Record<name, TopicContract>`. Pass to `<MessageBrokerDevTools registry={registry} />`.     |
 
 Each event is also importable directly by path — useful when you only
 need one contract:

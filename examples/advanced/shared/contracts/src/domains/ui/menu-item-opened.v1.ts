@@ -1,8 +1,9 @@
-import type { EventContract } from "../../lib/contract";
+import type { TopicContract } from "../../lib/contract";
 import type { MenuItem } from "../../shared-types";
 
 export default {
   name: "ui.menu-item-opened.v1",
+  kind: "event",
   description: "User opened the dish-details modal from a menu card. UI-observability channel — no subscribers today.",
   payload: {} as { item: MenuItem },
   examples: {
@@ -17,4 +18,4 @@ export default {
       },
     },
   },
-} as const satisfies EventContract;
+} as const satisfies TopicContract;
