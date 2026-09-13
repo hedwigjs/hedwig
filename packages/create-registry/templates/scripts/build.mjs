@@ -17,7 +17,8 @@
  *   - Имя файла соответствует паттерну
  *   - Поле name внутри файла совпадает с derived-именем из пути
  *   - Нет дублей name
- *   - `kind` (если указан) — один из event | request | state; у request
+ *   - `kind` (если указан) — один из event | request | state; читается из AST
+ *     верхних полей контракта, поля внутри payload не мешают; у request
  *     обязателен `response`, у остальных его быть не должно. Контракт без
  *     `kind` считается событием (сводное предупреждение в конце сборки).
  *
@@ -28,6 +29,7 @@
 import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync, watch } from "node:fs";
 import { dirname, join } from "node:path";
+import ts from "typescript";
 
 const ROOT = process.cwd();
 const DOMAINS_DIR = join(ROOT, "src/domains");
@@ -121,15 +123,61 @@ function deriveContract(file) {
 const KINDS = new Set(["event", "request", "state"]);
 
 /**
- * Reads `kind` (and whether `response` is declared) straight from the
- * source text: the registry is TypeScript, so evaluating it here would
- * need a compiler. A field on its own line, `kind: "request",` is all the
- * convention asks for.
+ * Reads the contract's top-level fields (`name`, `kind`, `response`,
+ * `retention`) from the TypeScript AST of `export default { ... }`. Only
+ * properties of that object literal count: a payload type that happens to
+ * contain a field called `kind` or `response` is somebody else's business.
+ * `satisfies` / `as const` / parentheses around the literal are unwrapped.
  */
-function readKind(contract, content) {
-  const kindMatch = content.match(/^\s*kind\s*:\s*["']([^"']+)["']/m);
-  const hasResponse = /^\s*response\s*:/m.test(content);
-  const kind = kindMatch ? kindMatch[1] : null;
+function readContractFields(contract, content) {
+  const source = ts.createSourceFile(contract.relPath, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const exported = source.statements.find((st) => ts.isExportAssignment(st) && !st.isExportEquals);
+  if (!exported) {
+    throw new Error(`src/domains/${contract.relPath}: expected \`export default { ... }\` with the contract object.`);
+  }
+  let expr = exported.expression;
+  while (
+    ts.isSatisfiesExpression(expr) ||
+    ts.isAsExpression(expr) ||
+    ts.isParenthesizedExpression(expr) ||
+    ts.isTypeAssertionExpression(expr)
+  ) {
+    expr = expr.expression;
+  }
+  if (!ts.isObjectLiteralExpression(expr)) {
+    throw new Error(`src/domains/${contract.relPath}: the default export must be an object literal (the contract).`);
+  }
+  const fields = new Map();
+  for (const prop of expr.properties) {
+    if (!ts.isPropertyAssignment(prop)) continue;
+    const key = ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) ? prop.name.text : null;
+    if (key !== null) fields.set(key, prop.initializer);
+  }
+  const literal = (node) => (node && ts.isStringLiteralLike(node) ? node.text : null);
+  const name = literal(fields.get("name"));
+  const kind = literal(fields.get("kind"));
+  const hasResponse = fields.has("response");
+  let retention = null;
+  const retentionNode = fields.get("retention");
+  if (retentionNode) {
+    let last = null;
+    if (ts.isObjectLiteralExpression(retentionNode)) {
+      const lastProp = retentionNode.properties.find(
+        (pr) => ts.isPropertyAssignment(pr) && ts.isIdentifier(pr.name) && pr.name.text === "last"
+      );
+      if (lastProp && ts.isNumericLiteral(lastProp.initializer)) last = Number(lastProp.initializer.text);
+    }
+    if (last === null) {
+      throw new Error(
+        `src/domains/${contract.relPath}: \`retention\` must be \`{ last: <positive integer> }\` written out literally.`
+      );
+    }
+    retention = last;
+  }
+  return { name, kind, hasResponse, retention };
+}
+
+function resolveKind(contract, { kind, hasResponse, retention }) {
   if (kind !== null && !KINDS.has(kind)) {
     throw new Error(
       `src/domains/${contract.relPath}: unknown kind "${kind}".\n` +
@@ -148,8 +196,6 @@ function readKind(contract, content) {
         `set \`kind: "request"\` or remove it.`
     );
   }
-  const retentionMatch = content.match(/^\s*retention\s*:\s*\{\s*last\s*:\s*(\d+)\s*\}/m);
-  const retention = retentionMatch ? Number(retentionMatch[1]) : null;
   const resolved = kind ?? "event";
   if (retention !== null) {
     if (resolved === "request") {
@@ -167,7 +213,7 @@ function readKind(contract, content) {
     if (!Number.isInteger(retention) || retention < 1) {
       throw new Error(
         `src/domains/${contract.relPath}: \`retention.last\` must be a positive integer ` +
-          `(got ${retentionMatch[1]}).`
+          `(got ${retention}).`
       );
     }
   }
@@ -176,25 +222,23 @@ function readKind(contract, content) {
 
 async function validateNameMatchesPath(contract) {
   const content = await readFile(contract.absolutePath, "utf-8");
-  const nameMatch = content.match(/name\s*:\s*["']([^"']+)["']/);
+  const fields = readContractFields(contract, content);
 
-  if (!nameMatch) {
+  if (fields.name === null) {
     throw new Error(
       `src/domains/${contract.relPath}: cannot find 'name' field.\n` +
         `  Expected: name: "${contract.topic}",`
     );
   }
-
-  const declared = nameMatch[1];
-  if (declared !== contract.topic) {
+  if (fields.name !== contract.topic) {
     throw new Error(
       `src/domains/${contract.relPath}: name mismatch.\n` +
-        `  Declared: "${declared}"\n` +
+        `  Declared: "${fields.name}"\n` +
         `  Expected (from path): "${contract.topic}"`
     );
   }
 
-  const { kind, explicit, retention } = readKind(contract, content);
+  const { kind, explicit, retention } = resolveKind(contract, fields);
   contract.kind = kind;
   contract.kindExplicit = explicit;
   contract.retention = retention;
