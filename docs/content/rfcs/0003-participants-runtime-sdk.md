@@ -594,7 +594,7 @@ pushed until the sequence is reviewed.
 | 3 | Remote clients (§3, §4, §5, §6 ingress, §7 inbound/outbound): `createRemoteClient` with identity modes, descriptors, `message-port`, `ready`, `remote.*` events; `addBridge` removed; demo's four bridges become remote clients | L | done 2026-09-13 (three commits: core, DevTools + demo, removal of bridges) |
 | 4 | Wire (§6): envelope v1 + `docs/content/spec/*`; backend validated by schema | M | done 2026-09-13 |
 | 5 | Requests to/from remote clients (§7); DevTools pairing | L | done 2026-09-13 |
-| 6 | `@hedwigjs/client` package + handle (§1, §2): lazy proxy, gates, `ClientMeta`; demo modules on the SDK | M | todo |
+| 6 | `@hedwigjs/client` package + handle (§1, §2): lazy proxy, gates, `ClientMeta`; demo modules on the SDK | M | done 2026-09-13 |
 
 Steps 7–10 (topic classes in contracts, React/Vue adapters on the SDK,
 transport conformance kit and e2e, CI) follow and are tracked outside this

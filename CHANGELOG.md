@@ -209,6 +209,31 @@ step; it goes away once DevTools and the reference stand have moved.
   `NACK TIMEOUT` when the backend is down. ACL rule for
   `remote-request-demo`.
 
+### `@hedwigjs/client` — the SDK for modules (RFC-0003 step 6)
+
+- New package. Modules import `createClient` / `createRemoteClient` and
+  every public type from `@hedwigjs/client`; it depends on nothing at
+  runtime and locates the host's runtime through
+  `Symbol.for('@hedwigjs/runtime/1')`. Gates: `RUNTIME_NOT_PROVIDED`,
+  `RUNTIME_TOO_OLD` (`MIN_RUNTIME` baked into each SDK release).
+- Boot order is a non-issue: `createClient()` before `initBroker()`
+  returns a lazy proxy that records subscriptions, queues emits and
+  requests (bounded, 64) and flushes in order on `hedwig:runtime-ready`.
+  `createRemoteClient()` needs a live runtime (`whenRuntimeReady()`).
+- Runtime: public types moved to the SDK (re-exported); `createClient`
+  throws `CLIENT_ID_TAKEN` on a duplicate id unless
+  `{ onConflict: 'reset' }`; `RUNTIME_ALREADY_PROVIDED` for a second
+  runtime; handle removed on `destroyBroker()`; `sdkVersion` on
+  `client.registered` and in `inspect.getClients()`; capabilities
+  `wire.v1`, `remote.requests`.
+- Reference stand: every MFE depends on `@hedwigjs/client` only; the
+  shell no longer shares `@hedwigjs/broker` through Module Federation.
+  The checkout iframe and the AI stream are created with the SDK's
+  `createRemoteClient`.
+- DevTools: client detail shows the SDK version that created it.
+- Root scripts: `npm run build` (client → broker → devtools) and
+  `npm test` across packages and the demo backend.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

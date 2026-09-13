@@ -746,7 +746,7 @@ describe('BrokerCore v2', () => {
     });
   });
 
-  describe('Idempotent createClient', () => {
+  describe('createClient conflicts', () => {
     let broker: ReturnType<typeof initBroker<TestEventType, TestEventPayloads>>;
 
     beforeEach(() => {
@@ -757,9 +757,15 @@ describe('BrokerCore v2', () => {
       destroyBroker();
     });
 
-    test('should return same instance when creating client with existing ID', () => {
+    test('a duplicate id throws CLIENT_ID_TAKEN by default', () => {
+      createClient('cart');
+      expect(() => createClient('cart')).toThrow(expect.objectContaining({ code: 'CLIENT_ID_TAKEN' }));
+      expect(broker.inspect.getClients()).toHaveLength(1);
+    });
+
+    test('should return same instance when creating client with existing ID and onConflict: reset', () => {
       const client1 = createClient('cart');
-      const client2 = createClient('cart');
+      const client2 = createClient('cart', { onConflict: 'reset' });
 
       expect(client1).toBe(client2);
     });
@@ -770,7 +776,7 @@ describe('BrokerCore v2', () => {
       initBroker({ logger: { warn, error: jest.fn() } });
 
       createClient('cart');
-      createClient('cart');
+      createClient('cart', { onConflict: 'reset' });
 
       expect(warn).toHaveBeenCalledWith('facade.createClient.reset', { clientId: 'cart' });
     });
@@ -782,7 +788,7 @@ describe('BrokerCore v2', () => {
       const oldHandler = jest.fn();
       receiver.on('user.created.v1', oldHandler);
 
-      const receiverAgain = createClient('receiver');
+      const receiverAgain = createClient('receiver', { onConflict: 'reset' });
       const newHandler = jest.fn();
       receiverAgain.on('user.created.v1', newHandler);
 
@@ -794,8 +800,8 @@ describe('BrokerCore v2', () => {
 
     test('should not duplicate clients in registry on idempotent createClient', () => {
       createClient('cart');
-      createClient('cart');
-      createClient('cart');
+      createClient('cart', { onConflict: 'reset' });
+      createClient('cart', { onConflict: 'reset' });
 
       expect(broker.inspect.getClients()).toHaveLength(1);
     });
@@ -807,7 +813,7 @@ describe('BrokerCore v2', () => {
       const headerHandler = jest.fn();
       header.on('user.created.v1', headerHandler);
 
-      createClient('cart');
+      createClient('cart', { onConflict: 'reset' });
 
       const sender = createClient('sender');
       await sender.emit('user.created.v1', { userId: '1', email: 'a@b.com' });
@@ -851,10 +857,11 @@ describe('Facade API', () => {
     expect(getBroker()).toBe(broker);
   });
 
-  test('createClient is idempotent', () => {
+  test('createClient refuses a duplicate id unless asked to reset', () => {
     initBroker();
     const client1 = createClient('cart');
-    const client2 = createClient('cart');
+    expect(() => createClient('cart')).toThrow(/already exists/);
+    const client2 = createClient('cart', { onConflict: 'reset' });
     expect(client1).toBe(client2);
   });
 

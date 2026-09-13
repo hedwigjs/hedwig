@@ -1,8 +1,8 @@
 import type { FC } from 'react';
 import React, { useEffect, useRef, useState } from 'react';
 
-import { createClient } from '@hedwigjs/broker';
-import type { RoutingResult } from '@hedwigjs/broker';
+import { createClient } from '@hedwigjs/client';
+import type { RoutingResult } from '@hedwigjs/client';
 import type { NotificationStatusResponse, Topic, TopicPayloads } from '@hedwig-demo/contracts';
 
 import { t } from '../../../../shared/i18n/useLang';

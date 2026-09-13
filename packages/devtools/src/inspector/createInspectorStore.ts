@@ -19,7 +19,7 @@ export interface CreateInspectorStoreOptions {
   maxEvents: number;
 }
 
-type ClientBase = Pick<ClientEntry, "id" | "connectedAt" | "remote"> & {
+type ClientBase = Pick<ClientEntry, "id" | "connectedAt" | "remote" | "sdkVersion"> & {
   subscriptions: Array<Pick<ClientSubscriptionEntry, "topic" | "options">>;
 };
 
@@ -152,6 +152,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
       return {
         id: base.id,
         remote: base.remote,
+        sdkVersion: base.sdkVersion,
         connectedAt: base.connectedAt,
         ...activity,
         subscriptions: base.subscriptions.map((sub) => ({
@@ -245,6 +246,7 @@ export function createInspectorStore(options: CreateInspectorStoreOptions) {
     clientsBase = broker.inspect.getClients().map((info) => ({
       id: info.id,
       connectedAt: info.connectedAt,
+      sdkVersion: info.sdkVersion,
       remote: info.remote
         ? {
             kind: info.remote.kind,

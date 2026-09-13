@@ -1,29 +1,11 @@
 import type { ClientID } from '../types';
+import type { RoutingReasonType, RoutingResult as RoutingResultShape } from '@hedwigjs/client';
+import { RoutingReason } from '@hedwigjs/client';
 
-export const RoutingReason = {
-  DELIVERED: 'DELIVERED',
-  DISPATCHED: 'DISPATCHED',
-  REPLAY_DELIVERED: 'REPLAY_DELIVERED',
-  HOOK_REJECTED: 'HOOK_REJECTED',
-  NO_SUBSCRIBERS: 'NO_SUBSCRIBERS',
-  NOT_SUBSCRIBED: 'NOT_SUBSCRIBED',
-  HANDLER_FAILED: 'HANDLER_FAILED',
-  BROKER_DESTROYED: 'BROKER_DESTROYED',
-  /** `$debug.send` called on a broker booted without `debug: true`. */
-  DEBUG_DISABLED: 'DEBUG_DISABLED',
-  /** `request()` — the recipient's handler did not settle within `timeout`. */
-  TIMEOUT: 'TIMEOUT',
-  /** `request()` to a remote client whose transport is inbound-only (SSE). */
-  TRANSPORT_ONE_WAY: 'TRANSPORT_ONE_WAY',
-  /** `request()` to a remote client on a fan-out transport (BroadcastChannel). */
-  TRANSPORT_FANOUT: 'TRANSPORT_FANOUT',
-  /** `request()` to a remote client that was destroyed or could not be reached. */
-  REMOTE_GONE: 'REMOTE_GONE',
-  /** A handler's return value could not be encoded for the wire. */
-  SERIALIZATION_FAILED: 'SERIALIZATION_FAILED',
-} as const;
-
-export type RoutingReasonType = (typeof RoutingReason)[keyof typeof RoutingReason];
+// The closed set of reasons and the result shape are owned by the SDK so
+// module code can switch on them without depending on the runtime.
+export { RoutingReason };
+export type { RoutingReasonType };
 
 /**
  * RoutingResult - Message delivery result (Value Object)
@@ -31,7 +13,7 @@ export type RoutingReasonType = (typeof RoutingReason)[keyof typeof RoutingReaso
  * Immutable object representing the result of a message dispatch operation.
  * Can only be created through the static factory method create().
  */
-export class RoutingResult<TResponse = unknown> {
+export class RoutingResult<TResponse = unknown> implements RoutingResultShape<TResponse> {
   readonly status: 'ACK' | 'NACK';
   readonly reason: RoutingReasonType;
   readonly message: string;

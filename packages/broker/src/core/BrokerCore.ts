@@ -81,9 +81,11 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
    * What this runtime can do, as stable strings (`transport.websocket`, …).
    * The client SDK reads this before relying on a feature.
    */
-  readonly capabilities: ReadonlySet<string> = new Set(
-    BUILT_IN_TRANSPORT_KINDS.map((kind) => `transport.${kind}`),
-  );
+  readonly capabilities: ReadonlySet<string> = new Set([
+    ...BUILT_IN_TRANSPORT_KINDS.map((kind) => `transport.${kind}`),
+    'wire.v1',
+    'remote.requests',
+  ]);
 
   /**
    * Package version of the copy that created this instance. Other copies
@@ -552,6 +554,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     this.#systemEvents.emit('client.registered', {
       clientId: client.id,
       at: this.#clientRegistry.getConnectedAt(client.id) ?? Date.now(),
+      sdkVersion: client.meta?.sdkVersion,
     });
   }
 

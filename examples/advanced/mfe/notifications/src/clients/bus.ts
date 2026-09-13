@@ -1,4 +1,4 @@
-import { createClient } from '@hedwigjs/broker';
+import { createClient } from '@hedwigjs/client';
 import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
 
 /**

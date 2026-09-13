@@ -61,6 +61,7 @@ export class Inspector<T extends string, P extends Record<T, any>> {
     const local: ClientInfo[] = this.#clients.getAllIds().map((id) => ({
       id,
       connectedAt: this.#clients.getConnectedAt(id) ?? Date.now(),
+      sdkVersion: this.#clients.get(id)?.meta?.sdkVersion,
       subscriptions: Array.from(this.#subscriptions.getClientTopics(id) ?? []).map((topic) => ({
         topic,
         // A pair may hold N handlers with different options — the Inspector

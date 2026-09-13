@@ -200,6 +200,8 @@ export interface ClientEntry {
   connectedAt: number;
   /** Present for remote clients; its `subscriptions` are `forward` patterns. */
   remote?: RemoteClientEntry;
+  /** Version of `@hedwigjs/client` that created the client; absent for host-created ones. */
+  sdkVersion?: string;
   /** Unix ms of the last message sent or received by this client. Null if none. */
   lastActiveAt: number | null;
   /** Messages sent by this client visible in the current ring buffer. */

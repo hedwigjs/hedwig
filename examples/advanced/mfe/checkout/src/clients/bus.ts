@@ -1,4 +1,4 @@
-import { createClient } from '@hedwigjs/broker';
+import { createClient } from '@hedwigjs/client';
 import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
 
 /** Checkout MFE's broker client — handles `checkout.start.v1` requests from cart, emits checkout.* events, and sends cart.remove-item.v1 requests to clean up on completion. */

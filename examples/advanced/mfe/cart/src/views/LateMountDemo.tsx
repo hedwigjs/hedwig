@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import React, { useEffect, useState } from 'react';
 
-import { createClient } from '@hedwigjs/broker';
+import { createClient } from '@hedwigjs/client';
 import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
 
 import { getLang, t } from '../../../../shared/i18n/useLang';

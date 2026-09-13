@@ -74,7 +74,9 @@ module.exports = {
         react: { singleton: true, eager: true, requiredVersion: '19.1.1' },
         'react-dom': { singleton: true, eager: true, requiredVersion: '19.1.1' },
         'single-spa': { singleton: true, eager: true, requiredVersion: '^6.0.3' },
-        '@hedwigjs/broker': { singleton: true, eager: true, requiredVersion: '^0.1.0' },
+        // `@hedwigjs/broker` is deliberately NOT shared: the runtime is
+        // private to the host. Modules talk to it through `@hedwigjs/client`
+        // (a stateless SDK they bundle themselves) via the realm handle.
         // `@hedwigjs/devtools` is deliberately NOT shared: it is host-only
         // and loaded via dynamic import() in src/devtools.tsx, so it lives
         // in its own lazy chunk. Listing it here with `eager: true` would

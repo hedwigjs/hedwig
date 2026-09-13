@@ -179,7 +179,7 @@ describe('facade — realm singleton', () => {
       const first = initBroker({ logger });
       const clientsBefore = first.inspect.getClients().length;
 
-      const other = loadCopyWithVersion('0.9.0'); // VERSION is 0.0.0-dev in jest → different minor
+      const other = loadCopyWithVersion('0.9.0'); // VERSION is 0.1.x in jest (baked from package.json) → different minor
 
       expect(() => other.initBroker()).toThrow(/already exists in this realm/);
       expect(() => other.getBroker()).toThrow(/already exists in this realm/);
@@ -198,7 +198,9 @@ describe('facade — realm singleton', () => {
 
     test('a compatible copy (same minor, different patch) adopts normally', () => {
       const first = initBroker();
-      const other = loadCopyWithVersion('0.0.7-dev');
+      // Same major.minor as this copy, one patch up — whatever the baked version is.
+      const [major, minor, patch] = VERSION.split('-')[0]!.split('.').map(Number);
+      const other = loadCopyWithVersion(`${major}.${minor}.${(patch ?? 0) + 1}`);
 
       expect(other.getBroker()).toBe(first);
       expect(first.inspect.getVersionInfo().duplicateCopies).toBe(1);

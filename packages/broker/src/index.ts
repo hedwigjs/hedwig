@@ -24,7 +24,10 @@ export { VERSION, isCompatibleVersion } from './core/version';
 
 // ── Broker & Client contracts (public) ──────────────────────────────────
 export type { MessageBroker } from './core/MessageBroker';
-export type { Client } from './core/client/Client.types';
+export type { Client, ClientOptions } from './core/client/Client.types';
+// The SDK handle contract, for hosts that inspect or mock it.
+export type { RuntimeHandle, ClientMeta } from '@hedwigjs/client';
+export { ABI, RUNTIME_KEY, RUNTIME_READY_EVENT } from '@hedwigjs/client';
 
 // ── Configuration ───────────────────────────────────────────────────────
 export type {

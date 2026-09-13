@@ -23,6 +23,14 @@ export function ClientDetail({ client, onNavigate }: ClientDetailProps): ReactNo
             {connectedDate.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3 })}
           </span>
         </div>
+        {client.sdkVersion && (
+          <div className={styles.meta}>
+            <span className={styles.metaLabel}>SDK</span>
+            <span className={styles.metaValue} title="@hedwigjs/client version that created this client">
+              {client.sdkVersion}
+            </span>
+          </div>
+        )}
         {remote && (
           <>
             <div className={styles.meta}>

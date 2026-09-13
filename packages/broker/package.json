@@ -40,6 +40,9 @@
     "bench": "node benchmarks/run-all.mjs",
     "bench:one": "node benchmarks/run-one.mjs"
   },
+  "dependencies": {
+    "@hedwigjs/client": "^0.1.0"
+  },
   "devDependencies": {
     "@types/jest": "^29.5.0",
     "ajv": "^8.17.1",
@@ -76,6 +79,9 @@
     "testMatch": [
       "**/src/**/*.test.ts"
     ],
-    "testTimeout": 60000
+    "testTimeout": 60000,
+    "setupFiles": [
+      "<rootDir>/jest.setup.js"
+    ]
   }
 }

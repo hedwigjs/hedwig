@@ -42,6 +42,8 @@ export interface SystemEventMap<T extends string, P extends Record<T, any>> {
     clientId: ClientID;
     /** Unix ms when the client was registered. */
     at: number;
+    /** Version of `@hedwigjs/client` behind the call; absent for host-created clients and remotes. */
+    sdkVersion?: string;
   };
   'client.unregistered': {
     clientId: ClientID;

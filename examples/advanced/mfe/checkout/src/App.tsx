@@ -1,8 +1,8 @@
 import type { FC } from 'react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import { getBroker } from '@hedwigjs/broker';
-import type { RemoteClient } from '@hedwigjs/broker';
+import { createRemoteClient } from '@hedwigjs/client';
+import type { RemoteClient } from '@hedwigjs/client';
 import type {
   CartItem,
   CartRemoveItemResponse,
@@ -126,8 +126,7 @@ export const App: FC = () => {
     // the element between opens/closes).
     remoteRef.current?.destroy();
 
-    const broker = getBroker<Topic, TopicPayloads>();
-    remoteRef.current = broker.createRemoteClient(REMOTE_ID, {
+    remoteRef.current = createRemoteClient(REMOTE_ID, {
       // Both origins are mandatory: `allowedOrigins` is the inbound trust
       // boundary, `targetOrigin` keeps our frames from reaching whatever
       // else might get loaded into the window.

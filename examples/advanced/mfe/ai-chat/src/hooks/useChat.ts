@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { getBroker } from '@hedwigjs/broker';
-import type { RemoteClient } from '@hedwigjs/broker';
-import type { Topic, TopicPayloads } from '@hedwig-demo/contracts';
+import { createRemoteClient } from '@hedwigjs/client';
+import type { RemoteClient } from '@hedwigjs/client';
 
 import { getLang } from '../../../../shared/i18n/useLang';
 
@@ -158,8 +157,7 @@ export function useChat() {
       // reply topics.
       const url = `${BACKEND_URL}?prompt=${encodeURIComponent(trimmed)}&replyId=${encodeURIComponent(replyId)}&lang=${getLang()}`;
 
-      const broker = getBroker<Topic, TopicPayloads>();
-      activeRemoteRef.current = broker.createRemoteClient(REMOTE_ID, {
+      activeRemoteRef.current = createRemoteClient(REMOTE_ID, {
         transport: { kind: 'sse', url },
         accepts: ['chat.reply-chunk.v1', 'chat.reply-completed.v1'],
       });
