@@ -30,7 +30,7 @@ Everything on the domain lives under `/demo/advanced/` — root `/`
 | `ai-chat`             | `ai-chat`               | Streaming chat over SSE                                                            |
 | `analytics`           | `analytics`             | Semi-trusted read-only tracker — used as the ACL demo target                       |
 | `late-mount`          | `late-mount-demo`       | Card in the cart bundle that mounts on demand — proves a `state` topic hands its retained value to late subscribers |
-| `remote-request-demo` | `remote-request-demo`   | Card next to it — sends `notification.status.v1` to the backend over WebSocket and shows the answer (or `NACK TIMEOUT` when the backend is away) |
+| `remote-request`      | `remote-request-demo`   | Own card below it (also from the cart bundle) — sends `notification.status.v1` to the backend over WebSocket and shows the answer (or `NACK TIMEOUT` when the backend is away) |
 
 ### Backend (Node/Express on port 4000, joins the broker as remote clients)
 
@@ -194,7 +194,8 @@ Let's Encrypt every ~60 days).
   `useStateTopic(client, 'cart.snapshot.v1')`: the current cart arrives
   with the subscription, flagged `replayed: true`; the producer re-emits
   nothing.
-- **`remote-request-demo`** — `useRequest(bus, 'notifications-backend',
+- **`remote-request`** — separate MF chunk (`cart/RemoteRequest`), own card.
+  `useRequest(bus, 'notifications-backend',
   'notification.status.v1', { timeout: 3000 })`. The request crosses
   the WebSocket as a frame with a `correlationId` and a deadline; the
   backend answers with a response frame matched by that id. Stop the

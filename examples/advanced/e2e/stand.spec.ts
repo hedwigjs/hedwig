@@ -123,11 +123,12 @@ test.describe('reference stand', () => {
 
   test('a request to the backend over WebSocket is answered', async ({ page }) => {
     await openStand(page);
-    const cart = page.getByRole('complementary');
-    await cart.getByRole('button', { name: 'ASK THE BACKEND' }).click();
-    const card = page.locator('[data-demo-remote-request]');
-    await expect(card).toHaveAttribute('data-demo-remote-request', 'ACK');
-    await expect(card).toContainText('connected clients');
+    // Own card in the right column, separate from the late-mount demo.
+    const card = page.locator('[data-slot-host="remote-request"]');
+    await card.getByRole('button', { name: 'ASK THE BACKEND' }).click();
+    const result = card.locator('[data-demo-remote-request]');
+    await expect(result).toHaveAttribute('data-demo-remote-request', 'ACK');
+    await expect(result).toContainText('connected clients');
 
     const names = (await events(page)).map(([n]) => n);
     expect(names).toContain('request.forwarded');
