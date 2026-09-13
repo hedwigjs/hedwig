@@ -11,13 +11,13 @@
     "@hedwig-demo/contracts": "*",
     "@hedwigjs/broker": "*",
     "@hedwigjs/devtools": "*",
-    "react": "19.1.1",
-    "react-dom": "19.1.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "single-spa": "^6.0.3"
   },
   "devDependencies": {
-    "@types/react": "^19.1.13",
-    "@types/react-dom": "^19.1.9",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "css-loader": "^6.10.0",
     "html-webpack-plugin": "^5.6.3",
     "style-loader": "^3.3.4",
