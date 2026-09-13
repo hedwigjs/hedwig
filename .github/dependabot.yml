@@ -5,6 +5,12 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Majors are taken by hand: TypeScript 7, Jest 30 and the like need
+    # code changes, and a grouped PR that mixes them with patch bumps
+    # cannot be merged at all. Minors and patches keep flowing.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       dev-tooling:
         patterns: ["jest*", "ts-jest", "tsup", "typescript", "@types/*", "@playwright/test", "webpack*", "tsx"]
