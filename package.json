@@ -31,7 +31,7 @@
     "typecheck": "for d in packages/client packages/broker packages/devtools packages/react packages/vue packages/create-registry examples/advanced/shared/contracts examples/advanced/backend examples/advanced/shell examples/advanced/mfe/menu examples/advanced/mfe/cart examples/advanced/mfe/checkout examples/advanced/mfe/ai-chat examples/advanced/mfe/notifications examples/advanced/mfe/analytics; do echo \"== $d\"; (cd $d && npx tsc --noEmit -p tsconfig.json) || exit 1; done"
   },
   "devDependencies": {
-    "@changesets/changelog-github": "^1.0.0",
+    "@changesets/changelog-github": "^1.0.1",
     "@changesets/cli": "^3.0.2",
     "typescript": "^5.8.3"
   },
