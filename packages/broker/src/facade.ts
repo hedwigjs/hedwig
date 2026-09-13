@@ -6,7 +6,7 @@ import type { MessageBroker } from './core/MessageBroker';
 import type { Client } from './core/client/Client.types';
 import type { RemoteClient, RemoteClientOptions } from './core/remote/RemoteClient.types';
 import { ABI, RUNTIME_KEY, RUNTIME_READY_EVENT } from '@hedwigjs/client';
-import type { ClientMeta, ClientOptions, RuntimeHandle } from '@hedwigjs/client';
+import type { ClientMeta, ClientOptions, RuntimeHandle, TopicContractsMap } from '@hedwigjs/client';
 
 /**
  * Per-realm slot: the one live core and the version of the copy that
@@ -171,12 +171,12 @@ function codedError(code: string, message: string): Error {
  * existing client with its subscriptions dropped (the old HMR behaviour).
  * A remote client's id is never reusable from here.
  */
-function createClientOn<T extends string, P extends Record<T, any>>(
+function createClientOn<T extends string, P extends Record<T, any>, C extends TopicContractsMap<T> = TopicContractsMap<T>>(
   core: BrokerCore<any, any>,
   id: string,
   options: ClientOptions | undefined,
   meta: ClientMeta | undefined,
-): Client<T, P> {
+): Client<T, P, C> {
   if (core.getRemoteClient(id)) {
     throw codedError(
       'CLIENT_ID_TAKEN',
@@ -188,14 +188,14 @@ function createClientOn<T extends string, P extends Record<T, any>>(
     if (options?.onConflict === 'reset') {
       core.logger.warn('facade.createClient.reset', { clientId: id });
       core.resetClient(id);
-      return existing as Client<T, P>;
+      return existing as unknown as Client<T, P, C>;
     }
     throw codedError(
       'CLIENT_ID_TAKEN',
       `@hedwigjs/broker: client id '${id}' already exists. Two modules must not share an id; for HMR re-creation pass { onConflict: 'reset' } or destroy the old client first.`,
     );
   }
-  return new BrokerClient<T, P>(id, core as BrokerCore<T, P>, meta);
+  return new BrokerClient<T, P>(id, core as BrokerCore<T, P>, meta) as unknown as Client<T, P, C>;
 }
 
 /**
@@ -222,14 +222,15 @@ function createClientOn<T extends string, P extends Record<T, any>>(
 export function createClient<
   T extends string = string,
   P extends Record<T, any> = any,
->(id: string, options?: ClientOptions): Client<T, P> {
+  C extends TopicContractsMap<T> = TopicContractsMap<T>,
+>(id: string, options?: ClientOptions): Client<T, P, C> {
   const core = resolve();
   if (!core) {
     throw new Error(
       'MessageBroker not initialized. Call initBroker(config) first.',
     );
   }
-  return createClientOn<T, P>(core, id, options, undefined);
+  return createClientOn<T, P, C>(core, id, options, undefined);
 }
 
 /**

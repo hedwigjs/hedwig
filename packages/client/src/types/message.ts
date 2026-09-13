@@ -67,8 +67,12 @@ export interface MessageOptions {
   history?: boolean;
 }
 
-/** Options for `request()`: everything from {@link MessageOptions} plus a timeout. */
-export interface RequestOptions extends MessageOptions {
+/**
+ * Options for `request()`. A request is never recorded to history — a
+ * replayed command would re-run with no requester to answer — so there is
+ * no `history` here.
+ */
+export interface RequestOptions {
   /**
    * Maximum time (ms) to wait for the answer. On expiry the request resolves
    * `NACK TIMEOUT`; the handler (local or remote) may still complete on its
@@ -120,4 +124,13 @@ export interface SubscriptionOptions {
    * @default true
    */
   noLocal?: boolean;
+
+  /**
+   * For `state` topics: deliver the retained (last) value to the handler
+   * synchronously on subscribe, flagged `replayed: true`. Default `true`;
+   * set `false` to receive live updates only. Ignored when `replay` is set —
+   * the history replay then decides what the handler sees first.
+   * @default true
+   */
+  retained?: boolean;
 }

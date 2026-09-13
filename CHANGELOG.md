@@ -246,6 +246,20 @@ step; it goes away once DevTools and the reference stand have moved.
 - Reference stand contracts: five requests with `response`, the cart
   snapshot as `state`, the rest explicit events.
 
+### Topic kinds in the SDK and the runtime (step 7, block 2)
+
+- SDK: `createClient<Topic, TopicPayloads, TopicContracts>()` — `emit`
+  accepts only events and state, `request` only requests and infers the
+  answer type; a wrong verb is a compile error. Without the third
+  parameter nothing changes.
+- Runtime: `initBroker({ topics: TOPIC_KINDS })` retains the last local
+  multicast of every `state` topic and hands it to each new subscriber
+  synchronously (`replayed: true`, `afterSend REPLAY_DELIVERED`); opt out
+  per subscription with `{ retained: false }`. `inspect.getRetained()`,
+  `state.retained` event.
+- Unicast history removed: `RequestOptions` is `{ timeout }`, a request
+  is never recorded, the deprecation warning is gone.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

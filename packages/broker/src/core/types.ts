@@ -1,5 +1,5 @@
 import type { BrokerLogger } from './logger/BrokerLogger.types';
-import type { ClientID, Message, SubscriptionOptions } from '@hedwigjs/client';
+import type { ClientID, Message, SubscriptionOptions, TopicKindMap } from '@hedwigjs/client';
 
 // ========================================
 // PUBLIC TYPES — owned by @hedwigjs/client
@@ -16,6 +16,9 @@ export type {
   RequestOptions,
   ReplayOptions,
   SubscriptionOptions,
+  TopicKind,
+  TopicKindMap,
+  TopicContractsMap,
 } from '@hedwigjs/client';
 
 /**
@@ -68,6 +71,14 @@ export interface ClientInfo {
   subscriptions: ClientSubscriptionInfo[];
   /** Present for remote clients only. */
   remote?: RemoteClientInfo;
+}
+
+/** The retained (last) value of a `state` topic. */
+export interface RetainedState<T extends string = string, P = any> {
+  topic: T;
+  message: Message<T, P>;
+  /** Unix ms when it was retained. */
+  at: number;
 }
 
 /**
@@ -137,4 +148,13 @@ export interface BrokerConfig {
     /** Default timeout (ms) for every request; see {@link RequestOptions.timeout}. */
     timeout?: number;
   };
+
+  /**
+   * Topic kinds from the contracts registry (`TOPIC_KINDS`). The runtime
+   * uses it for `state` topics: the last multicast on each is retained and
+   * delivered to every new subscriber on `on()` (see
+   * `SubscriptionOptions.retained`). Events and requests need nothing from
+   * the runtime; their kinds are enforced by the SDK's types.
+   */
+  topics?: TopicKindMap;
 }

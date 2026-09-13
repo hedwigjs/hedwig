@@ -39,6 +39,15 @@ export type {
   SubscriptionOptions,
 } from './types/message';
 export type { Client, ClientOptions } from './types/client';
+export type {
+  TopicKind,
+  TopicKindMap,
+  TopicContractsMap,
+  KindOf,
+  EmitTopic,
+  RequestTopic,
+  ResponseOf,
+} from './types/contracts';
 export type { Transport, TransportDescriptor, TransportKind } from './types/transport';
 export type {
   RemoteClient,

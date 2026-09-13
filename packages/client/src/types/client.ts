@@ -6,6 +6,7 @@ import type {
   SubscriptionOptions,
 } from './message';
 import type { RoutingResult } from './routing';
+import type { EmitTopic, RequestTopic, ResponseOf, TopicContractsMap } from './contracts';
 
 /**
  * A local participant: code in this realm that subscribes and sends.
@@ -13,8 +14,17 @@ import type { RoutingResult } from './routing';
  * Obtained from `createClient(id)`. Three things: subscription (`on` /
  * `off`), emission (`emit` for fan-out, `request` for a targeted call
  * awaiting a typed answer), lifecycle (`reset`, `destroy`).
+ *
+ * The third parameter `C` (the registry's generated `TopicContracts`) makes
+ * the verbs kind-aware: `emit` accepts only events and state, `request`
+ * only requests, and `request` infers the answer type from the contract.
+ * Without it every topic is open to both verbs, as before.
  */
-export interface Client<T extends string, P extends Record<T, any>> {
+export interface Client<
+  T extends string,
+  P extends Record<T, any>,
+  C extends TopicContractsMap<T> = TopicContractsMap<T>,
+> {
   /** Unique client identifier passed to `createClient(id)`. */
   readonly id: ClientID;
 
@@ -38,7 +48,7 @@ export interface Client<T extends string, P extends Record<T, any>> {
    * Broadcast a message to every subscriber of `topic` (multicast).
    * Remote clients whose `forward` patterns match receive it as a frame.
    */
-  emit<K extends T>(topic: K, data: P[K], options?: MessageOptions): Promise<RoutingResult>;
+  emit<K extends T & EmitTopic<T, C>>(topic: K, data: P[K], options?: MessageOptions): Promise<RoutingResult>;
 
   /**
    * Send a targeted message to one recipient (unicast) and await its answer.
@@ -48,10 +58,11 @@ export interface Client<T extends string, P extends Record<T, any>> {
    * transport; see {@link RoutingResult} reasons `TIMEOUT`, `REMOTE_GONE`,
    * `TRANSPORT_ONE_WAY`, `TRANSPORT_FANOUT`.
    *
-   * @typeParam R - Expected shape of the answer, surfaced on
-   *   `RoutingResult.data`. A boundary cast, not enforced against the handler.
+   * @typeParam R - Shape of the answer, surfaced on `RoutingResult.data`.
+   *   Inferred from the contract's `response` when `C` is given; otherwise a
+   *   boundary cast, not enforced against the handler.
    */
-  request<K extends T, R = unknown>(
+  request<K extends T & RequestTopic<T, C>, R = ResponseOf<C, K>>(
     recipient: ClientID,
     topic: K,
     data: P[K],

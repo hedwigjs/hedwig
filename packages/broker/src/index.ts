@@ -83,7 +83,15 @@ export type {
   TransportDescriptor,
   TransportKind,
 } from './core/transport/Transport.types';
-export type { RemoteClientInfo } from './core/types';
+export type { RemoteClientInfo, RetainedState } from './core/types';
+export type {
+  TopicKind,
+  TopicKindMap,
+  TopicContractsMap,
+  EmitTopic,
+  RequestTopic,
+  ResponseOf,
+} from '@hedwigjs/client';
 
 // ── Wire envelope v1 ────────────────────────────────────────────────────
 // Spec: docs/content/spec/envelope-v1.md; schema shipped as

@@ -2,6 +2,7 @@ import type { Client, ClientOptions } from './types/client';
 import type { HandlerFn, MessageOptions, RequestOptions, SubscriptionOptions } from './types/message';
 import type { RoutingResult } from './types/routing';
 import { RoutingReason } from './types/routing';
+import type { EmitTopic, RequestTopic, ResponseOf, TopicContractsMap } from './types/contracts';
 import type { ClientMeta, RuntimeHandle } from './handle';
 import { onRuntimeReady, tryGetRuntime } from './locator';
 
@@ -42,14 +43,18 @@ function notReady(message: string): RoutingResult {
  * binding, every call is a plain forward. Modules can therefore create
  * their client at module scope without caring about boot order.
  */
-export class LazyClient<T extends string, P extends Record<T, any>> implements Client<T, P> {
+export class LazyClient<
+  T extends string,
+  P extends Record<T, any>,
+  C extends TopicContractsMap<T> = TopicContractsMap<T>,
+> implements Client<T, P, C> {
   readonly id: string;
   #options: ClientOptions | undefined;
   #meta: ClientMeta;
   #limit: number;
   #subscriptions: Subscription[] = [];
   #queue: Queued[] = [];
-  #real: Client<T, P> | null = null;
+  #real: Client<T, P, C> | null = null;
   #destroyed = false;
   #unsubscribeReady: (() => void) | null;
 
@@ -79,18 +84,20 @@ export class LazyClient<T extends string, P extends Record<T, any>> implements C
     if (!runtime) return;
     this.#unsubscribeReady?.();
     this.#unsubscribeReady = null;
-    const real = runtime.createClient(this.id, this.#options, this.#meta) as Client<T, P>;
+    const real = runtime.createClient(this.id, this.#options, this.#meta) as Client<T, P, C>;
     this.#real = real;
     for (const sub of this.#subscriptions) {
       if (sub.removed) continue;
       sub.off = real.on(sub.topic as T, sub.handler, sub.options);
     }
     const queue = this.#queue.splice(0);
+    // Queued calls were typed at the call site; replay them untyped.
+    const loose = real as unknown as Client<string, Record<string, unknown>>;
     for (const q of queue) {
       const promise =
         q.kind === 'emit'
-          ? real.emit(q.topic as T, q.data as P[T], q.options)
-          : real.request(q.recipient, q.topic as T, q.data as P[T], q.options);
+          ? loose.emit(q.topic, q.data, q.options as MessageOptions | undefined)
+          : loose.request(q.recipient, q.topic, q.data, q.options as RequestOptions | undefined);
       promise.then(q.resolve, () => q.resolve(notReady('Runtime rejected the queued call')));
     }
   }
@@ -116,12 +123,12 @@ export class LazyClient<T extends string, P extends Record<T, any>> implements C
     }
   }
 
-  emit<K extends T>(topic: K, data: P[K], options?: MessageOptions): Promise<RoutingResult> {
+  emit<K extends T & EmitTopic<T, C>>(topic: K, data: P[K], options?: MessageOptions): Promise<RoutingResult> {
     if (this.#real) return this.#real.emit(topic, data, options);
     return this.#enqueue({ kind: 'emit', recipient: '*', topic, data, options });
   }
 
-  request<K extends T, R = unknown>(
+  request<K extends T & RequestTopic<T, C>, R = ResponseOf<C, K>>(
     recipient: string,
     topic: K,
     data: P[K],

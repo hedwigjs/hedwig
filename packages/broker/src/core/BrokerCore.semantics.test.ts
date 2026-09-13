@@ -195,21 +195,6 @@ describe('unicast bypasses backpressure', () => {
     expect(logger.calls.filter(([, e]) => e === 'unicast.multiple_handlers')).toHaveLength(1);
     core.destroy();
   });
-
-  test('history: true on a request is deprecated — warned once per topic, still recorded for now', async () => {
-    const logger = recordingLogger();
-    const core = new BrokerCore<Topics, Payloads>({ logger, history: { enabled: true } });
-    const sender = new BrokerClient('sender', core);
-    const receiver = new BrokerClient('receiver', core);
-    receiver.on('a.v1', () => 'ok');
-
-    await sender.request('receiver', 'a.v1', { n: 1 }, { history: true });
-    await sender.request('receiver', 'a.v1', { n: 2 }, { history: true });
-
-    expect(logger.calls.filter(([, e]) => e === 'request.history_deprecated')).toHaveLength(1);
-    expect(core.inspect.getHistory()).toHaveLength(2);
-    core.destroy();
-  });
 });
 
 describe('request timeout', () => {

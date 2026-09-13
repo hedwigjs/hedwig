@@ -1,4 +1,5 @@
 import type { Client, ClientOptions } from './types/client';
+import type { TopicContractsMap } from './types/contracts';
 import type { RemoteClient, RemoteClientOptions } from './types/remote';
 import type { ClientMeta } from './handle';
 import { ABI } from './handle';
@@ -13,6 +14,10 @@ function meta(): ClientMeta {
 /**
  * Create a local client.
  *
+ * Pass the registry's generated `TopicContracts` as the third type
+ * parameter to make the verbs kind-aware:
+ * `createClient<Topic, TopicPayloads, TopicContracts>('cart')`.
+ *
  * With a runtime present the client is created immediately and
  * `CLIENT_ID_TAKEN` is thrown for a duplicate id (unless
  * `options.onConflict === 'reset'`). Without one, a lazy proxy is returned:
@@ -25,21 +30,22 @@ function meta(): ClientMeta {
  * import type { Topic, TopicPayloads } from '@my-org/topics';
  * export const bus = createClient<Topic, TopicPayloads>('cart');
  */
-export function createClient<T extends string = string, P extends Record<T, any> = any>(
-  id: string,
-  options?: ClientOptions,
-): Client<T, P> {
+export function createClient<
+  T extends string = string,
+  P extends Record<T, any> = any,
+  C extends TopicContractsMap<T> = TopicContractsMap<T>,
+>(id: string, options?: ClientOptions): Client<T, P, C> {
   if (typeof id !== 'string' || id.length === 0) {
     throw new TypeError('@hedwigjs/client: client id must be a non-empty string');
   }
   const runtime = tryGetRuntime();
   if (runtime) {
-    return runtime.createClient(id, options, meta()) as Client<T, P>;
+    return runtime.createClient(id, options, meta()) as Client<T, P, C>;
   }
   // No runtime, or one that is too old: the lazy proxy binds later and the
   // version gate fires then, so a too-old runtime still surfaces as an error.
   getRuntimeGateOrDefer();
-  return new LazyClient<T, P>(id, options, meta());
+  return new LazyClient<T, P, C>(id, options, meta());
 }
 
 /** Throws `RUNTIME_TOO_OLD` now if a runtime exists but is too old; silent when none exists. */

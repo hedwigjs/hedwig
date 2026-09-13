@@ -32,7 +32,7 @@ export interface RuntimeHandle {
   readonly runtimeVersion: string;
   /** Stable feature strings: `transport.websocket`, `wire.v1`, `remote.requests`, … */
   readonly capabilities: ReadonlySet<string>;
-  createClient(id: string, options: ClientOptions | undefined, meta: ClientMeta): Client<any, any>;
+  createClient(id: string, options: ClientOptions | undefined, meta: ClientMeta): Client<any, any, any>;
   createRemoteClient(id: string, options: RemoteClientOptions, meta: ClientMeta): RemoteClient;
 }
 

@@ -1,4 +1,4 @@
-import type { ClientID, ClientInfo } from '../../types';
+import type { ClientID, ClientInfo, RetainedState } from '../../types';
 import type { ClientRegistry } from '../../client/ClientRegistry';
 import type { Subscriptions } from '../../routing/Subscriptions';
 import type { RemoteClientImpl } from '../../remote/RemoteClient';
@@ -25,6 +25,7 @@ export class Inspector<T extends string, P extends Record<T, any>> {
   #clients: ClientRegistry<T, P>;
   #subscriptions: Subscriptions<T>;
   #remotes: ReadonlyMap<string, RemoteClientImpl>;
+  #retained: ReadonlyMap<string, RetainedState<T, P[T]>>;
   #getHistory: () => MessageHistory<T, P> | undefined;
   #getVersionInfo: () => VersionInfo;
 
@@ -32,12 +33,14 @@ export class Inspector<T extends string, P extends Record<T, any>> {
     clients: ClientRegistry<T, P>,
     subscriptions: Subscriptions<T>,
     remotes: ReadonlyMap<string, RemoteClientImpl>,
+    retained: ReadonlyMap<string, RetainedState<T, P[T]>>,
     getHistory: () => MessageHistory<T, P> | undefined,
     getVersionInfo: () => VersionInfo,
   ) {
     this.#clients = clients;
     this.#subscriptions = subscriptions;
     this.#remotes = remotes;
+    this.#retained = retained;
     this.#getHistory = getHistory;
     this.#getVersionInfo = getVersionInfo;
   }
@@ -94,6 +97,14 @@ export class Inspector<T extends string, P extends Record<T, any>> {
    */
   getSubscribedClientIds(): ReadonlyArray<ClientID> {
     return this.#subscriptions.getAllSubscribedClients();
+  }
+
+  /**
+   * The retained (last) value of every `state` topic that has been
+   * emitted at least once. Independent of the history buffer.
+   */
+  getRetained(): ReadonlyArray<RetainedState<T, P[T]>> {
+    return Array.from(this.#retained.values());
   }
 
   /**

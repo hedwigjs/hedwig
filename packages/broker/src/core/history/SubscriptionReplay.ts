@@ -84,12 +84,8 @@ export class SubscriptionReplay<T extends string, P extends Record<T, any>> {
     }
 
     for (const entry of entries) {
-      const recipient = entry.message.target;
-
-      // Security: unicast messages are only replayed to their original
-      // recipient. Multicast (`*`) is replayed to every new subscriber.
-      if (recipient !== '*' && recipient !== clientId) continue;
-
+      // History holds local multicasts only (requests are never recorded),
+      // so every entry is for every new subscriber.
       const replayedMessage: Message<T, P[T]> = {
         ...entry.message,
         replayed: true,

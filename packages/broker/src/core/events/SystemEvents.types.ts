@@ -74,6 +74,15 @@ export interface SystemEventMap<T extends string, P extends Record<T, any>> {
     reason: string;
   };
 
+  // ─── State topics ────────────────────────────────────────────────────────
+
+  /** A multicast on a `state` topic replaced the retained value. */
+  'state.retained': {
+    topic: T;
+    messageId: string;
+    at: number;
+  };
+
   // ─── Hooks ────────────────────────────────────────────────────────────────
 
   /**

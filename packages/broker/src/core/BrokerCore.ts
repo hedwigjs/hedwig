@@ -25,6 +25,7 @@ import type {
   BrokerConfig,
   MessageOptions,
   RequestOptions,
+  RetainedState,
 } from './types';
 import type { BrokerLogger } from './logger/BrokerLogger.types';
 import type { BrokerClient } from './client/BrokerClient';
@@ -75,6 +76,10 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   #history?: MessageHistory<T, P>;
   #replay?: SubscriptionReplay<T, P>;
   #remotes = new Map<string, RemoteClientImpl>();
+  /** Topics declared `state` in the contracts registry (`BrokerConfig.topics`). */
+  #stateTopics = new Set<string>();
+  /** Last multicast per `state` topic. */
+  #retained = new Map<string, RetainedState<T, P[T]>>();
   #inspect: Inspector<T, P>;
 
   /**
@@ -96,8 +101,6 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
   #duplicateCopies = 0;
   #debugEnabled: boolean;
   #requestTimeout: number | undefined;
-  /** Topics already warned about for `history: true` on a request. */
-  #warnedRequestHistory = new Set<string>();
 
   /**
    * Infrastructure logger configured via {@link BrokerConfig.logger}.
@@ -113,6 +116,9 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     this.logger = createSafeLogger(config?.logger ?? defaultLogger);
     this.#debugEnabled = config?.debug === true;
     this.#requestTimeout = config?.request?.timeout;
+    for (const [topic, kind] of Object.entries(config?.topics ?? {})) {
+      if (kind === 'state') this.#stateTopics.add(topic);
+    }
 
     // System events first: the hooks registry reports failures through them.
     this.#systemEvents = new SystemEvents(this.logger);
@@ -135,6 +141,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       this.#clientRegistry,
       this.#subscriptions,
       this.#remotes,
+      this.#retained,
       () => this.#history,
       () => ({
         version: this.version,
@@ -269,8 +276,39 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
         // duplicate them. See SubscriptionReplay for the reasoning.
         this.#replay.start(clientId, topic, wrappedHandler, options.replay);
       }
+    } else if (options?.retained !== false && this.#stateTopics.has(topic)) {
+      // A `state` topic hands its retained value to every new subscriber,
+      // synchronously and before `on()` returns, exactly like a replay of
+      // one entry. Nothing to do when nothing was emitted yet.
+      const last = this.#retained.get(topic);
+      if (last) this.#deliverRetained(clientId, last, wrappedHandler);
     }
     return subscriptionId;
+  }
+
+  /**
+   * Deliver a retained state value to a fresh subscriber. Same contract as
+   * history replay: `replayed: true`, error-isolated, `afterSend` with
+   * `REPLAY_DELIVERED` so observers see it, `beforeSend` skipped (the
+   * message was validated when it was emitted).
+   */
+  #deliverRetained(clientId: ClientID, last: RetainedState<T, P[T]>, handler: MessageHandler): void {
+    const replayed = deepFreeze({ ...last.message, replayed: true } as Message<T, P[T]>);
+    const log = (error: unknown) => {
+      this.logger.error('replay.handler.failed', { messageId: replayed.id, topic: replayed.topic, clientId, error });
+    };
+    try {
+      const result = handler(replayed);
+      if (result && typeof (result as Promise<unknown>).then === 'function') {
+        (result as Promise<unknown>).then(undefined, log);
+      }
+    } catch (error) {
+      log(error);
+    }
+    this.#hooks.afterSend(
+      replayed,
+      RoutingResult.create('ACK', RoutingReason.REPLAY_DELIVERED, `Retained state delivered to '${clientId}'`, clientId),
+    );
   }
 
   /**
@@ -340,14 +378,8 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     sender: ClientID,
     recipient: ClientID | '*',
     data: P[K],
-    options?: RequestOptions,
+    options?: MessageOptions & RequestOptions,
   ): Promise<RoutingResult<R>> {
-    if (recipient !== '*' && options?.history === true && !this.#warnedRequestHistory.has(topic)) {
-      // Replaying a request re-runs a command with no requester to answer.
-      // Retention is an event concern; this option goes away for unicast.
-      this.#warnedRequestHistory.add(topic);
-      this.logger.warn('request.history_deprecated', { topic, recipient });
-    }
     return this.#runPipeline<K, R>(topic, sender, recipient, data, options, false, false);
   }
 
@@ -442,7 +474,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     sender: ClientID,
     recipient: ClientID | '*',
     data: P[K],
-    options: RequestOptions | undefined,
+    options: (MessageOptions & RequestOptions) | undefined,
     fromExternal: boolean,
     synthetic: boolean,
     via?: string,
@@ -498,9 +530,19 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       return result;
     }
 
-    // Stage 3: Record to history (only if explicitly requested and not from external)
-    if (this.#history && !fromExternal && options?.history === true) {
+    // Stage 3: Record to history — local multicasts that opted in. A
+    // request is never recorded: replaying a command would re-run it with
+    // no requester to answer.
+    if (this.#history && !fromExternal && recipient === '*' && options?.history === true) {
       this.#history.record(frozenMessage);
+    }
+
+    // Stage 3b: retain `state` — the last local multicast per state topic,
+    // handed to every later subscriber. Independent of the history buffer.
+    if (!fromExternal && recipient === '*' && this.#stateTopics.has(topic)) {
+      const at = Date.now();
+      this.#retained.set(topic, { topic, message: frozenMessage, at });
+      this.#systemEvents.emit('state.retained', { topic, messageId: frozenMessage.id, at });
     }
 
     // Stage 4: route. A unicast whose recipient is a remote client goes out
@@ -791,6 +833,8 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     this.#remotes.clear();
 
     this.#hooks.clear();
+    this.#retained.clear();
+    this.#stateTopics.clear();
     this.#history?.destroy();
     // Release per-handler backpressure strategies via the cleared entries,
     // then run destroy() as a belt-and-suspenders sweep for anything that
