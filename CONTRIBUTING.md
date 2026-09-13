@@ -21,7 +21,7 @@
 | --- | --- |
 | `npm run build` | Builds the public packages in dependency order: client → broker → devtools → react → vue. Run after pulling; the demo and the tests consume `dist/`. |
 | `npm run typecheck` | `tsc --noEmit` in every workspace, packages and demo apps alike. |
-| `npm test` | Unit suites: client, broker, devtools, react, vue, and the demo backend's schema tests. |
+| `npm test` | Unit suites: client, broker, devtools, react, vue, and the demo backend's schema tests. Also renders the built DevTools panel under React 18 (`packages/devtools/react18-smoke`, a standalone project with its own lockfile — run `npm run build -w @hedwigjs/devtools` first). |
 | `npm run e2e` | Playwright against the reference stand. Boots the stand itself; needs `npx playwright install chromium` once. |
 | `npm run dev:demo` | The stand at http://localhost:3000 (shell), MFEs on 3001–3006, backend on 4000. |
 

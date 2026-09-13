@@ -314,6 +314,19 @@ step; it goes away once DevTools and the reference stand have moved.
   (npm weekly, actions monthly), `.nvmrc`, a rewritten `CONTRIBUTING.md`
   with the everyday commands and the release rules.
 
+### DevTools on React 18 and 19
+
+- `@hedwigjs/devtools` peer range is `react`/`react-dom`
+  `^18.2.0 || ^19.0.0`. The sources never needed React 19; the bundle
+  did, because webpack inlined `react/jsx-runtime` from the copy
+  installed at build time, and a React 18 host crashed at first render
+  (`Cannot read properties of null (reading 'useMemo')`). Every
+  `react/*` and `react-dom/*` request is now an external, so the panel
+  runs on the host's React.
+- `packages/devtools/react18-smoke` — a standalone project (own
+  lockfile, not a workspace) that renders the built bundle under React
+  18.3 in jsdom; wired into `npm test` so the guard runs in CI.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

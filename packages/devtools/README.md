@@ -9,7 +9,8 @@ running broker — all from a docked panel you mount in your own app.
 npm install @hedwigjs/devtools
 ```
 
-Peer deps: `@hedwigjs/broker`, `react`, `react-dom` (React 19).
+Peer deps: `@hedwigjs/broker`, `react`, `react-dom` (React 18.2+ or 19 — the
+panel is built against the host's copy, including `react/jsx-runtime`).
 
 > Pre-release. The panel props documented here are the stable surface;
 > anything marked *internal* may change.
