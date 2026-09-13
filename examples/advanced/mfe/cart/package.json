@@ -2,7 +2,7 @@
   "name": "@hedwig-demo/cart",
   "version": "0.0.0",
   "private": true,
-  "description": "Cart MFE — subscribes to cart.* topics, shows current items and total.",
+  "description": "Cart MFE \u2014 subscribes to cart.* topics, shows current items and total.",
   "scripts": {
     "dev": "webpack serve",
     "build": "webpack --mode production"
@@ -10,6 +10,7 @@
   "dependencies": {
     "@hedwig-demo/contracts": "*",
     "@hedwigjs/client": "*",
+    "@hedwigjs/react": "*",
     "react": "19.1.1",
     "react-dom": "19.1.1"
   },

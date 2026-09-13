@@ -1,9 +1,8 @@
 import type { FC } from 'react';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
-import { createClient } from '@hedwigjs/client';
-import type { RoutingResult } from '@hedwigjs/client';
-import type { NotificationStatusResponse, Topic, TopicContracts, TopicPayloads } from '@hedwig-demo/contracts';
+import { useClient, useRequest } from '@hedwigjs/react';
+import type { Topic, TopicContracts, TopicPayloads } from '@hedwig-demo/contracts';
 
 import { t } from '../../../../shared/i18n/useLang';
 
@@ -38,50 +37,34 @@ const T = {
   },
 } as const;
 
-type Outcome = {
-  result: RoutingResult<NotificationStatusResponse>;
-  latencyMs: number;
-  at: string;
-};
-
 /**
  * Demo card: a request that crosses a transport. The client id has one
  * ACL rule — it may send `notification.status.v1` to
  * `notifications-backend` and nothing else. The response never passes
  * through hooks: it is matched to the pending request by `correlationId`
  * on the remote client that carried the request.
+ *
+ * `useClient` owns the client for the card's lifetime; `useRequest` owns
+ * `pending` / `result`, with the answer typed by the contract.
  */
 export const RemoteRequestDemo: FC = () => {
-  const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<Outcome | null>(null);
-  const clientRef = useRef<ReturnType<typeof createClient<Topic, TopicPayloads>> | null>(null);
-
-  useEffect(() => {
-    clientRef.current = createClient<Topic, TopicPayloads, TopicContracts>('remote-request-demo');
-    return () => {
-      clientRef.current?.destroy();
-      clientRef.current = null;
-    };
-  }, []);
+  const bus = useClient<Topic, TopicPayloads, TopicContracts>('remote-request-demo');
+  const status = useRequest(bus, 'notifications-backend', 'notification.status.v1', { timeout: 3000 });
+  const [timing, setTiming] = useState<{ latencyMs: number; at: string } | null>(null);
+  const busy = status.pending;
+  const outcome = status.result && timing ? { result: status.result, ...timing } : null;
 
   async function ask(): Promise<void> {
-    const client = clientRef.current;
-    if (!client || busy) return;
-    setBusy(true);
+    if (busy) return;
     const started = performance.now();
-    const result = await client.request<'notification.status.v1', NotificationStatusResponse>(
-      'notifications-backend',
-      'notification.status.v1',
-      { includeLang: true },
-      { timeout: 3000 },
-    );
-    setOutcome({
-      result,
-      latencyMs: Math.round(performance.now() - started),
-      at: new Date().toLocaleTimeString(),
-    });
-    setBusy(false);
+    await status.send({ includeLang: true });
+    setTiming({ latencyMs: Math.round(performance.now() - started), at: new Date().toLocaleTimeString() });
   }
+
+  // A stale timing must never pair with a fresh result.
+  useEffect(() => {
+    if (!status.result) setTiming(null);
+  }, [status.result]);
 
   return (
     <section className={styles.root}>

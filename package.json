@@ -22,8 +22,8 @@
     "examples/advanced/backend"
   ],
   "scripts": {
-    "build": "npm run build -w @hedwigjs/client && npm run build -w @hedwigjs/broker && npm run build -w @hedwigjs/devtools",
-    "test": "npm test -w @hedwigjs/client && npm test -w @hedwigjs/broker && npm test -w @hedwigjs/devtools && npm test -w @hedwig-demo/backend",
+    "build": "npm run build -w @hedwigjs/client && npm run build -w @hedwigjs/broker && npm run build -w @hedwigjs/devtools && npm run build -w @hedwigjs/react && npm run build -w @hedwigjs/vue",
+    "test": "npm test -w @hedwigjs/client && npm test -w @hedwigjs/broker && npm test -w @hedwigjs/devtools && npm test -w @hedwigjs/react && npm test -w @hedwigjs/vue && npm test -w @hedwig-demo/backend",
     "dev:demo": "npm run dev -w @hedwig-demo/advanced",
     "stop:demo": "npm run stop -w @hedwig-demo/advanced",
     "restart:demo": "npm run restart -w @hedwig-demo/advanced"

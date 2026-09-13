@@ -271,6 +271,22 @@ step; it goes away once DevTools and the reference stand have moved.
 - Docs: guide `contract-based-topics.md`; broker README "Topic kinds and
   state"; RFC-0003 open question 3 resolved (one contract type with `kind`).
 
+### React and Vue adapters (step 8)
+
+- `@hedwigjs/react`: `useClient` (created in a layout effect, destroyed on
+  unmount, StrictMode-safe), `useTopic` (latest handler, no re-subscribe),
+  `useStateTopic` (retained value before the first paint), `useRequest`
+  (`send` + `pending` / `result`, answer typed by the contract),
+  `useRemoteClient` (created while options are present, destroyed with the
+  component), `useRuntimeReady`.
+- `@hedwigjs/vue`: the same six as composables on `onScopeDispose`,
+  `watch` and `shallowRef`; `useRemoteClient` follows a ref or getter.
+- Reference stand on the React adapter: cart snapshot, menu quantities and
+  the late-mount card via `useStateTopic`; the remote-request card via
+  `useClient` + `useRequest`; the checkout iframe via `useRemoteClient`;
+  toasts via `useTopic`. The hand-written `useEffect` / `useRef` lifecycle
+  code is gone.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

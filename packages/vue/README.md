@@ -1,0 +1,48 @@
+# @hedwigjs/vue
+
+Vue 3 composables that bind Hedwig clients to the component scope. Built on
+[`@hedwigjs/client`](../client); no dependency on the runtime, no plugin to
+install.
+
+```bash
+npm i @hedwigjs/vue @hedwigjs/client
+```
+
+```vue
+<script setup lang="ts">
+import { useClient, useStateTopic, useRequest, useRemoteClient } from '@hedwigjs/vue';
+import type { Topic, TopicPayloads, TopicContracts } from '@my-org/topics';
+
+const bus = useClient<Topic, TopicPayloads, TopicContracts>('cart-ui');
+const snapshot = useStateTopic(bus, 'cart.snapshot.v1', EMPTY);            // shallowRef, retained value right away
+const status = useRequest(bus, 'notifications-backend', 'notification.status.v1');
+
+const iframeWindow = ref<Window | null>(null);
+useRemoteClient('checkout-iframe', () =>
+  iframeWindow.value && {
+    transport: { kind: 'postmessage', target: iframeWindow.value, allowedOrigins: [ORIGIN], targetOrigin: ORIGIN },
+    accepts: ['checkout.completed.v1'],
+  },
+);
+</script>
+
+<template>
+  <p>{{ snapshot.totalItems }} items</p>
+  <button :disabled="status.pending.value" @click="status.send({ includeLang: true })">Ask the backend</button>
+  <span>{{ status.result.value?.data?.connected }}</span>
+</template>
+```
+
+## Composables
+
+| Composable | Returns | Notes |
+| --- | --- | --- |
+| `useClient(id, options?)` | `Client` | Created synchronously in setup, destroyed on scope dispose. Third type parameter `TopicContracts` for kind-aware verbs. |
+| `useTopic(client, topic, handler, options?)` | — | `client` may be a plain client, a ref, or a getter; the subscription follows it and ends with the scope. |
+| `useStateTopic(client, topic, initial?)` | `ShallowRef` | Holds a `state` topic's retained value as soon as it returns; updates on every emit. |
+| `useRequest(client, recipient, topic, options?)` | `{ send, pending, result, reset }` | `pending` and `result` are refs; answer type from the contract; `send` never rejects. |
+| `useRemoteClient(id, options)` | `ShallowRef<RemoteClient \| null>` | `options` is a ref or getter; `null` means no remote. Recreated on change, destroyed on `null` and on dispose. |
+| `useRuntimeReady()` | `Ref<boolean>` | Whether the host's runtime exists yet. |
+
+Works inside components and inside `effectScope()`; everything is released
+with `onScopeDispose`.

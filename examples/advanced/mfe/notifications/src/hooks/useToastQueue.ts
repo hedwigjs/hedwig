@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { useTopic } from '@hedwigjs/react';
 import type { TopicPayloads } from '@hedwig-demo/contracts';
 
 import { toastBus } from '../clients/bus';
@@ -33,23 +34,24 @@ export function useToastQueue() {
     }
   }, []);
 
+  // Subscribed while mounted; the handler below is always the latest one.
+  useTopic(toastBus, 'notification.show.v1', (msg) => {
+    const payload = msg.data;
+    const id = `n_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    setToasts((prev) => [...prev, { id, ...payload }].slice(-MAX_TOASTS));
+
+    const timer = window.setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+      timers.current.delete(id);
+    }, AUTO_DISMISS_MS);
+    timers.current.set(id, timer);
+  });
+
   useEffect(() => {
-    const off = toastBus.on('notification.show.v1', (msg) => {
-      const payload = msg.data;
-      const id = `n_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-      setToasts((prev) => [...prev, { id, ...payload }].slice(-MAX_TOASTS));
-
-      const timer = window.setTimeout(() => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
-        timers.current.delete(id);
-      }, AUTO_DISMISS_MS);
-      timers.current.set(id, timer);
-    });
-
+    const pending = timers.current;
     return () => {
-      off();
-      timers.current.forEach((t) => window.clearTimeout(t));
-      timers.current.clear();
+      pending.forEach((t) => window.clearTimeout(t));
+      pending.clear();
     };
   }, []);
 

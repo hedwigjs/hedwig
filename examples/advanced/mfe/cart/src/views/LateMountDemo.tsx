@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import React, { useEffect, useState } from 'react';
 
-import { createClient } from '@hedwigjs/client';
+import { useClient, useStateTopic } from '@hedwigjs/react';
 import type { Topic, TopicContracts, TopicPayloads } from '@hedwig-demo/contracts';
 
 import { getLang, t } from '../../../../shared/i18n/useLang';
@@ -49,25 +49,19 @@ function currency(): Intl.NumberFormat {
 
 /**
  * Actual late-joining consumer. Mounted / unmounted on demand by the parent.
- * Every mount creates its own client and subscribes to `cart.snapshot.v1`.
- * It is a `state` topic, so the runtime hands the retained (last) snapshot
- * to the handler inside `on()` — no live emit, no replay option required.
+ * `useClient` gives it a client for exactly its lifetime; `useStateTopic`
+ * subscribes to `cart.snapshot.v1` before paint. It is a `state` topic, so
+ * the runtime hands over the retained (last) snapshot inside `on()` — no
+ * live emit, no replay option, no `useEffect` bookkeeping here.
  */
 const LateJoiningConsumer: FC = () => {
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const client = useClient<Topic, TopicPayloads, TopicContracts>('late-mount-demo');
+  const snapshot: Snapshot | undefined = useStateTopic(client, 'cart.snapshot.v1');
   const [receivedAt, setReceivedAt] = useState<string | null>(null);
 
   useEffect(() => {
-    const client = createClient<Topic, TopicPayloads, TopicContracts>('late-mount-demo');
-    const off = client.on('cart.snapshot.v1', (msg) => {
-      setSnapshot(msg.data);
-      setReceivedAt(new Date().toLocaleTimeString(getLang() === 'en' ? 'en-US' : 'ru-RU'));
-    });
-    return () => {
-      off();
-      client.destroy();
-    };
-  }, []);
+    if (snapshot) setReceivedAt(new Date().toLocaleTimeString(getLang() === 'en' ? 'en-US' : 'ru-RU'));
+  }, [snapshot]);
 
   if (!snapshot) {
     return (

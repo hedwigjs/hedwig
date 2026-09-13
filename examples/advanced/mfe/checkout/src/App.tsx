@@ -1,8 +1,7 @@
 import type { FC } from 'react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import { createRemoteClient } from '@hedwigjs/client';
-import type { RemoteClient } from '@hedwigjs/client';
+import { useRemoteClient } from '@hedwigjs/react';
 import type {
   CartItem,
   CartRemoveItemResponse,
@@ -116,46 +115,37 @@ export const App: FC = () => {
     });
   }, []);
 
-  // Remote client lifecycle: the iframe becomes a remote client when it
-  // reports ready and is destroyed on close. Tracked via ref because the
-  // callback identity must be stable across re-renders of the modal.
-  const remoteRef = useRef<RemoteClient | null>(null);
-
-  const onIframeReady = useCallback((win: Window) => {
-    // Rebuild the remote every time a new iframe loads (React may recreate
-    // the element between opens/closes).
-    remoteRef.current?.destroy();
-
-    remoteRef.current = createRemoteClient(REMOTE_ID, {
-      // Both origins are mandatory: `allowedOrigins` is the inbound trust
-      // boundary, `targetOrigin` keeps our frames from reaching whatever
-      // else might get loaded into the window.
-      transport: {
-        kind: 'postmessage',
-        target: win,
-        allowedOrigins: [IFRAME_ORIGIN],
-        targetOrigin: IFRAME_ORIGIN,
-      },
-      // The iframe may only speak as itself (`fixed` identity) and only
-      // about the outcome; anything else is dropped at the edge as
-      // `remote.frame.rejected`. Nothing is forwarded to it.
-      accepts: ['checkout.completed.v1'],
-    });
-  }, []);
-
+  // The iframe becomes a remote client for exactly as long as the modal
+  // shows a loaded iframe: `useRemoteClient` creates it when the window is
+  // known and destroys it (transport closed) when the window goes away or
+  // the component unmounts. No refs, no cleanup effects to forget.
+  const [iframeWindow, setIframeWindow] = useState<Window | null>(null);
+  const onIframeReady = useCallback((win: Window) => setIframeWindow(win), []);
   useEffect(() => {
-    if (!pending) {
-      remoteRef.current?.destroy();
-      remoteRef.current = null;
-    }
+    if (!pending) setIframeWindow(null);
   }, [pending]);
 
-  useEffect(() => {
-    return () => {
-      remoteRef.current?.destroy();
-      remoteRef.current = null;
-    };
-  }, []);
+  useRemoteClient(
+    REMOTE_ID,
+    pending && iframeWindow
+      ? {
+          // Both origins are mandatory: `allowedOrigins` is the inbound
+          // trust boundary, `targetOrigin` keeps our frames from reaching
+          // whatever else might get loaded into the window.
+          transport: {
+            kind: 'postmessage',
+            target: iframeWindow,
+            allowedOrigins: [IFRAME_ORIGIN],
+            targetOrigin: IFRAME_ORIGIN,
+          },
+          // The iframe may only speak as itself (`fixed` identity) and only
+          // about the outcome; anything else is dropped at the edge as
+          // `remote.frame.rejected`. Nothing is forwarded to it.
+          accepts: ['checkout.completed.v1'],
+        }
+      : null,
+    [iframeWindow],
+  );
 
   if (!pending) return null;
 

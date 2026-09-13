@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useMemo } from 'react';
+
+import { useStateTopic } from '@hedwigjs/react';
 
 import type { MenuItem } from '@hedwig-demo/contracts';
 import type {
@@ -19,26 +21,19 @@ import { bus } from '../clients/bus';
  *   2. Sends **requests** to the cart-store for mutations. `add-item`
  *      handles both first-add and increment (runtime returns updated qty).
  *
- * The retained snapshot arrives synchronously inside `on()`, so a menu that
- * mounts after items were added still shows the right quantities.
- * items when the menu mounts, the broker fires the handler once with the
- * last retained snapshot.
+ * `useStateTopic` subscribes before paint and the retained snapshot arrives
+ * synchronously inside `on()`, so a menu that mounts after items were added
+ * shows the right quantities on its first frame.
  */
 export function useLocalCartQuantities() {
-  const [qtyById, setQtyById] = useState<Record<number, number>>({});
-
-  useEffect(() => {
-    return bus.on(
-      'cart.snapshot.v1',
-      (msg) => {
-        const next: Record<number, number> = {};
-        for (const item of msg.data.items) {
-          next[item.itemId] = item.quantity;
-        }
-        setQtyById(next);
-      },
-    );
-  }, []);
+  const snapshot = useStateTopic(bus, 'cart.snapshot.v1');
+  const qtyById = useMemo(() => {
+    const next: Record<number, number> = {};
+    for (const item of snapshot?.items ?? []) {
+      next[item.itemId] = item.quantity;
+    }
+    return next;
+  }, [snapshot]);
 
   const getQty = useCallback((id: number) => qtyById[id] ?? 0, [qtyById]);
 

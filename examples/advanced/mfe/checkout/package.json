@@ -2,7 +2,7 @@
   "name": "@hedwig-demo/checkout",
   "version": "0.0.0",
   "private": true,
-  "description": "Checkout MFE — headless controller that shows a cross-origin iframe payment form.",
+  "description": "Checkout MFE \u2014 headless controller that shows a cross-origin iframe payment form.",
   "scripts": {
     "dev": "webpack serve",
     "build": "webpack --mode production"
@@ -10,6 +10,7 @@
   "dependencies": {
     "@hedwig-demo/contracts": "*",
     "@hedwigjs/client": "*",
+    "@hedwigjs/react": "*",
     "react": "19.1.1",
     "react-dom": "19.1.1"
   },

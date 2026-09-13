@@ -11,6 +11,8 @@ Hedwig.
 | Directory   | npm name             | Role                                                                                                | Status                  |
 | ----------- | -------------------- | --------------------------------------------------------------------------------------------------- | ----------------------- |
 | `client/`   | `@hedwigjs/client`   | SDK for modules: `createClient`, `createRemoteClient`, `whenRuntimeReady`, `hasCapability`, all module-visible types. Stateless, no runtime dependency; locates the host's runtime via `Symbol.for('@hedwigjs/runtime/1')`. | Unreleased |
+| `react/`    | `@hedwigjs/react`    | React hooks binding clients, topics, retained state, requests and remote clients to the component lifecycle. On the SDK, no runtime dependency. | Unreleased |
+| `vue/`      | `@hedwigjs/vue`      | Vue 3 composables with the same surface, bound to the component scope. | Unreleased |
 | `broker/`   | `@hedwigjs/broker`   | Runtime broker + observability primitives. Remote clients over built-in transports for postMessage / MessagePort / BroadcastChannel / WebSocket / SSE. | Published |
 | `devtools/` | `@hedwigjs/devtools` | React panel: message timeline, clients (local and remote), replay buffer, system events.                       | Published |
 
