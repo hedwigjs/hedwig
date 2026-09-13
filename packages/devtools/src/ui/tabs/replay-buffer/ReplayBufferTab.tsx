@@ -52,9 +52,11 @@ export function ReplayBufferTab({ store }: ReplayBufferTabProps): ReactNode {
       <div className={styles.empty}>
         <div className={styles.emptyTitle}>Replay buffer is empty.</div>
         <div className={styles.emptyHint}>
-          Messages are stored here when published with{" "}
-          <code className={styles.code}>{"{ history: true }"}</code> and history is enabled in{" "}
-          <code className={styles.code}>BrokerConfig</code>.
+          Every multicast event lands here once history is enabled in{" "}
+          <code className={styles.code}>initBroker</code>{" "}
+          (<code className={styles.code}>{"history: { enabled: true }"}</code>). Requests, frames
+          from remote clients and messages sent with{" "}
+          <code className={styles.code}>{"{ history: false }"}</code> are not recorded.
         </div>
       </div>
     );

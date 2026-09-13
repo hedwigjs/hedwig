@@ -60,9 +60,11 @@ export type HandlerFn<T extends string, P = unknown> = (
 /** Options for `emit()`. */
 export interface MessageOptions {
   /**
-   * Record this message to history for replay. History has limited
-   * capacity; mark only what late subscribers must see.
-   * @default false
+   * Keep this message in the history buffer for replay. When history is
+   * enabled in `initBroker`, every multicast event is recorded; pass
+   * `false` to keep a noisy or oversized message out of the buffer.
+   * Ignored for requests and when history is disabled.
+   * @default true
    */
   history?: boolean;
 }

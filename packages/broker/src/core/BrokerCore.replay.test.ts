@@ -44,6 +44,42 @@ describe('BrokerCore - Message History & Replay', () => {
       expect(stats.count).toBe(1);
     });
 
+    test('records every multicast event by default — no flag at the emit site', async () => {
+      const broker = createBrokerWithHistory();
+      const client = new BrokerClient('test-client', broker);
+
+      await client.emit('test.event.v1', { value: 1 });
+      await client.emit('other.event.v1', { value: 2 });
+
+      const topics = broker.inspect.getHistory().map((e) => e.message.topic);
+      expect(topics).toEqual(['test.event.v1', 'other.event.v1']);
+    });
+
+    test('`history: false` keeps a message out of the buffer', async () => {
+      const broker = createBrokerWithHistory();
+      const client = new BrokerClient('test-client', broker);
+
+      await client.emit('kept.v1', { value: 1 });
+      await client.emit('noisy.v1', { value: 2 }, { history: false });
+      await client.emit('kept.v1', { value: 3 });
+
+      const topics = broker.inspect.getHistory().map((e) => e.message.topic);
+      expect(topics).toEqual(['kept.v1', 'kept.v1']);
+    });
+
+    test('a late subscriber replays events that were emitted without any flag', async () => {
+      const broker = createBrokerWithHistory();
+      const producer = new BrokerClient('producer', broker);
+      await producer.emit('feed.v1', { n: 1 });
+      await producer.emit('feed.v1', { n: 2 });
+
+      const seen: number[] = [];
+      const late = new BrokerClient('late', broker);
+      late.on('feed.v1', (msg) => seen.push((msg.data as { n: number }).n), { replay: { limit: 10 } });
+
+      expect(seen).toEqual([1, 2]);
+    });
+
     test('should not record events when history is disabled', async () => {
       const broker = new BrokerCore(); // No history config
       const client = new BrokerClient('test-client', broker);

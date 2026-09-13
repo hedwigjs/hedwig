@@ -530,10 +530,11 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
       return result;
     }
 
-    // Stage 3: Record to history — local multicasts that opted in. A
-    // request is never recorded: replaying a command would re-run it with
-    // no requester to answer.
-    if (this.#history && !fromExternal && recipient === '*' && options?.history === true) {
+    // Stage 3: Record to history — every local multicast, unless the emitter
+    // opted this one out with `history: false`. A request is never recorded:
+    // replaying a command would re-run it with no requester to answer.
+    // External frames are not recorded either (see spec/delivery-semantics).
+    if (this.#history && !fromExternal && recipient === '*' && options?.history !== false) {
       this.#history.record(frozenMessage);
     }
 

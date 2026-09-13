@@ -327,6 +327,16 @@ step; it goes away once DevTools and the reference stand have moved.
   lockfile, not a workspace) that renders the built bundle under React
   18.3 in jsdom; wired into `npm test` so the guard runs in CI.
 
+### History records by default
+
+- With `history.enabled`, every multicast event is recorded; the
+  per-message `history: true` flag is no longer required (still
+  accepted), and `history: false` opts a single message out. Requests
+  and frames from remote clients are still never recorded. The DevTools
+  Replay Buffer tab on the stand was always empty because no emit site
+  set the flag after the move to `state` topics; now it shows what a
+  late subscriber would replay.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

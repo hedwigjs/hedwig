@@ -619,29 +619,39 @@ values are independent of the history buffer, listed by
 
 ## Message history & replay
 
-The broker keeps an in-memory ring buffer. Enable it once in
-`initBroker`, opt in per-message on `emit`, and opt in per-subscription
-on `on`.
+The broker keeps an in-memory ring buffer of recent events. Enable it
+once in `initBroker` and every multicast event is recorded — nothing to
+remember at the emit site. A subscriber opts in to replay on `on()`.
 
 ```ts
 initBroker({
   history: { enabled: true, maxSize: 500, ttl: 60_000 }, // 1 min TTL
 });
 
-// Producer opts a message in.
-void cartClient.emit(
-  'cart.snapshot.v1',
-  { items, total },
-  { history: true },
-);
+// Producer emits as usual — the event is recorded.
+void feedClient.emit('feed.item.v1', { id, title });
 
-// Late subscriber replays the most recent 10 snapshots.
-menuClient.on(
-  'cart.snapshot.v1',
-  (msg) => renderCart(msg.data),
+// Late subscriber replays the most recent 10 items, then goes live.
+panelClient.on(
+  'feed.item.v1',
+  (msg) => appendItem(msg.data),
   { replay: { limit: 10 } },
 );
+
+// Noisy or oversized? Keep this one out of the buffer.
+void pointerClient.emit('pointer.moved.v1', { x, y }, { history: false });
 ```
+
+Not recorded, ever: requests (replaying a command would re-run it with
+nobody waiting for the answer) and frames that arrived from a remote
+client (the buffer is local to this realm — see
+[delivery semantics](../../docs/content/spec/delivery-semantics.md)).
+The DevTools **Replay Buffer** tab shows exactly what a late subscriber
+would get.
+
+If all you need is "the latest value for late joiners", declare the
+topic as `kind: 'state'` instead — see [Topic kinds and state](#topic-kinds-and-state).
+Retained state and the history buffer are independent.
 
 Replayed messages carry `replayed: true` — handlers can tell historical
 traffic apart from live traffic. Replay is best-effort against a
