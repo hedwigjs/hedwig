@@ -1,6 +1,6 @@
 {
   "name": "@hedwigjs/create-registry",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Initializer for a Hedwig topics-registry package. Scaffolds a standalone TypeScript workspace with codegen, types, and helpers — no runtime dependency on @hedwigjs/*.",
   "publishConfig": {
     "access": "public"
