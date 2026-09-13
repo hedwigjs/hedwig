@@ -167,6 +167,23 @@ step; it goes away once DevTools and the reference stand have moved.
 - DevTools: Bridges tab removed; its counters live on the remote
   client's card.
 
+### Wire envelope v1 (RFC-0003 step 4)
+
+- One frame format for everything that crosses a transport:
+  `docs/content/spec/envelope-v1.md` plus a JSON Schema shipped in the
+  package (`@hedwigjs/broker/spec/envelope-v1.schema.json`). The runtime's
+  ingress check is proven equivalent to the schema by a shared corpus test.
+- Outbound frames carry `v: 1`, `kind`, and `origin` (this realm's session
+  id). Inbound: `v` other than 1 or an unknown `kind` → `UNSUPPORTED`; a
+  frame with our own `origin` → `ECHO`; the producer's `id` lands as
+  `message.wireId`, the `ext` block as `message.ext`.
+- New spec pages: delivery semantics, threat model, support matrix.
+- Reference stand: the backend emits v1 frames from one helper with a
+  per-process `origin` and a `correlationId` per streamed AI reply; the
+  checkout iframe stamps its own `origin`. `npm test` in the backend
+  validates every frame against the schema (Node test runner + ajv).
+- DevTools: message details show `Via … · wire id …` and the `ext` block.
+
 ### Reference stand
 
 - Bilingual UI (EN default, RU toggle). Backend AI replies + notification

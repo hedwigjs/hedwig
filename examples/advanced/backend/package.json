@@ -7,7 +7,8 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "start": "node --loader tsx src/index.ts"
+    "start": "node --loader tsx src/index.ts",
+    "test": "node --import tsx --test src/envelope.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -19,6 +20,7 @@
     "@types/express": "^4.17.21",
     "@types/node": "^20.11.30",
     "@types/ws": "^8.5.12",
+    "ajv": "^8.17.1",
     "tsx": "^4.19.0",
     "typescript": "^5.8.3"
   }

@@ -102,6 +102,8 @@ Rejections from hooks surface in three places at once:
 - `subscription.rejected` → System Events tab (the security channel).
 - `message.rejected` → System Events tab, **and** the corresponding
   emit shows as `NACK HOOK_REJECTED` in Messages.
+- `remote.frame.rejected` → System Events tab with a red `rejected` badge
+  and the reason (`MALFORMED`, `ECHO`, `SOURCE_MISMATCH`, …).
 - `remote.send.failed` → System Events tab with an amber `failed` badge
   (distinct from the red `rejected`, which is a policy decision). The
   sender's message still shows as delivered in Messages — the local

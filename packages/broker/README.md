@@ -27,6 +27,7 @@ npm install @hedwigjs/broker
 - [RoutingResult](#routingresult)
 - [Remote clients](#remote-clients)
 - [Custom transports](#custom-transports)
+- [Wire format](#wire-format)
 - [Hooks](#hooks)
 - [Message history & replay](#message-history--replay)
 - [Backpressure](#backpressure)
@@ -271,6 +272,8 @@ interface Message<T extends string, P> {
   replayed?: boolean;      // true when delivered from the history buffer
   fromExternal?: boolean;  // true when injected by a remote client
   via?: string;            // id of that remote client (local-only, never on the wire)
+  wireId?: string;         // the producer's frame id; (source, wireId) correlates across realms
+  ext?: object;            // opaque wire extension block (traceparent, hedwig.*)
   synthetic?: boolean;     // true when injected via broker.$debug.send
 }
 ```
@@ -438,6 +441,33 @@ Contract summary:
   one `send` reaches many peers — such a remote can never be asked),
   `ready` (a promise the runtime awaits before sending), `onClose(cb)`
   (lets the runtime destroy the remote when the wire is gone).
+
+## Wire format
+
+Everything that crosses a transport is a **wire envelope v1** frame —
+specified in [`docs/content/spec/envelope-v1.md`](../../docs/content/spec/envelope-v1.md),
+JSON Schema shipped as `@hedwigjs/broker/spec/envelope-v1.schema.json`.
+A backend in any language needs no npm package: it produces plain JSON
+that validates against the schema.
+
+```jsonc
+{ "v": 1, "id": "3f0c…", "origin": "backend-9a2e…", "kind": "event",
+  "topic": "notification.show.v1", "source": "notifications-backend",
+  "target": "*", "data": { … }, "timestamp": 1789238807425 }
+```
+
+- `origin` is the producer's session id; a frame that comes back stamped
+  with this realm's own origin is dropped (`ECHO`).
+- The producer's `id` is kept as `message.wireId`; `(source, wireId)`
+  is the cross-realm correlation key. `ext` is passed through as
+  `message.ext` (`ext.traceparent` for W3C trace context,
+  `ext.hedwig.*` reserved).
+- Missing `v` / `kind` are tolerated for one version; `v: 2` or an
+  unknown `kind` is `UNSUPPORTED`.
+- The runtime exports `parseFrame` / `buildFrame` and `WIRE_VERSION` for
+  custom transports and tests; ingress uses the same check.
+
+---
 
 ---
 
@@ -633,7 +663,7 @@ user messages — infrastructure telemetry.
 | `hook.failed`            | `{ kind, failMode, error, topic?, messageId?, source?, clientId? }` | A hook threw. Guard hooks deny under `failMode: 'closed'` (default) and are skipped under `'open'`; `afterSend` is always skipped. |
 | `remote.created`         | `{ remoteId, kind, identity, at }`                         | `createRemoteClient(id, …)`. `client.registered` fires too.                 |
 | `remote.destroyed`       | `{ remoteId, at }`                                         | `remote.destroy()`, transport closed, or broker teardown. `client.unregistered` fires too. |
-| `remote.frame.rejected`  | `{ remoteId, reason, source?, topic? }`                    | An inbound frame was dropped at the edge before any hook: `MALFORMED`, `TOO_LARGE`, `RATE_LIMITED`, `TOPIC_NOT_ACCEPTED`, `SOURCE_MISMATCH`, `SOURCE_NOT_ALLOWED`, `UNSUPPORTED`. |
+| `remote.frame.rejected`  | `{ remoteId, reason, source?, topic? }`                    | An inbound frame was dropped at the edge before any hook: `MALFORMED`, `TOO_LARGE`, `RATE_LIMITED`, `UNSUPPORTED` (bad `v` / `kind`), `ECHO` (our own origin), `TOPIC_NOT_ACCEPTED`, `SOURCE_MISMATCH`, `SOURCE_NOT_ALLOWED`. |
 | `remote.send.failed`     | `{ remoteId, topic, messageId, reason, error? }`           | A frame could not be sent: the transport threw (`TRANSPORT_THREW`) or never became ready (`NOT_OPEN`). The message was delivered locally and the caller got a normal result. |
 
 ```ts

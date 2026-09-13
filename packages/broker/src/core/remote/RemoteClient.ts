@@ -10,6 +10,8 @@ import type {
   RemoteIdentity,
 } from './RemoteClient.types';
 import { matchesAnyPattern } from '../utils/matchPattern';
+import { parseFrame, buildFrame } from '../wire/envelope';
+import type { WireExt } from '../wire/envelope';
 
 /**
  * What a remote client needs from the core. Injected as callbacks so the
@@ -18,13 +20,16 @@ import { matchesAnyPattern } from '../utils/matchPattern';
  */
 export interface RemoteHost {
   logger: BrokerLogger;
-  /** Run the pipeline for an inbound frame with `fromExternal` and `via` set. */
+  /** This realm's session id: stamped on outbound frames, echo-guarded on inbound. */
+  origin: string;
+  /** Run the pipeline for an inbound frame with `fromExternal`, `via`, `wireId`, `ext` set. */
   inject(
     remoteId: string,
     topic: string,
     source: ClientID,
     target: string,
     data: unknown,
+    wire: { wireId?: string; ext?: WireExt },
   ): Promise<RoutingResult>;
   /** Policy check for `forward()`. */
   onSubscribe(topic: string, clientId: ClientID): HookResult;
@@ -39,14 +44,6 @@ export interface RemoteHost {
   sendFailed(remoteId: string, topic: string, messageId: string, reason: string, error?: unknown): void;
   /** Called once from `destroy()` so the core can unregister the remote. */
   destroyed(remoteId: string): void;
-}
-
-interface ParsedFrame {
-  topic: string;
-  source: string | undefined;
-  target: string;
-  data: unknown;
-  kind: string | undefined;
 }
 
 /**
@@ -162,22 +159,16 @@ export class RemoteClientImpl implements RemoteClient {
   // ── outbound ───────────────────────────────────────────────────────────
 
   /**
-   * Send a local message to the remote as a wire frame. Local-only flags
-   * (`replayed`, `fromExternal`, `synthetic`, `via`) never go on the wire.
-   * Waits for the transport's `ready`; a send that still fails is reported
-   * as `remote.send.failed`, never thrown into the emitter's pipeline.
+   * Send a local message to the remote as a v1 wire frame (see
+   * `wire/envelope.ts`): local-only flags never go on the wire, `origin`
+   * is this realm's session id. Waits for the transport's `ready`; a send
+   * that still fails is reported as `remote.send.failed`, never thrown
+   * into the emitter's pipeline.
    * @internal
    */
   send(message: Message): void {
     if (this.#destroyed) return;
-    const frame = {
-      id: message.id,
-      topic: message.topic,
-      source: message.source,
-      target: message.target,
-      data: message.data,
-      timestamp: message.timestamp,
-    };
+    const frame = buildFrame(message, this.#host.origin);
     const deliver = () => {
       if (this.#destroyed) return;
       try {
@@ -213,78 +204,66 @@ export class RemoteClientImpl implements RemoteClient {
       return;
     }
 
-    const parsed = this.#parse(raw);
-    if (!parsed) {
-      this.#host.frameRejected(this.id, 'MALFORMED', this.#claimed(raw));
+    // Structural check + v/kind support, equivalent to the JSON Schema.
+    const parsed = parseFrame(raw);
+    if (!parsed.ok) {
+      this.#host.frameRejected(this.id, parsed.reason, this.#claimed(raw));
+      return;
+    }
+    const frame = parsed.frame;
+    const claimed = { source: frame.source, topic: frame.topic };
+
+    // Echo guard: a frame stamped with our own session id came back to us
+    // (a loopback transport, a relay that mirrors what it receives).
+    if (frame.origin !== undefined && frame.origin === this.#host.origin) {
+      this.#host.frameRejected(this.id, 'ECHO', claimed);
       return;
     }
 
-    // Response frames are matched to pending requests (later step); until
-    // then nothing waits for them, and they must not be routed as events.
-    if (parsed.kind === 'response') return;
-    if (parsed.kind !== undefined && parsed.kind !== 'event' && parsed.kind !== 'request') {
-      this.#host.frameRejected(this.id, 'UNSUPPORTED', { source: parsed.source, topic: parsed.topic });
+    // Response frames are matched to pending requests by correlationId
+    // (later step); until then nothing waits for them, and they must not
+    // be routed as events.
+    if (frame.kind === 'response') return;
+
+    if (!matchesAnyPattern(frame.topic, this.#accepts)) {
+      this.#host.frameRejected(this.id, 'TOPIC_NOT_ACCEPTED', claimed);
       return;
     }
 
-    if (!matchesAnyPattern(parsed.topic, this.#accepts)) {
-      this.#host.frameRejected(this.id, 'TOPIC_NOT_ACCEPTED', { source: parsed.source, topic: parsed.topic });
-      return;
-    }
-
-    const source = this.#resolveSource(parsed.source);
+    const source = this.#resolveSource(frame.source);
     if (!source.ok) {
-      this.#host.frameRejected(this.id, source.reason, { source: parsed.source, topic: parsed.topic });
+      this.#host.frameRejected(this.id, source.reason, claimed);
       return;
     }
 
-    void this.#host.inject(this.id, parsed.topic, source.value, parsed.target, parsed.data);
+    // `ext.hedwig.claimedSource`: what a fixed-identity peer said it was,
+    // when that was consistent with its identity (a different claim is a
+    // rejection above). Runtime-owned key; the rest of `ext` is opaque.
+    let ext = frame.ext;
+    if (this.#identity.mode === 'fixed' && frame.source !== undefined) {
+      ext = { ...ext, hedwig: { ...(ext?.hedwig ?? {}), claimedSource: frame.source } };
+    }
+
+    void this.#host.inject(this.id, frame.topic, source.value, frame.target, frame.data, {
+      wireId: frame.id,
+      ext,
+    });
   }
 
   #resolveSource(claimed: string | undefined): { ok: true; value: string } | { ok: false; reason: RemoteFrameRejectReason } {
     const identity = this.#identity;
     switch (identity.mode) {
       case 'fixed':
-        if (claimed === undefined || claimed === '' || claimed === this.id) return { ok: true, value: this.id };
+        if (claimed === undefined || claimed === this.id) return { ok: true, value: this.id };
         return { ok: false, reason: 'SOURCE_MISMATCH' };
       case 'allow':
         if (claimed !== undefined && identity.sources.includes(claimed)) return { ok: true, value: claimed };
         return { ok: false, reason: 'SOURCE_NOT_ALLOWED' };
       case 'prefix': {
-        if (claimed === undefined || claimed === '') return { ok: false, reason: 'MALFORMED' };
+        if (claimed === undefined) return { ok: false, reason: 'MALFORMED' };
         return { ok: true, value: `${identity.prefix ?? this.id}:${claimed}` };
       }
     }
-  }
-
-  /**
-   * Structural check equivalent to the wire schema: `topic` and `target`
-   * non-empty strings, `data` present, `source` a string when present,
-   * `kind` a string when present. Nothing else is interpreted here.
-   */
-  #parse(raw: unknown): ParsedFrame | null {
-    let frame: unknown = raw;
-    if (typeof raw === 'string') {
-      try {
-        frame = JSON.parse(raw);
-      } catch {
-        return null;
-      }
-    }
-    if (!frame || typeof frame !== 'object') return null;
-    const f = frame as Record<string, unknown>;
-    if (typeof f.topic !== 'string' || f.topic.length === 0) return null;
-    if (typeof f.target !== 'string' || f.target.length === 0) return null;
-    if (!('data' in f)) return null;
-    if (f.source !== undefined && typeof f.source !== 'string') return null;
-    if (f.kind !== undefined && typeof f.kind !== 'string') return null;
-    return {
-      topic: f.topic,
-      source: f.source as string | undefined,
-      target: f.target,
-      data: f.data,
-      kind: f.kind as string | undefined,
-    };
   }
 
   #claimed(raw: unknown): { source?: string; topic?: string } {

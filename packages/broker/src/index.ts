@@ -82,6 +82,23 @@ export type {
 } from './core/transport/Transport.types';
 export type { RemoteClientInfo } from './core/types';
 
+// ── Wire envelope v1 ────────────────────────────────────────────────────
+// Spec: docs/content/spec/envelope-v1.md; schema shipped as
+// `@hedwigjs/broker/spec/envelope-v1.schema.json`.
+export { WIRE_VERSION, WIRE_RESPONSE_REASONS, parseFrame, buildFrame } from './core/wire/envelope';
+export type {
+  WireKind,
+  WireMessage,
+  WireResponse,
+  WireResponseReason,
+  WireExt,
+  WireFrame,
+  ParsedWireFrame,
+  ParsedWireMessage,
+  ParseResult,
+  ParseFailure,
+} from './core/wire/envelope';
+
 // Built-in transports are not exported: the runtime instantiates them from
 // a `TransportDescriptor` so their code never ships in a module's bundle.
 // Custom wires implement the `Transport` interface above.

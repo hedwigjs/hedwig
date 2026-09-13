@@ -29,7 +29,9 @@ type P = { 'm.evt.v1': { i: number } };
 class LoopbackTransport implements Transport {
   #cb: ((data: unknown) => void) | null = null;
   send(data: unknown): void {
-    this.#cb?.(data);
+    // A real peer stamps its own realm id; an unchanged `origin` would be
+    // dropped at ingress as an echo of our own frame.
+    this.#cb?.({ ...(data as object), origin: 'peer-realm' });
   }
   onMessage(cb: (data: unknown) => void) {
     this.#cb = cb;

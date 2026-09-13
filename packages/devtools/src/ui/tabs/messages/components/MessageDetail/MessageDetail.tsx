@@ -33,6 +33,14 @@ function CopyableCode({ text }: { text: string }): ReactNode {
   );
 }
 
+function serializeExt(ext: unknown): string {
+  try {
+    return JSON.stringify(ext, null, 2);
+  } catch {
+    return String(ext);
+  }
+}
+
 export function MessageDetail({ entry }: MessageDetailProps): ReactNode {
   return (
     <dl className={styles.grid}>
@@ -45,6 +53,25 @@ export function MessageDetail({ entry }: MessageDetailProps): ReactNode {
         <dt>Source</dt>
         <dd>{entry.source}</dd>
       </div>
+
+      {entry.via && (
+        <div className={styles.row}>
+          <dt>Via</dt>
+          <dd>
+            {entry.via}
+            {entry.wireId ? ` · wire id ${entry.wireId}` : ""}
+          </dd>
+        </div>
+      )}
+
+      {entry.ext !== undefined && (
+        <div className={styles.row}>
+          <dt>Ext</dt>
+          <dd>
+            <CopyableCode text={serializeExt(entry.ext)} />
+          </dd>
+        </div>
+      )}
 
       {entry.kind === "unicast" && (
         <div className={styles.row}>

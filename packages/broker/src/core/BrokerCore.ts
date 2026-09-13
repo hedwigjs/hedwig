@@ -32,6 +32,7 @@ import type { OnSubscribeHook, BeforeSendHook, AfterSendHook } from './hooks/Hoo
 import type { SystemEventsEmitter, SystemEventPayload } from './events/SystemEvents.types';
 import type { RemoteClient, RemoteClientOptions } from './remote/RemoteClient.types';
 import type { Transport } from './transport/Transport.types';
+import type { WireExt } from './wire/envelope';
 import type { MessageBroker } from './MessageBroker';
 
 /**
@@ -443,6 +444,7 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     fromExternal: boolean,
     synthetic: boolean,
     via?: string,
+    wire?: { wireId?: string; ext?: WireExt },
   ): Promise<RoutingResult<R>> {
     if (this.#isDestroyed) {
       return RoutingResult.create<R>('NACK', RoutingReason.BROKER_DESTROYED, 'Broker is destroyed');
@@ -456,6 +458,12 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
     }
     if (via !== undefined) {
       message.via = via;
+    }
+    if (wire?.wireId !== undefined) {
+      message.wireId = wire.wireId;
+    }
+    if (wire?.ext !== undefined) {
+      message.ext = wire.ext;
     }
     if (synthetic) {
       message.synthetic = true;
@@ -677,8 +685,9 @@ export class BrokerCore<T extends string, P extends Record<T, any>>
 
     const remote = new RemoteClientImpl(id, kind, transport, options, {
       logger: this.logger,
-      inject: (remoteId, topic, source, target, data) =>
-        this.#runPipeline(topic as T, source, target, data as P[T], undefined, true, false, remoteId),
+      origin: this.#sessionId,
+      inject: (remoteId, topic, source, target, data, wire) =>
+        this.#runPipeline(topic as T, source, target, data as P[T], undefined, true, false, remoteId, wire),
       onSubscribe: (topic, clientId) => this.#hooks.onSubscribe(topic as T, clientId),
       subscriptionAdded: (clientId, topic) =>
         this.#systemEvents.emit('subscription.added', { clientId, topic: topic as T }),

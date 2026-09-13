@@ -44,6 +44,19 @@ export interface Message<T extends string = string, P = any> {
   via?: string;
 
   /**
+   * The producer's frame id when the message came over a wire. Together
+   * with `source` it is the cross-realm correlation key; the local `id` is
+   * this runtime's own. Local-only, never re-sent.
+   */
+  wireId?: string;
+
+  /**
+   * Opaque extension block carried by the frame (`ext.traceparent`,
+   * `ext.hedwig.*`). Passed through untouched; local-only.
+   */
+  ext?: Readonly<Record<string, unknown>>;
+
+  /**
    * Marks a debug/test message injected via `broker.$debug.send(...)`.
    * Routing, hooks, history and forwarding all treat it as a
    * real message — the flag is purely metadata so DevTools and integration

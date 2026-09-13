@@ -238,12 +238,24 @@ describe("attachInspector", () => {
     const store = createInspectorStore({ maxEvents: 20 });
     attachInspector(broker, store);
 
-    const m = makeTestMessage({ id: "r1", fromExternal: true, via: "backend" });
+    const m = makeTestMessage({
+      id: "r1",
+      fromExternal: true,
+      via: "backend",
+      wireId: "wire-7",
+      ext: { traceparent: "00-abc", hedwig: { claimedSource: "backend" } },
+    });
     fireBefore(m);
     fireAfter(m, makeAck());
 
     expect(store.getSnapshot().entries[0]).toEqual(
-      expect.objectContaining({ id: "r1", fromExternal: true, via: "backend" }),
+      expect.objectContaining({
+        id: "r1",
+        fromExternal: true,
+        via: "backend",
+        wireId: "wire-7",
+        ext: { traceparent: "00-abc", hedwig: { claimedSource: "backend" } },
+      }),
     );
   });
 

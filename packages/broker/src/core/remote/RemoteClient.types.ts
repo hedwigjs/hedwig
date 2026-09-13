@@ -42,7 +42,9 @@ export type RemoteFrameRejectReason =
   | 'TOPIC_NOT_ACCEPTED'
   | 'SOURCE_MISMATCH'
   | 'SOURCE_NOT_ALLOWED'
-  | 'UNSUPPORTED';
+  | 'UNSUPPORTED'
+  /** The frame's `origin` is this realm's own session id — an echo. */
+  | 'ECHO';
 
 /**
  * A participant whose code runs on the far side of a transport.

@@ -115,9 +115,9 @@ export interface SystemEventMap<T extends string, P extends Record<T, any>> {
   'remote.destroyed': { remoteId: string; at: number };
   /**
    * An inbound frame was dropped at the remote client before any hook:
-   * too large, rate-limited, malformed, topic not in `accepts`, or a
-   * `source` the identity mode rejects. `source` / `topic` are what the
-   * frame claimed.
+   * too large, rate-limited, malformed, unsupported `v` / `kind`, an echo
+   * of this realm's own frame, topic not in `accepts`, or a `source` the
+   * identity mode rejects. `source` / `topic` are what the frame claimed.
    */
   'remote.frame.rejected': {
     remoteId: string;
@@ -128,7 +128,8 @@ export interface SystemEventMap<T extends string, P extends Record<T, any>> {
       | 'TOPIC_NOT_ACCEPTED'
       | 'SOURCE_MISMATCH'
       | 'SOURCE_NOT_ALLOWED'
-      | 'UNSUPPORTED';
+      | 'UNSUPPORTED'
+      | 'ECHO';
     source?: string;
     topic?: string;
   };

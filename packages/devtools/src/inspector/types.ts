@@ -69,6 +69,10 @@ export interface MessageLogEntry {
   fromExternal?: boolean;
   /** Id of the remote client whose transport delivered the message. */
   via?: string;
+  /** The producer's frame id when the message came over a wire (`(source, wireId)` correlates across realms). */
+  wireId?: string;
+  /** Opaque `ext` block carried by the wire frame (`traceparent`, `hedwig.*`, …). */
+  ext?: unknown;
   /** Message was fired via `broker.$debug.send` (DevTools spoof / test). */
   synthetic?: boolean;
   dataPreview?: string;

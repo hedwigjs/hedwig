@@ -117,8 +117,14 @@ const SOURCE = 'ai-backend';
  * multiplexes on the message's own `topic` field, not on the SSE event
  * name.
  */
-function envelope<Topic extends string, Data>(topic: Topic, data: Data): Envelope<Topic, Data> {
-  return createEnvelope({ topic, source: SOURCE, data });
+function envelope<Topic extends string, Data>(
+  topic: Topic,
+  data: Data,
+  correlationId: string,
+): Envelope<Topic, Data> {
+  // Every frame of one reply carries the reply id as `correlationId` — the
+  // wire's way of grouping a streamed partial result (spec §events).
+  return createEnvelope({ topic, source: SOURCE, data, correlationId });
 }
 
 function writeMessage(res: Response, msg: unknown): void {
@@ -161,14 +167,14 @@ async function handleStream(req: Request, res: Response): Promise<void> {
 
   for (const token of tokens) {
     if (aborted) return;
-    writeMessage(res, envelope('chat.reply-chunk.v1', { replyId, chunk: token }));
+    writeMessage(res, envelope('chat.reply-chunk.v1', { replyId, chunk: token }, replyId));
     await sleep(28 + Math.random() * 22);
   }
 
   if (aborted) return;
   writeMessage(
     res,
-    envelope('chat.reply-completed.v1', { replyId, fullText: reply }),
+    envelope('chat.reply-completed.v1', { replyId, fullText: reply }, replyId),
   );
   res.end();
 }

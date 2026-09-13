@@ -332,7 +332,9 @@ hedwig/
 └── docs/               # documentation + RFCs
 ```
 
-Design decisions live under [`docs/content/rfcs/`](./docs/content/rfcs).
+Design decisions live under [`docs/content/rfcs/`](./docs/content/rfcs);
+the wire format, delivery semantics, threat model and support matrix
+under [`docs/content/spec/`](./docs/content/spec).
 
 ## Roadmap
 

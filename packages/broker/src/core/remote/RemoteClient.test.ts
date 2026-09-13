@@ -141,7 +141,10 @@ describe('outbound — forward', () => {
     expect(transport.send).toHaveBeenCalledTimes(1);
     const frame = transport.send.mock.calls[0]![0];
     expect(frame).toEqual({
+      v: 1,
       id: expect.any(String),
+      origin: expect.any(String),
+      kind: 'event',
       topic: 'cart.snapshot.v1',
       source: 'cart',
       target: '*',
@@ -380,11 +383,78 @@ describe('inbound — accepts and identity', () => {
     transport.fire({ topic: 'a.v1', target: '*' });
     transport.fire({ topic: 'a.v1', target: '*', data: 1, source: 7 });
     transport.fire({ topic: 'a.v1', target: '*', data: 1, kind: 'gossip' });
+    // A response missing its required fields is malformed …
     transport.fire({ topic: 'a.v1', target: '*', data: 1, kind: 'response' });
+    // … a well-formed one is dropped silently until requests land (step 5).
+    transport.fire({ kind: 'response', correlationId: 'r-1', topic: 'a.v1', source: 'backend', target: 'local', status: 'ACK', reason: 'DELIVERED' });
     await tick();
     expect(beforeSend).not.toHaveBeenCalled();
     const reasons = events.filter(([n]) => n === 'remote.frame.rejected').map(([, p]) => (p as { reason: string }).reason);
-    expect(reasons).toEqual(['MALFORMED', 'MALFORMED', 'MALFORMED', 'MALFORMED', 'MALFORMED', 'UNSUPPORTED']);
+    expect(reasons).toEqual(['MALFORMED', 'MALFORMED', 'MALFORMED', 'MALFORMED', 'MALFORMED', 'UNSUPPORTED', 'MALFORMED']);
+    core.destroy();
+  });
+
+  test('wire v1: v > 1 is UNSUPPORTED, an echo of our own origin is ECHO, wireId and ext land on the message', async () => {
+    const { core, events } = setup();
+    const transport = fakeTransport();
+    core.createRemoteClient('backend', { transport, accepts: ['a.v1'], forward: ['a.*'] });
+    const seen: Message[] = [];
+    const local = new BrokerClient('local', core);
+    local.on('a.v1', (m) => {
+      seen.push(m);
+    });
+
+    // Learn our own origin from an outbound frame.
+    await local.emit('a.v1', { n: 0 });
+    const ownOrigin = (transport.send.mock.calls[0]![0] as { origin: string }).origin;
+    expect(ownOrigin).toEqual(expect.any(String));
+
+    transport.fire({ v: 2, topic: 'a.v1', target: '*', data: { n: 1 } });
+    transport.fire({ v: 1, origin: ownOrigin, topic: 'a.v1', target: '*', data: { n: 2 } });
+    transport.fire({
+      v: 1,
+      id: 'wire-7',
+      origin: 'peer-realm',
+      kind: 'event',
+      topic: 'a.v1',
+      source: 'backend',
+      target: '*',
+      data: { n: 3 },
+      ext: { traceparent: '00-abc', custom: { deep: true } },
+    });
+    await tick();
+
+    const reasons = events.filter(([n]) => n === 'remote.frame.rejected').map(([, p]) => (p as { reason: string }).reason);
+    expect(reasons).toEqual(['UNSUPPORTED', 'ECHO']);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      data: { n: 3 },
+      source: 'backend',
+      via: 'backend',
+      fromExternal: true,
+      wireId: 'wire-7',
+      ext: { traceparent: '00-abc', custom: { deep: true }, hedwig: { claimedSource: 'backend' } },
+    });
+    expect(seen[0]!.id).not.toBe('wire-7');
+    // An inbound message is never re-forwarded, so the wire frame stays put.
+    expect(transport.send).toHaveBeenCalledTimes(1);
+    core.destroy();
+  });
+
+  test('wire v1: a legacy frame without v and kind is accepted; source-less fixed frames carry no claimedSource', async () => {
+    const { core } = setup();
+    const transport = fakeTransport();
+    core.createRemoteClient('backend', { transport, accepts: ['a.v1'] });
+    const seen: Message[] = [];
+    new BrokerClient('local', core).on('a.v1', (m) => {
+      seen.push(m);
+    });
+
+    transport.fire({ topic: 'a.v1', target: '*', data: { n: 1 } });
+    await tick();
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.wireId).toBeUndefined();
+    expect(seen[0]!.ext).toBeUndefined();
     core.destroy();
   });
 
