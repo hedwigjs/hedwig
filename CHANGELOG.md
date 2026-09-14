@@ -1,36 +1,229 @@
 # Changelog
 
-Project-level milestones for Hedwig. Per-package release notes are
-maintained by [Changesets](./.changeset/README.md) and end up in each
-package's own `CHANGELOG.md` on version bump — see
-[`packages/broker/CHANGELOG.md`](./packages/broker/CHANGELOG.md),
-[`packages/devtools/CHANGELOG.md`](./packages/devtools/CHANGELOG.md),
-[`packages/create-registry/CHANGELOG.md`](./packages/create-registry/CHANGELOG.md).
+Project-level milestones for Hedwig. Packages are versioned
+independently, so each milestone names the versions it shipped as.
+Per-package release notes are maintained by
+[Changesets](./.changeset/README.md) and land in each package's own
+`CHANGELOG.md` on version bump —
+[`broker`](./packages/broker/CHANGELOG.md),
+[`client`](./packages/client/CHANGELOG.md),
+[`react`](./packages/react/CHANGELOG.md),
+[`vue`](./packages/vue/CHANGELOG.md),
+[`devtools`](./packages/devtools/CHANGELOG.md),
+[`create-registry`](./packages/create-registry/CHANGELOG.md).
 
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
-the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+An entry describes the state a release shipped in, not the intermediate
+steps it took to get there. Format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
+adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) —
+before 1.0 a minor bump may break.
 
 ## [Unreleased]
 
+Nothing here changes a published package.
+
+- Documentation site: [hedwigjs.com](https://hedwigjs.com) now serves a
+  VitePress site (landing, getting started, guides, spec, API) at the
+  root; the reference stand keeps `/demo/advanced/`.
+- Reference stand: the cart shows dish names in the language they were
+  added in.
+- CI: the changeset check runs only when `packages/` actually changed, so
+  a docs-only pull request no longer asks for a changeset.
+
+## [0.3.0] — 2026-09-14
+
+`@hedwigjs/broker` and `@hedwigjs/client` at 0.3.0; `@hedwigjs/devtools`,
+`@hedwigjs/react`, `@hedwigjs/vue` and `@hedwigjs/create-registry` at
+0.2.1.
+
+### Review fixes after 0.2.0
+
+- Runtime: `maxBytes` applies to every transport (text transports report
+  the wire length, structured-clone transports are measured as JSON when
+  the limit is set); an inbound request's deadline bounds the local
+  handler instead of being ignored; transports throw on a failed send so
+  `remote.send.failed` fires; `on()` refuses a wildcard topic with a
+  `TypeError` — patterns belong in `accepts` / `forward` and hooks; new
+  `initBroker({ payloads: 'clone' })` for hosts that would rather pay for
+  a `structuredClone` than freeze the emitter's object in place.
+- SDK: `createClient` no longer throws at module scope on a stale host —
+  it returns a blocked client answering `NACK RUNTIME_TOO_OLD`;
+  `whenRuntimeReady()` rejects instead of throwing; a lazy client binds
+  each subscription in isolation, so one rejected subscription no longer
+  leaves the queued emits and requests stuck.
+- create-registry: codegen reads `name` / `kind` / `response` /
+  `retention` from the TypeScript AST of the contract's default export,
+  so a payload field called `kind` or `response` no longer breaks the
+  build.
+- Reference stand: cart stores in separate tabs converge; the
+  remote-request demo gets its own card.
+- Docs: "retained value before first paint" qualified (it holds when the
+  runtime is already there; a lazy client delivers it when it binds); no
+  hard-coded versions in `SECURITY.md` and the spec; the API index is
+  links only; the root README shows the React and Vue adapters.
+
+## [0.2.0] — 2026-09-14
+
+`@hedwigjs/broker`, `@hedwigjs/client`, `@hedwigjs/devtools`,
+`@hedwigjs/react`, `@hedwigjs/vue` and `@hedwigjs/create-registry` all at
+0.2.0. `@hedwigjs/client`, `@hedwigjs/react` and `@hedwigjs/vue` are new
+packages. Breaking for anyone on 0.1.x: bridges are gone, modules import
+the SDK instead of the runtime, and `history` on `emit()` is replaced by
+retention declared in the contract.
+
+### `@hedwigjs/client` — the SDK for modules
+
+- New package. A module imports `createClient` / `createRemoteClient`,
+  `whenRuntimeReady`, `hasCapability`, `getRuntimeInfo` and every public
+  type from `@hedwigjs/client`; only the host depends on
+  `@hedwigjs/broker`. The SDK has no runtime dependency: `initBroker()`
+  registers a handle under `Symbol.for('@hedwigjs/runtime/1')` (one
+  symbol per ABI) and dispatches `hedwig:runtime-ready`; the SDK locates
+  it behind two gates (`RUNTIME_NOT_PROVIDED`, `RUNTIME_TOO_OLD` below
+  the `MIN_RUNTIME` baked into each SDK release).
+- Boot order is a non-issue: `createClient()` before `initBroker()`
+  returns a lazy proxy that records subscriptions and queues emits and
+  requests (bounded at 64; overflow → `NACK RUNTIME_NOT_READY`), then
+  flushes in order on registration. `createRemoteClient()` needs a live
+  runtime (`whenRuntimeReady()`).
+- Runtime: public types moved to the SDK and are re-exported;
+  `createClient` throws `CLIENT_ID_TAKEN` on a duplicate id unless
+  `{ onConflict: 'reset' }`; a second runtime in a realm throws
+  `RUNTIME_ALREADY_PROVIDED`; the handle is removed on `destroyBroker()`;
+  `sdkVersion` rides on `client.registered` and in
+  `inspect.getClients()`; capabilities `wire.v1`, `remote.requests`.
+
+### React and Vue adapters
+
+- `@hedwigjs/react`: `useClient` (created in a layout effect, destroyed
+  on unmount, StrictMode-safe), `useTopic` (latest handler, no
+  re-subscribe), `useStateTopic` (retained value before the first paint),
+  `useRequest` (`send` + `pending` / `result`, answer typed by the
+  contract), `useRemoteClient` (created while options are present,
+  destroyed with the component), `useRuntimeReady`, `bindHooks`.
+  React 18 / 19.
+- `@hedwigjs/vue`: the same six as Vue 3 composables on `onScopeDispose`,
+  `watch` and `shallowRef`, plus `bindComposables`; `useRemoteClient`
+  follows a ref or a getter.
+
+### Remote clients replace bridges
+
+Anything behind a transport is now a *client*, not a bridge:
+`broker.createRemoteClient(id, { transport, identity, accepts, forward })`.
+`addBridge`, `BridgeConfig`, `BridgeTransport`, `BridgeInfo`,
+`inspect.getBridges()`, the `bridge.*` system events and their log codes
+are removed — remote clients are the only way across a wire.
+
+- `Transport` interface with capability flags (`duplex`, `fanout`,
+  `ready`, `onClose`). Built-ins report them: SSE is inbound-only,
+  BroadcastChannel is fan-out, WebSocket exposes `ready` (OPEN) and
+  `onClose`.
+- `TransportDescriptor`: name a built-in by `kind` (`postmessage`,
+  `message-port`, `websocket`, `sse`, `broadcast-channel`) and the
+  runtime instantiates it, so transport code never lands in a module's
+  bundle. The classes are no longer exported; a custom wire implements
+  `Transport`. An unknown kind throws `TRANSPORT_UNSUPPORTED` listing what
+  the runtime provides, and `broker.capabilities` advertises the same.
+- Identity of inbound frames is decided on this side: `fixed` (default,
+  one participant; a foreign `source` → `SOURCE_MISMATCH`), `allow`
+  (listed sources only), `prefix` (foreign realm, `source` becomes
+  `tab:cart-store`). `accepts` gates which topics a remote may inject —
+  everything else is dropped before any hook (`TOPIC_NOT_ACCEPTED`).
+- `forward()` is the remote's subscription: it runs `onSubscribe` hooks
+  with the remote's id and throws on denial, so one ACL covers local and
+  remote participants.
+- Edge protection: `maxBytes`, `rateLimit`; every drop is published as
+  `remote.frame.rejected { reason }`. A transport that throws or never
+  opens yields `remote.send.failed` instead of rejecting the emitter.
+- `postmessage` requires both `allowedOrigins` and `targetOrigin` — the
+  `'*'` default and the deprecated `origin` field are gone.
+  `WebSocketTransport.destroy()` closes a still-open socket: the remote
+  client owns its transport.
+- `message.via` names the remote that delivered a message (local-only,
+  never on the wire). Local and remote clients share one id namespace
+  (`CLIENT_ID_TAKEN`); `inspect.getClients()` lists remotes with a
+  `remote` block; `remote.created` / `remote.destroyed` events.
+
+### Wire envelope v1
+
+- One frame format for everything that crosses a transport:
+  [`docs/content/spec/envelope-v1.md`](./docs/content/spec/envelope-v1.md)
+  plus a JSON Schema shipped in the package
+  (`@hedwigjs/broker/spec/envelope-v1.schema.json`). Inbound frames are
+  validated field by field, and the runtime's ingress check is proven
+  equivalent to the schema by a shared corpus test.
+- Outbound frames carry `v: 1`, `kind`, and `origin` (this realm's
+  session id). Inbound: `v` other than 1 or an unknown `kind` →
+  `UNSUPPORTED`; a frame with our own `origin` → `ECHO`; anything
+  structurally wrong → `MALFORMED`. The producer's `id` lands as
+  `message.wireId`, the `ext` block as `message.ext`.
+- New spec pages: delivery semantics, threat model, support matrix.
+
+### Requests across the wire
+
+- `client.request(remote.id, …)` crosses the transport: a
+  `kind: 'request'` frame with `correlationId` + `deadline`, answered by
+  a `kind: 'response'` frame over the same transport, with pending
+  entries kept on the remote client. Local outcomes: `TIMEOUT` (per call
+  → remote default → broker default → 5000 ms; the far side may still
+  run it), `REMOTE_GONE`, `BROKER_DESTROYED`, and immediate
+  `TRANSPORT_ONE_WAY` / `TRANSPORT_FANOUT` for transports that cannot
+  answer. Exactly one `afterSend`, with `via`.
+- Requests from a remote are routed to the named local client and always
+  answered: handler result, `HANDLER_FAILED`, `NOT_SUBSCRIBED`,
+  `HOOK_REJECTED`, or `SERIALIZATION_FAILED` (unencodable return value).
+  A request that came over one wire is never relayed to another remote.
+- Trace on `$systemEvents`: `request.forwarded`, `response.received`
+  (with latency), `request.timeout`, `response.sent`.
+
+### Topic kinds in contracts
+
+- `TopicContract` with `kind: 'event' | 'request' | 'state'`
+  (`EventContract` stays as a deprecated alias). Requests declare their
+  answer as `response`; state topics may set `retention: { last: 1 }`.
+- Codegen validates kinds and emits `TopicKinds`, `EventTopic` /
+  `RequestTopic` / `StateTopic`, `TopicResponses`, `TopicContracts` and
+  the runtime map `TOPIC_KINDS`; a contract without `kind` is an event
+  with a summary warning.
+- SDK: `createClient<Topic, TopicPayloads, TopicContracts>()` — `emit`
+  accepts only events and state, `request` only requests and infers the
+  answer type; a wrong verb is a compile error. Without the third type
+  parameter nothing changes.
+- Runtime: `initBroker({ topics: TOPIC_KINDS })` hands every new
+  subscriber the retained value of a `state` topic synchronously
+  (`replayed: true`, `afterSend REPLAY_DELIVERED`); opt out per
+  subscription with `{ retained: false }`. `inspect.getRetained()`,
+  `state.retained` event.
+- Unicast history is gone: `RequestOptions` is `{ timeout }` and a
+  request is never recorded.
+
+### Retention declared in the contract
+
+- A contract may declare `retention: { last: N }`; the runtime keeps the
+  last N messages of that topic in a buffer of its own and a subscriber
+  replays them with `on(topic, fn, { replay })`. `state` topics keep
+  their last value the same way. Events without `retention` are not kept
+  — most do not need to be. `TOPIC_KINDS` carries the policy, so the host
+  only passes it, and `history` in `initBroker` is reduced to caps
+  (`maxPerTopic`, `ttl`, `enabled`).
+- The `history` flag on `emit()` is gone, and origin no longer matters: a
+  frame from a remote client is retained like a local emit, for events
+  and state alike, so a state value pushed by the backend reaches a late
+  local subscriber.
+
 ### Broker — fault isolation
 
-Six fixes to the delivery pipeline so that one failing consumer can no
-longer take the bus down for everyone else. Each landed as its own
-commit with a changeset; per-package notes will appear in
-`packages/broker/CHANGELOG.md` on the next version bump.
+Fixes to the delivery pipeline so that one failing consumer can no longer
+take the bus down for everyone else.
 
 - A throwing custom `logger` is isolated (`logger.failed` to console);
   `emit()` / `request()` no longer reject because a sink is down.
-- A transport that throws from `send()` no longer rejects the caller
-  after local delivery or starves later bridges. New
-  `bridge.send.failed` event on the logger and `$systemEvents`;
-  DevTools shows it with a `failed` badge.
 - Binary payloads (`Uint8Array`, `DataView`, `ArrayBuffer`, …) travel
   through the pipeline instead of throwing in `deepFreeze`. Documented
   that freezing happens in place on the emitter's object.
 - Subscribing or unsubscribing during a dispatch is deterministic (DOM
-  `EventTarget` semantics); a self-removing hook no longer skips the
-  next hook. Re-entrant `emit()` documented as inline delivery.
+  `EventTarget` semantics); a self-removing hook no longer skips the next
+  hook. Re-entrant `emit()` documented as inline delivery.
 - Replay is synchronous and ordered: history entries reach the handler
   before `on()` returns, live messages always come after, nothing is
   delivered twice. Async handler rejections during replay are logged.
@@ -39,25 +232,19 @@ commit with a changeset; per-package notes will appear in
 
 ### Broker — one instance per realm, version compatibility, debug gate
 
-- The broker now lives in a non-enumerable slot on `globalThis`
-  together with its package version, so copies of the library that
-  reach the page twice (Module Federation without `singleton: true`,
-  two bundlers, ESM + CJS) share one instance. A compatible second copy
-  (same minor before 1.0, same major after) is reported as
-  `broker.duplicate_copy`; an incompatible copy throws from
-  `initBroker` / `getBroker` / `createClient` and never creates a second
-  bus. `VERSION`, `isCompatibleVersion`, `broker.version` and
-  `inspect.getVersionInfo()` are exported. Scope is one realm: iframes
-  and Workers keep their own broker plus a bridge.
-- `broker.$debug.send` requires `initBroker({ debug: true })`;
-  otherwise `NACK DEBUG_DISABLED`. Off by default so production bundles
-  cannot inject spoofed traffic by accident.
-- DevTools: protocol handshake with a header badge on mismatch, the two
-  new events in System Events, a "channel is off" notice in the Debug
-  tab. `enabled` prop documented and coded as `false` by default (the
-  previous `NODE_ENV` expression was evaluated at library build time).
-- Reference stand loads DevTools through a dynamic `import()` in its
-  own chunk and arms the debug channel explicitly.
+- The broker lives in a non-enumerable slot on `globalThis` together with
+  its package version, so copies of the library that reach the page twice
+  (Module Federation without `singleton: true`, two bundlers, ESM + CJS)
+  share one instance. A compatible second copy (same minor before 1.0,
+  same major after) is reported as `broker.duplicate_copy`; an
+  incompatible copy throws from `initBroker` / `getBroker` /
+  `createClient` and never creates a second bus. `VERSION`,
+  `isCompatibleVersion`, `broker.version` and `inspect.getVersionInfo()`
+  are exported. Scope is one realm: iframes and Workers keep their own
+  broker plus a remote client between them.
+- `broker.$debug.send` requires `initBroker({ debug: true })`; otherwise
+  `NACK DEBUG_DISABLED`. Off by default so production bundles cannot
+  inject spoofed traffic by accident.
 
 ### Broker — hook failure mode, request semantics, `noLocal`
 
@@ -69,225 +256,46 @@ commit with a changeset; per-package notes will appear in
   answers every request. A second handler on a unicast pair is warned
   about once (`unicast.multiple_handlers`).
 - `request()` accepts `timeout` (ms) and `BrokerConfig.request.timeout`
-  sets a default; expiry resolves `NACK TIMEOUT`, the handler is not
+  sets a default; expiry resolves `NACK TIMEOUT` and the handler is not
   cancelled.
 - `noLocal` subscription option (default `true`, the old behaviour);
   `noLocal: false` delivers a client its own emits.
-- `history: true` on a request is deprecated (`request.history_deprecated`,
-  warned once per topic); it will be removed with topic classes.
-- Backpressure strategies isolate async handler rejections; `handler.failed`
-  and `backpressure.handler.failed` carry `messageId`, `topic`, `source`.
-- DevTools renders `hook.failed` in System Events.
+- Backpressure strategies isolate async handler rejections;
+  `handler.failed` and `backpressure.handler.failed` carry `messageId`,
+  `topic`, `source`.
 
-### Broker — minimum bridge safety
+### DevTools
 
-- A `request()` never crosses a bridge any more: only multicasts are
-  forwarded. Previously a unicast to an unregistered recipient resolved
-  `NACK NOT_SUBSCRIBED` locally yet still executed on the other side.
-- Inbound frames are validated field by field (`topic`, `source`,
-  `target` non-empty strings, `data` present); anything else is dropped
-  as `bridge.message.invalid { reason: 'MALFORMED' }` before any hook.
-- New `BridgeConfig.allowedSources`: frames claiming a `source` outside
-  the list are dropped as `SOURCE_NOT_ALLOWED`. The reference stand sets
-  it on all three inbound bridges.
-- Reference stand: the checkout iframe posts to the parent's origin
-  (passed as `?parentOrigin=`) instead of `'*'`; the backend builds
-  every frame through one `createEnvelope` helper with UUID ids instead
-  of three hand-written copies with per-process counters.
-- DevTools renders `bridge.message.invalid` in System Events.
-
-### Broker — remote clients (RFC-0003 step 3a)
-
-Anything behind a transport is now a *client*, not a bridge:
-`broker.createRemoteClient(id, { transport, identity, accepts, forward })`
-(also exported as `createRemoteClient`). `addBridge` still works in this
-step; it goes away once DevTools and the reference stand have moved.
-
-- `Transport` interface with capability flags (`duplex`, `fanout`,
-  `ready`, `onClose`). Built-ins report them: SSE is inbound-only,
-  BroadcastChannel is fan-out, WebSocket exposes `ready` (OPEN) and
-  `onClose`. `BridgeTransport` is now an alias.
-- `TransportDescriptor`: name a built-in by `kind` (`postmessage`,
-  `message-port`, `websocket`, `sse`, `broadcast-channel`) and the runtime
-  instantiates it. Unknown kinds throw `TRANSPORT_UNSUPPORTED` listing
-  what the runtime provides; `broker.capabilities` advertises the same.
-  New `MessagePortTransport` for workers and `MessageChannel`.
-- Identity of inbound frames is decided on this side: `fixed` (default,
-  one participant; foreign `source` → `SOURCE_MISMATCH`), `allow`
-  (listed sources only), `prefix` (foreign realm, `source` becomes
-  `tab:cart-store`). `accepts` gates which topics a remote may inject —
-  everything else is dropped before any hook (`TOPIC_NOT_ACCEPTED`).
-- `forward()` is the remote's subscription: it runs `onSubscribe` hooks
-  with the remote's id and throws on denial, so one ACL covers local and
-  remote participants. Requests never go to a remote (step 5).
-- Edge protection: `maxBytes`, `rateLimit`; all drops are published as
-  `remote.frame.rejected { reason }`. A transport that throws or never
-  opens yields `remote.send.failed` instead of rejecting the emitter.
-- `message.via` names the remote that delivered a message (local-only,
-  never on the wire). Local and remote clients share one id namespace
-  (`CLIENT_ID_TAKEN`); `inspect.getClients()` lists remotes with a
-  `remote` block; `remote.created` / `remote.destroyed` events.
-
-### DevTools and reference stand — remote clients (RFC-0003 step 3b)
-
-- Clients tab lists remote clients next to local ones with a
-  `remote · <transport>` badge; the detail view shows transport, identity
-  mode, whether requests are possible, `accepts` and the forwarded
-  topics. Sent/received counters for a remote count what came in through
-  it (`via`) and what was forwarded to it.
-- Messages tab shows `via <remote>` instead of the bare `external` pill.
-- System Events tab renders `remote.created`, `remote.destroyed`,
+- Runs on the host's React: the peer range is `react` / `react-dom`
+  `^18.2.0 || ^19.0.0` and every `react/*` / `react-dom/*` request is an
+  external. Previously webpack inlined `react/jsx-runtime` from the copy
+  installed at build time and a React 18 host crashed at first render
+  (`Cannot read properties of null (reading 'useMemo')`).
+  `packages/devtools/react18-smoke` — a standalone project with its own
+  lockfile — renders the built bundle under React 18.3 in jsdom and is
+  wired into `npm test`.
+- The Bridges tab is gone. The Clients tab lists remote clients next to
+  local ones with a `remote · <transport>` badge; the detail view shows
+  transport, identity mode, whether requests are possible, `accepts`, the
+  forwarded topics, the counters that used to live on a bridge, and the
+  SDK version that created a local client.
+- Messages: `via <remote>` instead of the bare `external` pill, the
+  topic's kind from the registry on every row, a `retained` pill for a
+  state topic's initial delivery, and `Via … · wire id …` plus the `ext`
+  block in the details.
+- System Events: `remote.created`, `remote.destroyed`,
   `remote.frame.rejected` (with reason and what the frame claimed) and
-  `remote.send.failed` under a `remote` facet.
-- Reference stand runs on remote clients only, no `addBridge` left:
-  `notifications-backend` over `{ kind: 'websocket' }` (registered before
-  the socket opens; the runtime tears it down on close, reconnect stays in
-  the shell), `tabs` over `{ kind: 'broadcast-channel' }` with `prefix`
-  identity (a snapshot from another tab arrives as `tab:cart-store`),
-  `checkout-iframe` over `{ kind: 'postmessage' }` with both origins,
-  `ai-backend` over `{ kind: 'sse' }` per reply. ACL gained rules for
-  `tabs` (may be forwarded `cart.snapshot.v1`) and `tab:cart-store` (may
-  send it); the same hooks now cover local and remote participants.
+  `remote.send.failed` under a `remote` facet; `request.forwarded`,
+  `response.received`, `request.timeout` and `response.sent` with
+  `sent` / `received` badges; `hook.failed`; `state.retained`.
+- Replay Buffer shows the declared table — `notification.show.v1 · event
+  · 3 of 10` — instead of an undifferentiated ring.
+- Protocol handshake with a header badge on mismatch, a "channel is off"
+  notice in the Debug tab, and the `enabled` prop documented and coded as
+  `false` by default (the previous `NODE_ENV` expression was evaluated at
+  library build time).
 
-### Broker and DevTools — bridges removed (RFC-0003 step 3c)
-
-- `addBridge`, `BridgeConfig`, `BridgeTransport`, `BridgeInfo`,
-  `inspect.getBridges()`, the `bridge.*` system events and log codes are
-  gone; remote clients are the only way across a wire. The bridge items
-  in the two sections above (`bridge.send.failed`, minimum bridge
-  safety) were intermediate steps and are superseded by
-  `remote.send.failed` / `remote.frame.rejected`.
-- Built-in transport classes are no longer exported: the runtime
-  instantiates them from a `TransportDescriptor`. Custom wires implement
-  `Transport`.
-- `postmessage` requires both `allowedOrigins` and `targetOrigin`; the
-  `'*'` default and the deprecated `origin` field are removed.
-- `WebSocketTransport.destroy()` closes a still-open socket — the remote
-  client owns its transport.
-- DevTools: Bridges tab removed; its counters live on the remote
-  client's card.
-
-### Wire envelope v1 (RFC-0003 step 4)
-
-- One frame format for everything that crosses a transport:
-  `docs/content/spec/envelope-v1.md` plus a JSON Schema shipped in the
-  package (`@hedwigjs/broker/spec/envelope-v1.schema.json`). The runtime's
-  ingress check is proven equivalent to the schema by a shared corpus test.
-- Outbound frames carry `v: 1`, `kind`, and `origin` (this realm's session
-  id). Inbound: `v` other than 1 or an unknown `kind` → `UNSUPPORTED`; a
-  frame with our own `origin` → `ECHO`; the producer's `id` lands as
-  `message.wireId`, the `ext` block as `message.ext`.
-- New spec pages: delivery semantics, threat model, support matrix.
-- Reference stand: the backend emits v1 frames from one helper with a
-  per-process `origin` and a `correlationId` per streamed AI reply; the
-  checkout iframe stamps its own `origin`. `npm test` in the backend
-  validates every frame against the schema (Node test runner + ajv).
-- DevTools: message details show `Via … · wire id …` and the `ext` block.
-
-### Requests across the wire (RFC-0003 step 5)
-
-- `client.request(remote.id, …)` now crosses the transport: a
-  `kind: 'request'` frame with `correlationId` + `deadline`, answered by
-  a `kind: 'response'` frame over the same transport, pending entries
-  kept on the remote client. Local outcomes: `TIMEOUT` (per call →
-  remote default → broker default → 5000 ms; the far side may still run
-  it), `REMOTE_GONE`, `BROKER_DESTROYED`, and immediate
-  `TRANSPORT_ONE_WAY` / `TRANSPORT_FANOUT` for transports that cannot
-  answer. Exactly one `afterSend`, with `via`.
-- Requests from a remote are routed to the named local client and always
-  answered: handler result, `HANDLER_FAILED`, `NOT_SUBSCRIBED`,
-  `HOOK_REJECTED`, `SERIALIZATION_FAILED` (unencodable return value). A
-  request that came over one wire is never relayed to another remote.
-- Trace on `$systemEvents`: `request.forwarded`, `response.received`
-  (with latency), `request.timeout`, `response.sent`. DevTools renders
-  them with `sent` / `received` badges.
-- Spec: `SERIALIZATION_FAILED` joins the closed response reasons; an
-  explicit request targeting `*` is malformed; new "Requests" section.
-- Reference stand: new contract `notification.status.v1`; the backend
-  answers it over the WebSocket (connected clients, uptime); a "Request
-  to a remote" card under the cart sends it and shows the round trip, or
-  `NACK TIMEOUT` when the backend is down. ACL rule for
-  `remote-request-demo`.
-
-### `@hedwigjs/client` — the SDK for modules (RFC-0003 step 6)
-
-- New package. Modules import `createClient` / `createRemoteClient` and
-  every public type from `@hedwigjs/client`; it depends on nothing at
-  runtime and locates the host's runtime through
-  `Symbol.for('@hedwigjs/runtime/1')`. Gates: `RUNTIME_NOT_PROVIDED`,
-  `RUNTIME_TOO_OLD` (`MIN_RUNTIME` baked into each SDK release).
-- Boot order is a non-issue: `createClient()` before `initBroker()`
-  returns a lazy proxy that records subscriptions, queues emits and
-  requests (bounded, 64) and flushes in order on `hedwig:runtime-ready`.
-  `createRemoteClient()` needs a live runtime (`whenRuntimeReady()`).
-- Runtime: public types moved to the SDK (re-exported); `createClient`
-  throws `CLIENT_ID_TAKEN` on a duplicate id unless
-  `{ onConflict: 'reset' }`; `RUNTIME_ALREADY_PROVIDED` for a second
-  runtime; handle removed on `destroyBroker()`; `sdkVersion` on
-  `client.registered` and in `inspect.getClients()`; capabilities
-  `wire.v1`, `remote.requests`.
-- Reference stand: every MFE depends on `@hedwigjs/client` only; the
-  shell no longer shares `@hedwigjs/broker` through Module Federation.
-  The checkout iframe and the AI stream are created with the SDK's
-  `createRemoteClient`.
-- DevTools: client detail shows the SDK version that created it.
-- Root scripts: `npm run build` (client → broker → devtools) and
-  `npm test` across packages and the demo backend.
-
-### Topic kinds in contracts (RFC-0003 step 7, block 1 — registry)
-
-- `TopicContract` with `kind: 'event' | 'request' | 'state'`
-  (`EventContract` stays as a deprecated alias). Requests declare their
-  answer as `response`; state topics may set `retention: { last: 1 }`.
-- Codegen validates kinds, emits `TopicKinds`, `EventTopic` /
-  `RequestTopic` / `StateTopic`, `TopicResponses`, `TopicContracts` and
-  the runtime map `TOPIC_KINDS`; contracts without `kind` are events
-  with a summary warning.
-- Reference stand contracts: five requests with `response`, the cart
-  snapshot as `state`, the rest explicit events.
-
-### Topic kinds in the SDK and the runtime (step 7, block 2)
-
-- SDK: `createClient<Topic, TopicPayloads, TopicContracts>()` — `emit`
-  accepts only events and state, `request` only requests and infers the
-  answer type; a wrong verb is a compile error. Without the third
-  parameter nothing changes.
-- Runtime: `initBroker({ topics: TOPIC_KINDS })` retains the last local
-  multicast of every `state` topic and hands it to each new subscriber
-  synchronously (`replayed: true`, `afterSend REPLAY_DELIVERED`); opt out
-  per subscription with `{ retained: false }`. `inspect.getRetained()`,
-  `state.retained` event.
-- Unicast history removed: `RequestOptions` is `{ timeout }`, a request
-  is never recorded, the deprecation warning is gone.
-
-### Topic kinds on the stand and in DevTools (step 7, block 3)
-
-- Reference stand: `initBroker({ topics: TOPIC_KINDS })`; every client is
-  `createClient<Topic, TopicPayloads, TopicContracts>`; the cart snapshot
-  is emitted without `history: true` and read without `replay` — the
-  late-mount card now demonstrates retained state.
-- DevTools: kind from the registry on every message row, `retained` pill
-  for a state topic's initial delivery, `state.retained` in System Events.
-- Docs: guide `contract-based-topics.md`; broker README "Topic kinds and
-  state"; RFC-0003 open question 3 resolved (one contract type with `kind`).
-
-### React and Vue adapters (step 8)
-
-- `@hedwigjs/react`: `useClient` (created in a layout effect, destroyed on
-  unmount, StrictMode-safe), `useTopic` (latest handler, no re-subscribe),
-  `useStateTopic` (retained value before the first paint), `useRequest`
-  (`send` + `pending` / `result`, answer typed by the contract),
-  `useRemoteClient` (created while options are present, destroyed with the
-  component), `useRuntimeReady`.
-- `@hedwigjs/vue`: the same six as composables on `onScopeDispose`,
-  `watch` and `shallowRef`; `useRemoteClient` follows a ref or getter.
-- Reference stand on the React adapter: cart snapshot, menu quantities and
-  the late-mount card via `useStateTopic`; the remote-request card via
-  `useClient` + `useRequest`; the checkout iframe via `useRemoteClient`;
-  toasts via `useTopic`. The hand-written `useEffect` / `useRef` lifecycle
-  code is gone.
-
-### Transport conformance kit and end-to-end suite (step 9)
+### Transport conformance kit and end-to-end suite
 
 - `@hedwigjs/broker/conformance`: `transportConformance(factory)` returns
   framework-agnostic `{ name, run }` cases (flags, `ready`, envelope
@@ -295,120 +303,110 @@ step; it goes away once DevTools and the reference stand have moved.
   `onClose`); `createMemoryTransportPair()` is the reference pair. The
   built-in MessagePort, BroadcastChannel and WebSocket transports pass it
   in the broker's own suite; a deliberately broken transport fails it.
-- Reference stand: Playwright suite `examples/advanced/e2e` (cart and
-  retained state, ACL denials, SSE chat, WebSocket notification, request
-  to the backend, checkout iframe, cross-tab, DevTools) in Playwright's
-  own headless Chromium; `npm run e2e` boots the stand itself.
-
-### CI, provenance, governance (step 10)
-
-- `ci.yml`: build in dependency order, `npm run typecheck` across every
-  workspace, unit suites, stale-codegen check for the contracts registry,
-  the Playwright stand suite (report uploaded on failure), and a
-  changeset check on pull requests.
-- `release.yml` builds all public packages, runs the unit suites and
-  publishes with npm provenance (`NPM_CONFIG_PROVENANCE`, OIDC
-  `id-token`). `deploy-stand.yml` builds client and react too and
-  triggers on their paths.
-- Governance minimum: `CODEOWNERS`, a pull-request checklist, Dependabot
-  (npm weekly, actions monthly), `.nvmrc`, a rewritten `CONTRIBUTING.md`
-  with the everyday commands and the release rules.
-
-### DevTools on React 18 and 19
-
-- `@hedwigjs/devtools` peer range is `react`/`react-dom`
-  `^18.2.0 || ^19.0.0`. The sources never needed React 19; the bundle
-  did, because webpack inlined `react/jsx-runtime` from the copy
-  installed at build time, and a React 18 host crashed at first render
-  (`Cannot read properties of null (reading 'useMemo')`). Every
-  `react/*` and `react-dom/*` request is now an external, so the panel
-  runs on the host's React.
-- `packages/devtools/react18-smoke` — a standalone project (own
-  lockfile, not a workspace) that renders the built bundle under React
-  18.3 in jsdom; wired into `npm test` so the guard runs in CI.
-
-### Retention declared in the contract
-
-- An event contract may declare `retention: { last: N }`; the runtime
-  keeps the last N messages of that topic in a buffer of its own and a
-  subscriber replays them with `on(topic, fn, { replay })`. `state`
-  topics keep their last value the same way. Events without `retention`
-  are not kept — most do not need to be. The registry's `TOPIC_KINDS`
-  carries the policy, so the host only passes it; `history` in
-  `initBroker` is reduced to caps (`maxPerTopic`, `ttl`, `enabled`).
-- The `history` flag on `emit()` is gone, and origin no longer matters:
-  a frame from a remote client is retained like a local emit, for events
-  and state alike (a state value pushed by the backend now reaches a
-  late local subscriber).
-- DevTools Replay Buffer shows the declared table — `notification.show.v1
-  · event · 3 of 10` — instead of an undifferentiated ring. On the stand
-  `notification.show.v1` keeps 10 and the chat transcript topics keep 50.
-
-### Review fixes after 0.2.0
-
-- `maxBytes` works on every transport; an inbound request's deadline is
-  enforced on the local handler; transports throw on a failed send so
-  `remote.send.failed` fires; `on()` refuses wildcard topics; optional
-  `payloads: 'clone'` for hosts that do not want in-place freezing.
-- SDK: no throw at module scope on a stale host (`NACK RUNTIME_TOO_OLD`
-  instead), `whenRuntimeReady()` rejects rather than throws, lazy-client
-  binding isolated per subscription.
-- create-registry reads contract fields from the TypeScript AST.
-- Docs: first-paint wording qualified; no hard-coded versions in
-  SECURITY.md and the spec; the API index is links only.
+- Playwright suite `examples/advanced/e2e` (cart and retained state, ACL
+  denials, SSE chat, WebSocket notification, request to the backend,
+  checkout iframe, cross-tab, DevTools) in Playwright's own headless
+  Chromium; `npm run e2e` boots the stand itself.
 
 ### Reference stand
 
-- Bilingual UI (EN default, RU toggle). Backend AI replies + notification
-  bodies + checkout iframe HTML all honour `?lang=` from the client.
-- Whole stand now served under `/demo/advanced/` on the production
-  domain — root `/` 302-redirects there.
-- Late-mount MFE card demonstrates history-buffer replay against a
-  live producer.
-- Analytics MFE surfaces the ACL rejection channel
-  (`subscription.rejected` + `message.rejected` in DevTools).
-- Cart mutations moved to CQRS style — targeted `request()` to the
-  cart runtime with typed `RoutingResult.data`.
-- Mobile-safe modal scroll lock — nested modals (cart popup + checkout
-  iframe + menu item modal) cooperate on a shared reference counter
-  and use `position: fixed` + saved `scrollY` so iOS Safari doesn't
-  leave the page stuck after close.
-- Header no longer shows a non-functional user avatar; language toggle
-  lives in its place.
+- Runs on the SDK and remote clients only: every MFE depends on
+  `@hedwigjs/client`, the shell no longer shares `@hedwigjs/broker`
+  through Module Federation, and there is no `addBridge` left —
+  `notifications-backend` over `{ kind: 'websocket' }` (registered before
+  the socket opens; the runtime tears it down on close, reconnect stays
+  in the shell), `tabs` over `{ kind: 'broadcast-channel' }` with
+  `prefix` identity (a snapshot from another tab arrives as
+  `tab:cart-store`), `checkout-iframe` over `{ kind: 'postmessage' }` with
+  both origins, `ai-backend` over `{ kind: 'sse' }` per reply.
+- `initBroker({ topics: TOPIC_KINDS })`; every client is
+  `createClient<Topic, TopicPayloads, TopicContracts>`; five contracts
+  are requests with a `response`, the cart snapshot is `state`, the rest
+  are explicit events. The late-mount card demonstrates retained state
+  against a live producer. `notification.show.v1` keeps 10 messages and
+  the chat transcript topics keep 50.
+- On the React adapter: cart snapshot, menu quantities and the late-mount
+  card via `useStateTopic`; the remote-request card via `useClient` +
+  `useRequest`; the checkout iframe via `useRemoteClient`; toasts via
+  `useTopic`. The hand-written `useEffect` / `useRef` lifecycle code is
+  gone.
+- New contract `notification.status.v1`: the backend answers it over the
+  WebSocket (connected clients, uptime) and a "Request to a remote" card
+  under the cart shows the round trip, or `NACK TIMEOUT` when the backend
+  is down.
+- The backend emits v1 frames from one helper with a per-process `origin`
+  and a `correlationId` per streamed AI reply; the checkout iframe stamps
+  its own `origin` and posts to the parent's origin (passed as
+  `?parentOrigin=`). `npm test` in the backend validates every frame
+  against the schema (Node test runner + ajv).
+- ACL gained rules for `tabs` (may be forwarded `cart.snapshot.v1`),
+  `tab:cart-store` (may send it) and `remote-request-demo`; the analytics
+  MFE surfaces the rejection channel (`subscription.rejected` +
+  `message.rejected` in DevTools). DevTools is loaded through a dynamic
+  `import()` in its own chunk and arms the debug channel explicitly.
+- Bilingual UI (EN default, RU toggle) — backend AI replies, notification
+  bodies and checkout iframe HTML all honour `?lang=` from the client.
+  The header no longer shows a non-functional user avatar; the language
+  toggle lives in its place.
+- Cart mutations moved to CQRS style — a targeted `request()` to the cart
+  runtime with typed `RoutingResult.data`.
+- Mobile-safe modal scroll lock: nested modals (cart popup + checkout
+  iframe + menu item modal) cooperate on a shared reference counter and
+  use `position: fixed` + saved `scrollY`, so iOS Safari no longer leaves
+  the page stuck after close.
+- Served under `/demo/advanced/` on the production domain.
+
+### CI, provenance, governance
+
+- `ci.yml`: build in dependency order, `npm run typecheck` across every
+  workspace, unit suites, a stale-codegen check for the contracts
+  registry, the Playwright stand suite (report uploaded on failure), and
+  a changeset check on pull requests.
+- `release.yml` builds all public packages, runs the unit suites and
+  publishes with npm provenance (`NPM_CONFIG_PROVENANCE`, OIDC
+  `id-token`); Changesets opens the Version Packages PR automatically and
+  publishes on merge. `deploy-stand.yml` builds client and react too and
+  triggers on their paths.
+- Governance minimum: `CODEOWNERS`, a pull-request checklist, Dependabot
+  (npm weekly, actions monthly), `.nvmrc`, and a rewritten
+  `CONTRIBUTING.md` with the everyday commands and the release rules.
+- Root scripts: `npm run build` (client → broker → devtools) and
+  `npm test` across packages and the demo backend.
 
 ### Infrastructure
 
-- Deployed to a Yandex Cloud VM with HTTPS (Let's Encrypt via certbot).
-  Live URL: [hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced).
+- The reference stand is deployed to a Yandex Cloud VM with HTTPS
+  (Let's Encrypt via certbot):
+  [hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced).
 - GitHub Actions **Deploy reference stand** rebuilds shell + every MFE
-  with prod URLs baked in, rsyncs to the VM, diff-syncs the nginx
-  config, restarts the backend only when its fingerprint actually
-  changed, then runs a curl smoke test.
-- GitHub Actions **Release** wired to Changesets — opens the Version
-  Packages PR automatically and publishes to npm on merge (requires
-  `NPM_TOKEN` secret with `@hedwigjs` write + bypass 2FA).
+  with prod URLs baked in, rsyncs to the VM, diff-syncs the nginx config,
+  restarts the backend only when its fingerprint actually changed, then
+  runs a curl smoke test.
 
 ### Docs
 
 - Every `@hedwigjs/*` package README rewritten reference-library style
-  (compact API tables, recipes, table of contents).
-- New [`examples/advanced/README.md`](./examples/advanced/README.md) —
-  authoritative overview of the reference stand.
-- Head README gained the Live demo callout, up-to-date `What ships`
-  table, and a Deployment section pointing at the workflow +
-  versioned nginx config.
-- Hardcoded version numbers stripped from docs — `package.json` stays
-  the single source of truth so docs don't drift on every bump.
-- Empty `scripts/` and `tooling/` placeholder dirs removed.
-- Documentation audit (2026-09-13) and rewrite against the code: every
-  package README, the root README, the stand README, the registry
-  template README, the guides and the doc indexes now describe the
-  runtime/SDK split (`@hedwigjs/client` for modules), topic kinds with
+  (compact API tables, recipes, table of contents), and a documentation
+  audit against the code: the runtime/SDK split, topic kinds with
   contract-declared retention, remote clients instead of bridges, the
   React/Vue adapters with bound hooks, and DevTools on React 18/19.
-  RFC-0003 is marked implemented; RFC-0001 and the mock-bus era guide
-  `demo-architecture.md` are retired with pointers. Complete
-  `RoutingReason` and system-event tables in the broker README.
+- New guide `contract-based-topics.md`; complete `RoutingReason` and
+  system-event tables in the broker README; new
+  [`examples/advanced/README.md`](./examples/advanced/README.md) as the
+  authoritative overview of the reference stand.
+- RFC-0003 marked implemented (open question 3 resolved: one contract
+  type with `kind`). RFC-0001 and the mock-bus era guide
+  `demo-architecture.md` retired with pointers.
+- Hard-coded version numbers stripped from docs — `package.json` stays
+  the single source of truth so docs don't drift on every bump.
+
+## [0.1.1] — 2026-08-30
+
+`@hedwigjs/broker` only. Docs-only refresh: the live reference stand
+([hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced))
+surfaced in every package README, hard-coded version numbers dropped, and
+minor accuracy fixes (backend transport labels, a DevTools pill name). No
+runtime changes.
 
 ## [0.1.0] — 2026-08-29
 
