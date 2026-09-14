@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress';
+import { groupIconMdPlugin, groupIconVitePlugin } from 'vitepress-plugin-group-icons';
 
 const REPO = 'https://github.com/hedwigjs/hedwig';
 const BLOB = `${REPO}/blob/main/`;
@@ -14,13 +15,13 @@ const ESCAPES_SITE = /^(\.\.\/)+(packages|examples|README\.md|CONTRIBUTING\.md|S
 
 export default defineConfig({
   title: 'Hedwig',
-  description: 'Contract-first message broker for the web app. Typed events, requests and state across microfrontends, iframes, workers, tabs and backends — with DevTools and hooks built in.',
+  description: 'Contract-first message broker for the web app. Typed events and requests across microfrontends, iframes, workers, tabs and backends — with DevTools and hooks built in.',
   cleanUrls: true,
   lastUpdated: true,
   head: [
     ['link', { rel: 'icon', href: '/hedwig-owl.png' }],
     ['meta', { property: 'og:title', content: 'Hedwig — contract-first message broker for the web app' }],
-    ['meta', { property: 'og:description', content: 'Typed events, requests and state across microfrontends, iframes, workers, tabs and backends — with DevTools and hooks built in.' }],
+    ['meta', { property: 'og:description', content: 'Typed events and requests across microfrontends, iframes, workers, tabs and backends — with DevTools and hooks built in.' }],
   ],
 
   // Files keep their place in the repository (READMEs link to them); the
@@ -44,6 +45,8 @@ export default defineConfig({
 
   markdown: {
     config(md) {
+      // Icons in code-group tabs (TypeScript / React / Vue) and code blocks.
+      md.use(groupIconMdPlugin);
       md.core.ruler.push('externalize_repo_links', (state) => {
         for (const token of state.tokens) {
           for (const child of token.children ?? []) {
@@ -61,7 +64,20 @@ export default defineConfig({
 
   // `docs/assets/` is the site's public dir: the owl keeps the path the root
   // README links to, and is served at `/hedwig-owl.png`.
-  vite: { publicDir: 'assets' },
+  vite: {
+    publicDir: 'assets',
+    plugins: [
+      groupIconVitePlugin({
+        // Labels used in the code groups; icons come from the locally installed
+        // @iconify-json/vscode-icons set, so the build needs no network.
+        customIcon: {
+          typescript: 'vscode-icons:file-type-typescript',
+          react: 'vscode-icons:file-type-reactts',
+          vue: 'vscode-icons:file-type-vue',
+        },
+      }),
+    ],
+  },
 
   themeConfig: {
     logo: '/hedwig-owl.png',

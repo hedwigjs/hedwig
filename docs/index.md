@@ -3,7 +3,7 @@ layout: home
 hero:
   name: Hedwig
   text: Contract-first message broker for the web app
-  tagline: Typed events, requests and state across microfrontends, iframes, workers, tabs and backends — with DevTools and hooks built in.
+  tagline: Typed events and requests across microfrontends, iframes, workers, tabs and backends — with DevTools and hooks built in.
   image:
     src: /hedwig-owl.png
     alt: Hedwig
