@@ -14,13 +14,13 @@ const ESCAPES_SITE = /^(\.\.\/)+(packages|examples|README\.md|CONTRIBUTING\.md|S
 
 export default defineConfig({
   title: 'Hedwig',
-  description: 'Contract-first messaging for the modules that make up a web application.',
+  description: 'Contract-first message broker for the web app. Typed events, requests and state across microfrontends, iframes, workers, tabs and backends — with DevTools and hooks built in.',
   cleanUrls: true,
   lastUpdated: true,
   head: [
     ['link', { rel: 'icon', href: '/hedwig-owl.png' }],
-    ['meta', { property: 'og:title', content: 'Hedwig — contract-first messaging for web modules' }],
-    ['meta', { property: 'og:description', content: 'One typed API across every transport: microfrontends, iframes, workers, tabs, backends.' }],
+    ['meta', { property: 'og:title', content: 'Hedwig — contract-first message broker for the web app' }],
+    ['meta', { property: 'og:description', content: 'Typed events, requests and state across microfrontends, iframes, workers, tabs and backends — with DevTools and hooks built in.' }],
   ],
 
   // Files keep their place in the repository (READMEs link to them); the

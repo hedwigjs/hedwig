@@ -2,8 +2,8 @@
 layout: home
 hero:
   name: Hedwig
-  text: Contract-first messaging for web modules
-  tagline: One typed API for everything your app talks to — microfrontends, iframes, workers, other tabs, a backend over WebSocket or SSE.
+  text: Contract-first message broker for the web app
+  tagline: Typed events, requests and state across microfrontends, iframes, workers, tabs and backends — with DevTools and hooks built in.
   image:
     src: /hedwig-owl.png
     alt: Hedwig

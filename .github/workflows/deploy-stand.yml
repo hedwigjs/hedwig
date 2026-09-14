@@ -161,7 +161,7 @@ jobs:
           SITE="https://${{ env.DOMAIN }}"
           curl -sf -o /dev/null -w "site_root=%{http_code}\n"   "$SITE/"
           curl -sf -o /dev/null -w "site_guide=%{http_code}\n"  "$SITE/guides/getting-started"
-          curl -sf "$SITE/" | grep -q "Contract-first messaging" || { echo "landing text missing"; exit 1; }
+          curl -sf "$SITE/" | grep -q "Contract-first message broker" || { echo "landing text missing"; exit 1; }
           test "$(curl -s -o /dev/null -w '%{http_code}' "$SITE/demo")" = "302" || { echo "/demo did not redirect"; exit 1; }
 
       - name: Summary
