@@ -7,6 +7,7 @@ import type {
 } from '@hedwig-demo/contracts';
 
 import { bus, useStateTopic } from '../clients/bus';
+import { localizedName } from '../menuTranslations';
 
 /**
  * Menu MFE's read-only view of cart quantities.
@@ -41,7 +42,9 @@ export function useLocalCartQuantities() {
     void bus.request<'cart.add-item.v1', CartAddItemResponse>(
       'cart-store',
       'cart.add-item.v1',
-      { itemId: item.id, name: item.name, price: item.price },
+      // The name the user sees, not the catalog's canonical (Russian) one:
+      // the cart shows what it was sent.
+      { itemId: item.id, name: localizedName(item), price: item.price },
     );
   }, []);
 
