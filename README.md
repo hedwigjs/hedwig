@@ -158,8 +158,8 @@ broker pipeline and shows up in one DevTools panel: messages, clients
 stream so audit tooling can consume them without inspecting every user
 message.
 
-Attach cost is negligible — the benchmark suite measures a
-DevTools-shape observer at under 1% overhead per emit.
+Attach cost is small — the benchmark suite measures a DevTools-shape
+observer at about 25 ns per emit, some 2% of throughput.
 
 ### 🎛 Full control over the message lifecycle
 
@@ -387,18 +387,24 @@ Dependabot live under `.github/`. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Benchmarks
 
-The 15-file benchmark suite lives in
+The 21-file benchmark suite lives in
 [`packages/broker/benchmarks/`](./packages/broker/benchmarks/) — full
 methodology and per-scenario numbers are in its
-[README](./packages/broker/benchmarks/README.md). Ballpark on an
-M-series MacBook:
+[README](./packages/broker/benchmarks/README.md). Median of three runs on
+an M-series MacBook, Node 22 (2026-09-14):
 
-- **3.1M emit/sec** at 1 subscriber · **p99 500 ns**
-- Fan-out scales cleanly — **~90 ns / subscriber** all the way to 10 000
-- **~2 ns per additional beforeSend hook**
-- **< 1 %** overhead for a DevTools-shape observer attached
-- **~814 B per subscription** heap footprint
-- **~14 ns** extra to round-trip through a remote client's transport
+- **~2.8M emit/sec** at one subscriber · p50 **500 ns**, p99 **1.33 µs** (`01`, `02`)
+- Fan-out stays flat per subscriber — **~120–145 ns** from 10 to 10 000 (`04`)
+- Dispatch is O(1) in the number of topics — **407 → 418 ns** from 10 to 10 000 (`08`)
+- **~6 ns** per additional `beforeSend` hook (`05`)
+- **~25 ns** per emit for a DevTools-shape observer — about **2 %** of throughput (`13`)
+- **~830–890 B** heap per subscription (`12`)
+- **~20 ns** to also forward an emit through a remote client's transport (`11`)
+- A `request()` to a remote costs **~1.2 µs** against **~0.6 µs** to a local client (`16`)
+- `payloads: 'clone'` costs **2.5–3.4×** an in-place freeze, by payload shape (`18`)
+- `maxBytes` is free on a transport that reports the frame size, but makes
+  the runtime measure the frame itself on a structured-clone one —
+  **~15× on a 4 KB frame** (`19`)
 
 ```bash
 cd packages/broker
