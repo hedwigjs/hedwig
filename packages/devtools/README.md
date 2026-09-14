@@ -20,7 +20,7 @@ panel is built against the host's copy of React (including
 > Pre-release. The panel props documented here are the stable surface;
 > anything marked *internal* may change.
 
-**See it live →** click the mascot on the right edge of [hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced) · **Full project docs →** [`../..#readme`](../..#readme)
+**See it live →** click the mascot on the right edge of [hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced) · **Docs →** [hedwigjs.com](https://hedwigjs.com)
 
 ---
 

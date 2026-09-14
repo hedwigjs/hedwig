@@ -17,7 +17,7 @@ npm install @hedwigjs/broker
 > Pre-release. The public surface documented here is stable across
 > the pre-release; anything marked *internal* may change.
 
-**Live demo →** [hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced) · **Full project docs →** [`../..#readme`](../..#readme)
+**Live demo →** [hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced) · **Docs →** [hedwigjs.com](https://hedwigjs.com)
 
 ---
 

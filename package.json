@@ -12,7 +12,7 @@
   "bugs": {
     "url": "https://github.com/hedwigjs/hedwig/issues"
   },
-  "homepage": "https://github.com/hedwigjs/hedwig#readme",
+  "homepage": "https://hedwigjs.com",
   "workspaces": [
     "docs",
     "packages/*",

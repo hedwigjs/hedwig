@@ -25,7 +25,7 @@
   "bugs": {
     "url": "https://github.com/hedwigjs/hedwig/issues"
   },
-  "homepage": "https://github.com/hedwigjs/hedwig/tree/main/packages/devtools#readme",
+  "homepage": "https://hedwigjs.com",
   "scripts": {
     "build": "webpack --config webpack.config.cjs && tsc -p tsconfig.dts.json",
     "watch": "webpack --config webpack.config.cjs --watch",

@@ -27,7 +27,7 @@
   "bugs": {
     "url": "https://github.com/hedwigjs/hedwig/issues"
   },
-  "homepage": "https://github.com/hedwigjs/hedwig/tree/main/packages/react#readme",
+  "homepage": "https://hedwigjs.com",
   "scripts": {
     "build": "rm -rf dist && tsup",
     "test": "jest",

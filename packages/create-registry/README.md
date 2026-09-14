@@ -18,7 +18,7 @@ npm create @hedwigjs/registry my-topics
 
 > Pre-release.
 
-**Live demo →** [hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced) · **Full project docs →** [`../..#readme`](../..#readme)
+**Live demo →** [hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced) · **Docs →** [hedwigjs.com](https://hedwigjs.com)
 
 ---
 

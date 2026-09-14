@@ -18,7 +18,7 @@
   "bugs": {
     "url": "https://github.com/hedwigjs/hedwig/issues"
   },
-  "homepage": "https://github.com/hedwigjs/hedwig/tree/main/packages/create-registry#readme",
+  "homepage": "https://hedwigjs.com",
   "files": [
     "dist",
     "templates",

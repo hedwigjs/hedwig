@@ -4,6 +4,8 @@ Vue 3 composables that bind Hedwig clients to the component scope. Built on
 [`@hedwigjs/client`](../client); no dependency on the runtime, no plugin to
 install.
 
+**Docs →** [hedwigjs.com](https://hedwigjs.com) · **Live demo →** [hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced)
+
 ```bash
 npm i @hedwigjs/vue @hedwigjs/client
 ```
