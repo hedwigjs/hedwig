@@ -4,6 +4,8 @@ React hooks that bind Hedwig clients to the component lifecycle. Built on
 [`@hedwigjs/client`](../client); no dependency on the runtime, no context
 provider to install.
 
+**Docs →** [hedwigjs.com](https://hedwigjs.com) · **Live demo →** [hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced)
+
 ```bash
 npm i @hedwigjs/react @hedwigjs/client
 ```

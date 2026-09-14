@@ -11,6 +11,14 @@
 
 <p>One typed API across every transport. First-class observability out of the box. Extensible through hooks — without touching core.</p>
 
+<p>
+  <a href="https://hedwigjs.com"><strong>Documentation</strong></a> ·
+  <a href="https://hedwigjs.com/guides/getting-started">Getting started</a> ·
+  <a href="https://hedwigjs.com/spec/">Wire spec</a> ·
+  <a href="https://hedwigjs.com/demo/advanced/">Live demo</a> ·
+  <a href="https://www.npmjs.com/org/hedwigjs">npm</a>
+</p>
+
 </div>
 
 ---

@@ -5,6 +5,8 @@ It depends on nothing at runtime and never boots a broker itself: it finds
 the runtime through a handle on `globalThis`, checks that the runtime is new
 enough for these types, and hands out clients.
 
+**Docs →** [hedwigjs.com](https://hedwigjs.com) · **Live demo →** [hedwigjs.com/demo/advanced](https://hedwigjs.com/demo/advanced)
+
 ```bash
 npm i @hedwigjs/client
 ```
