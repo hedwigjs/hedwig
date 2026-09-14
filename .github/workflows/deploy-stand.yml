@@ -1,14 +1,16 @@
-name: Deploy reference stand
+name: Deploy hedwigjs.com
 
-# Rebuilds the "Hedwig Café" reference stand (shell + MFEs + backend) and
-# rsyncs the artifacts to the production VM behind hedwigjs.com. Triggered
-# on pushes to main that touch stand-relevant paths, plus manual dispatch
-# for on-demand redeploys.
+# Rebuilds everything behind hedwigjs.com — the documentation site (docs/)
+# at the root and the "Hedwig Café" reference stand (shell + MFEs +
+# backend) under /demo/advanced — and rsyncs the artifacts to the
+# production VM. Triggered on pushes to main that touch either, plus manual
+# dispatch for on-demand redeploys.
 
 on:
   push:
     branches: [main]
     paths:
+      - "docs/**"
       - "examples/advanced/**"
       - "packages/client/**"
       - "packages/broker/**"
@@ -69,9 +71,13 @@ jobs:
           done
           wait
 
+      - name: Build the documentation site
+        run: npm run docs:build
+
       - name: Assemble deploy tree
         run: |
           rm -rf deploy && mkdir -p deploy/mfe
+          cp -R docs/.vitepress/dist deploy/site
           cp -R examples/advanced/shell/dist deploy/shell
           for m in menu cart ai-chat notifications checkout analytics; do
             cp -R examples/advanced/mfe/$m/dist deploy/mfe/$m
@@ -151,12 +157,16 @@ jobs:
           curl -sf -o /dev/null -w "menu.js=%{http_code}\n"  "$BASE/mfe/menu/remoteEntry.js"
           curl -sf -o /dev/null -w "cart.js=%{http_code}\n"  "$BASE/mfe/cart/remoteEntry.js"
           curl -sf -o /dev/null -w "health=%{http_code}\n"   "$BASE/health"
-          # Root should 302 to the demo path.
-          curl -s -o /dev/null -w "root_redirect=%{http_code}\n" "https://${{ env.DOMAIN }}/"
+          # The site: landing at the root, a clean URL resolves, /demo redirects to the stand.
+          SITE="https://${{ env.DOMAIN }}"
+          curl -sf -o /dev/null -w "site_root=%{http_code}\n"   "$SITE/"
+          curl -sf -o /dev/null -w "site_guide=%{http_code}\n"  "$SITE/guides/getting-started"
+          curl -sf "$SITE/" | grep -q "Contract-first messaging" || { echo "landing text missing"; exit 1; }
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$SITE/demo")" = "302" || { echo "/demo did not redirect"; exit 1; }
 
       - name: Summary
         run: |
-          echo "## 🚀 Deployed to https://${{ env.DOMAIN }}${{ env.BASE_PATH }}/" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Deployed https://${{ env.DOMAIN }}/ (site) and https://${{ env.DOMAIN }}${{ env.BASE_PATH }}/ (stand)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- Backend restarted: **${{ steps.backend.outputs.changed }}**" >> $GITHUB_STEP_SUMMARY
           echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
