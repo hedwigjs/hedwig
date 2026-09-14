@@ -8,3 +8,7 @@ dist/
 # Playwright
 examples/advanced/test-results/
 examples/advanced/playwright-report/
+
+# VitePress
+docs/.vitepress/dist/
+docs/.vitepress/cache/

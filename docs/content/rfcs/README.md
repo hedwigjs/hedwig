@@ -22,6 +22,6 @@ We don't write an RFC for internal refactors, bugfixes, or reversible tweaks.
 | [0003](./0003-participants-runtime-sdk.md) | Participants, runtime/SDK split, links and the wire | Implemented (revision 2) |
 
 The normative output of 0003 is the wire specification under
-[`../spec/`](../spec/README.md), starting with
+[`../spec/`](../spec/), starting with
 [`envelope-v1.md`](../spec/envelope-v1.md). The RFC keeps the reasoning;
 the spec is what a peer implements.

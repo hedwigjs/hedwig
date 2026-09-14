@@ -14,6 +14,7 @@
   },
   "homepage": "https://github.com/hedwigjs/hedwig#readme",
   "workspaces": [
+    "docs",
     "packages/*",
     "examples/advanced",
     "examples/advanced/shell",
@@ -23,6 +24,9 @@
   ],
   "scripts": {
     "build": "npm run build -w @hedwigjs/client && npm run build -w @hedwigjs/broker && npm run build -w @hedwigjs/devtools && npm run build -w @hedwigjs/react && npm run build -w @hedwigjs/vue",
+    "docs:dev": "npm run dev -w @hedwig-internal/docs",
+    "docs:build": "npm run build -w @hedwig-internal/docs",
+    "docs:preview": "npm run preview -w @hedwig-internal/docs",
     "test": "npm test -w @hedwigjs/client && npm test -w @hedwigjs/broker && npm test -w @hedwigjs/devtools && npm --prefix packages/devtools/react18-smoke ci --no-audit --no-fund && npm --prefix packages/devtools/react18-smoke test && npm test -w @hedwigjs/react && npm test -w @hedwigjs/vue && npm test -w @hedwig-demo/backend",
     "dev:demo": "npm run dev -w @hedwig-demo/advanced",
     "stop:demo": "npm run stop -w @hedwig-demo/advanced",

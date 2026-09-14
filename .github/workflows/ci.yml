@@ -51,6 +51,11 @@ jobs:
           npm run build -w @hedwig-demo/contracts
           git diff --exit-code -- examples/advanced/shared/contracts/src/index.generated.ts
 
+      - name: Documentation site builds
+        # hedwigjs.com. Also the dead-link check for the pages under
+        # docs/content that are read on GitHub as well.
+        run: npm run docs:build
+
       - name: Production build of the stand shell
         # Same command the deploy runs. Catches a lockfile that installs
         # react somewhere the shell cannot resolve it (a regenerated lock
