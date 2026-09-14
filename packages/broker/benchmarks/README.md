@@ -36,6 +36,12 @@ so the memory bench can trigger `global.gc()` for reliable deltas.
 | 13 | `devtools-attach` | Overhead of the observer shape DevTools installs |
 | 14 | `contention-jitter` | p99 jitter of 1,000-emit bursts (10 concurrent senders) |
 | 15 | `cold-start` | `initBroker` + N × `createClient` startup budget |
+| 16 | `remote-request` | `request()` to a remote and from a remote, against a local one |
+| 17 | `envelope` | `buildFrame` / `parseFrame` — the per-frame wire tax, object and JSON text |
+| 18 | `payloads` | Deep-freeze in place vs `payloads: 'clone'`, flat and nested |
+| 19 | `maxbytes` | `maxBytes` on an inbound frame: measured by the runtime vs reported by the transport |
+| 20 | `lazy-client` | SDK client created before `initBroker` — queue at 0 / 1 / 16 / 64 and flush |
+| 21 | `state-retained` | `on()` on a `state` topic delivering the retained value synchronously |
 
 ## Interpretation
 
@@ -70,3 +76,25 @@ In short (a longer rationale document is not written yet):
   implementations evolve.
 - **11–15** are diagnostic — memory leaks, GC jitter, cross-context, cold
   start. Run them when investigating a symptom, not on every PR.
+- **16–21** price the decisions a host actually makes: whether to put a
+  participant behind a transport, whether to turn on `maxBytes`, whether to
+  pay for `payloads: 'clone'`, and what a module loading before the shell
+  costs. Each one reads as a delta against a baseline case in the same
+  file — the absolute numbers include setup that cancels out.
+
+## Method notes
+
+Two traps this suite has to sidestep, worth knowing before adding a case:
+
+- **Never re-emit the same object** when the subject is payload handling.
+  Deep-freeze bails out on an already-frozen object, so a reused payload
+  makes `'freeze'` look free (see `18-payloads`).
+- **Never put a `setTimeout` in the measured path.** A `setTimeout(…, 0)`
+  costs ~1.3 ms and buries anything at µs scale; drain microtasks with
+  `await Promise.resolve()` instead (see `20-lazy-client`).
+
+`20-lazy-client` also imports the SDK from `packages/client/src` rather than
+the package: a built `@hedwigjs/client` bakes `MIN_RUNTIME` from its release
+and refuses the source runtime, which reports `0.0.0-dev`. It installs an
+`EventTarget` on `globalThis` for the same reason — without it the SDK falls
+back to a 50 ms polling timer that Node needs and a browser never sees.

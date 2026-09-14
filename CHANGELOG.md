@@ -29,6 +29,15 @@ Nothing here changes a published package.
   added in.
 - CI: the changeset check runs only when `packages/` actually changed, so
   a docs-only pull request no longer asks for a changeset.
+- Benchmarks: six scenarios for the surface 0.2.0 and 0.3.0 added and the
+  suite never covered — requests across the wire (`16`), envelope v1
+  build/parse (`17`), `payloads: 'clone'` against the in-place freeze
+  (`18`), `maxBytes` measured by the runtime vs reported by the transport
+  (`19`), the SDK's lazy client queue and flush (`20`), and a `state`
+  topic's retained value on subscribe (`21`). The published numbers in the
+  READMEs were re-measured against them: the emit p99 had been quoted as
+  the p50, and the DevTools observer costs ~2% of throughput rather than
+  the "< 1%" claimed.
 
 ## [0.3.0] — 2026-09-14
 

@@ -1144,16 +1144,22 @@ message bus.
 
 ## Performance
 
-`@hedwigjs/broker` ships a 15-scenario tinybench harness. Highlights
-from the reference machine (macOS, M-series):
+`@hedwigjs/broker` ships a 21-scenario tinybench harness. Median of three
+runs on the reference machine (macOS, M-series, Node 22, 2026-09-14):
 
-- `emit` throughput at 10 subscribers — millions of ops/sec.
-- Dispatch cost stays constant per-subscriber as fan-out grows to
-  10 000 (`04-fanout-scaling`).
-- Dispatch stays O(1) across 10 000 unrelated topics
-  (`08-multi-topic-isolation`).
-- Backpressure wrapper adds tens of nanoseconds per call
-  (`07-backpressure-overhead`).
+- `emit` throughput — ~2.8M/sec at one subscriber, ~770k at ten
+  (`01-emit-throughput`).
+- Dispatch cost stays flat per-subscriber as fan-out grows to 10 000 —
+  ~120–145 ns each (`04-fanout-scaling`).
+- Dispatch stays O(1) across 10 000 unrelated topics — 407 ns at ten
+  topics, 418 ns at ten thousand (`08-multi-topic-isolation`).
+- Backpressure adds ~5 ns for `throttle` and ~65 ns for `rateLimit`;
+  `debounce` is the expensive one at ~180 ns (`07-backpressure-overhead`).
+- A `request()` answered over a transport costs ~1.2 µs against ~0.6 µs
+  to a local client (`16-remote-request`).
+- `payloads: 'clone'` costs 2.5–3.4× the default in-place freeze
+  (`18-payloads`); `maxBytes` on a structured-clone transport makes the
+  runtime measure each frame — ~15× on a 4 KB one (`19-maxbytes`).
 
 ```bash
 npm run bench             # every scenario, sequentially
