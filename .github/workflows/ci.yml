@@ -133,6 +133,12 @@ jobs:
 
       - name: Every touched public package has a changeset
         # Fails when a package under packages/* changed since main without
-        # a .changeset/*.md describing the bump. Demo workspaces are
-        # ignored by .changeset/config.json.
-        run: npx changeset status --since=origin/${{ github.base_ref }}
+        # a .changeset/*.md describing the bump. A PR that touches only the
+        # docs site, the stand or CI has nothing to declare — skip the
+        # changesets run entirely instead of trusting its ignore list.
+        run: |
+          if git diff --quiet "origin/${{ github.base_ref }}...HEAD" -- packages/; then
+            echo "No public package changed — nothing to check."
+            exit 0
+          fi
+          npx changeset status --since="origin/${{ github.base_ref }}"
